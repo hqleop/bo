@@ -1,0 +1,687 @@
+from rest_framework import viewsets, status, permissions
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import get_user_model
+from django.db import transaction
+from django.utils import timezone
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
+from drf_spectacular.types import OpenApiTypes
+
+from .models import Company, CompanyUser, Role, Permission, Notification, Branch, Department, BranchUser, DepartmentUser
+from .serializers import (
+    UserSerializer,
+    UserRegistrationStep1Serializer,
+    CompanySerializer,
+    CompanyListSerializer,
+    CompanyRegistrationStep2Serializer,
+    ExistingCompanyStep2Serializer,
+    PermissionSerializer,
+    RoleSerializer,
+    CompanyUserSerializer,
+    NotificationSerializer,
+    MeSerializer,
+    PasswordResetRequestSerializer,
+    PasswordResetConfirmSerializer,
+    PasswordChangeSerializer,
+    BranchSerializer,
+    DepartmentSerializer,
+    BranchUserSerializer,
+    DepartmentUserSerializer,
+)
+
+User = get_user_model()
+
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    """
+    Custom JWT login endpoint.
+    """
+
+    @extend_schema(
+        summary="Вхід в систему",
+        description="Отримати JWT токени (access + refresh) для автентифікації.",
+        responses={200: {"description": "Токени успішно отримано"}, 401: {"description": "Невірні облікові дані"}},
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+
+
+@extend_schema(
+    summary="Реєстрація - Крок 1",
+    description="Створення користувача. Якщо email вже існує, повертає помилку.",
+    request=UserRegistrationStep1Serializer,
+    responses={
+        201: UserSerializer,
+        400: OpenApiResponse(description="Помилка валідації"),
+    },
+)
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def registration_step1(request):
+    """Step 1: Create user."""
+    serializer = UserRegistrationStep1Serializer(data=request.data)
+    if serializer.is_valid():
+        user = serializer.save()
+        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(
+    summary="Реєстрація - Крок 2 (Нова компанія)",
+    description="Створення нової компанії та призначення користувача адміністратором.",
+    request=CompanyRegistrationStep2Serializer,
+    responses={
+        201: CompanySerializer,
+        400: OpenApiResponse(description="Помилка валідації"),
+    },
+)
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def registration_step2_new_company(request):
+    """Step 2: Create new company and assign user as admin."""
+    serializer = CompanyRegistrationStep2Serializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    user_id = serializer.validated_data["user_id"]
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response({"user_id": "Користувач не знайдений."}, status=status.HTTP_400_BAD_REQUEST)
+
+    with transaction.atomic():
+        company = Company.objects.create(
+            edrpou=serializer.validated_data["edrpou"],
+            name=serializer.validated_data["name"],
+            goal_tenders=serializer.validated_data["goal_tenders"],
+            goal_participation=serializer.validated_data["goal_participation"],
+        )
+
+        # Create admin role for company
+        admin_role, _ = Role.objects.get_or_create(
+            company=company, name="Адміністратор", defaults={"is_system": True}
+        )
+
+        # Assign all permissions to admin role (for MVP)
+        admin_role.permissions.set(Permission.objects.all())
+
+        # Create membership with approved status
+        CompanyUser.objects.create(
+            user=user, company=company, role=admin_role, status=CompanyUser.Status.APPROVED
+        )
+
+    return Response(CompanySerializer(company).data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(
+    summary="Реєстрація - Крок 2 (Існуюча компанія)",
+    description="Запит на приєднання до існуючої компанії. Створює сповіщення адміністратору компанії.",
+    request=ExistingCompanyStep2Serializer,
+    responses={
+        201: CompanyUserSerializer,
+        400: OpenApiResponse(description="Помилка валідації"),
+    },
+)
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def registration_step2_existing_company(request):
+    """Step 2: Request to join existing company."""
+    serializer = ExistingCompanyStep2Serializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    user_id = serializer.validated_data["user_id"]
+    company_id = serializer.validated_data["company_id"]
+
+    try:
+        user = User.objects.get(id=user_id)
+        company = Company.objects.get(id=company_id, status=Company.Status.ACTIVE)
+    except User.DoesNotExist:
+        return Response({"user_id": "Користувач не знайдений."}, status=status.HTTP_400_BAD_REQUEST)
+    except Company.DoesNotExist:
+        return Response({"company_id": "Компанія не знайдена."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Check if membership already exists
+    if CompanyUser.objects.filter(user=user, company=company).exists():
+        return Response(
+            {"non_field_errors": "Користувач вже має зв'язок з цією компанією."}, status=status.HTTP_400_BAD_REQUEST
+        )
+
+    with transaction.atomic():
+        # Get default user role (or create if not exists)
+        default_role, _ = Role.objects.get_or_create(
+            company=company, name="Користувач", defaults={"is_system": True}
+        )
+
+        membership = CompanyUser.objects.create(
+            user=user, company=company, role=default_role, status=CompanyUser.Status.PENDING
+        )
+
+        # Find company admins and send notifications
+        admin_memberships = CompanyUser.objects.filter(
+            company=company, status=CompanyUser.Status.APPROVED, role__name="Адміністратор"
+        )
+        for admin_membership in admin_memberships:
+            Notification.objects.create(
+                user=admin_membership.user,
+                type=Notification.Type.MEMBERSHIP_REQUEST,
+                title=f"Запит на приєднання від {user.get_full_name() or user.email}",
+                body=f"Користувач {user.get_full_name() or user.email} ({user.email}) хоче приєднатися до компанії {company.name}.",
+                meta={"membership_id": membership.id, "user_id": user.id, "company_id": company.id},
+            )
+
+    return Response(CompanyUserSerializer(membership).data, status=status.HTTP_201_CREATED)
+
+
+class CompanyViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Company list/retrieve (for step 2 selection).
+    """
+
+    queryset = Company.objects.filter(status=Company.Status.ACTIVE)
+    serializer_class = CompanyListSerializer
+    permission_classes = [permissions.AllowAny]
+
+    @extend_schema(
+        summary="Список активних компаній",
+        description="Отримати список активних компаній для вибору при реєстрації.",
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Деталі компанії",
+        description="Отримати детальну інформацію про компанію.",
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+
+class CompanyUserViewSet(viewsets.ModelViewSet):
+    """
+    CompanyUser membership management.
+    """
+
+    serializer_class = CompanyUserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """Filter by user's companies."""
+        user = self.request.user
+        if user.is_superuser:
+            return CompanyUser.objects.all()
+        # Only show memberships for companies where user is admin
+        admin_companies = CompanyUser.objects.filter(
+            user=user, status=CompanyUser.Status.APPROVED, role__name="Адміністратор"
+        ).values_list("company_id", flat=True)
+        return CompanyUser.objects.filter(company_id__in=admin_companies)
+
+    @extend_schema(
+        summary="Список членів компанії",
+        description="Отримати список користувачів компанії (тільки для адміністраторів).",
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Деталі членства",
+        description="Отримати детальну інформацію про членство.",
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Додати користувача до компанії",
+        description="Адміністратор може додати користувача до компанії вручну.",
+        request=CompanyUserSerializer,
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Підтвердити членство",
+        description="Адміністратор підтверджує запит на приєднання.",
+        responses={200: CompanyUserSerializer, 400: OpenApiResponse(description="Помилка")},
+    )
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        """Approve membership request."""
+        membership = self.get_object()
+        if membership.status != CompanyUser.Status.PENDING:
+            return Response({"error": "Можна підтвердити тільки запити зі статусом 'Очікує'."}, status=400)
+
+        membership.status = CompanyUser.Status.APPROVED
+        membership.save()
+
+        # Notify user about approval
+        Notification.objects.create(
+            user=membership.user,
+            type=Notification.Type.MEMBERSHIP_REQUEST,
+            title=f"Ваш запит підтверджено",
+            body=f"Ваш запит на приєднання до компанії {membership.company.name} було підтверджено.",
+            meta={"membership_id": membership.id, "company_id": membership.company.id},
+        )
+
+        return Response(CompanyUserSerializer(membership).data)
+
+    @extend_schema(
+        summary="Відхилити членство",
+        description="Адміністратор відхиляє запит на приєднання.",
+        responses={200: CompanyUserSerializer, 400: OpenApiResponse(description="Помилка")},
+    )
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        """Reject membership request."""
+        membership = self.get_object()
+        if membership.status != CompanyUser.Status.PENDING:
+            return Response({"error": "Можна відхилити тільки запити зі статусом 'Очікує'."}, status=400)
+
+        membership.status = CompanyUser.Status.REJECTED
+        membership.save()
+
+        # Notify user about rejection
+        Notification.objects.create(
+            user=membership.user,
+            type=Notification.Type.MEMBERSHIP_REQUEST,
+            title=f"Ваш запит відхилено",
+            body=f"Ваш запит на приєднання до компанії {membership.company.name} було відхилено.",
+            meta={"membership_id": membership.id, "company_id": membership.company.id},
+        )
+
+        return Response(CompanyUserSerializer(membership).data)
+
+
+class RoleViewSet(viewsets.ModelViewSet):
+    """
+    Role management (company-scoped).
+    """
+
+    serializer_class = RoleSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """Filter by user's companies."""
+        user = self.request.user
+        if user.is_superuser:
+            return Role.objects.all()
+        # Only show roles for companies where user is admin
+        admin_companies = CompanyUser.objects.filter(
+            user=user, status=CompanyUser.Status.APPROVED, role__name="Адміністратор"
+        ).values_list("company_id", flat=True)
+        return Role.objects.filter(company_id__in=admin_companies)
+
+    @extend_schema(
+        summary="Список ролей",
+        description="Отримати список ролей компанії (тільки для адміністраторів).",
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Створити роль",
+        description="Створити нову роль для компанії.",
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Оновити роль",
+        description="Оновити роль та її права доступу.",
+    )
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Видалити роль",
+        description="Видалити роль (системні ролі видалити неможливо).",
+    )
+    def destroy(self, request, *args, **kwargs):
+        role = self.get_object()
+        if role.is_system:
+            return Response({"error": "Системні ролі не можна видаляти."}, status=400)
+        return super().destroy(request, *args, **kwargs)
+
+
+class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Permission catalog (read-only).
+    """
+
+    queryset = Permission.objects.all()
+    serializer_class = PermissionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        summary="Список прав доступу",
+        description="Отримати каталог доступних прав доступу для призначення ролям.",
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+
+class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    User notifications.
+    """
+
+    serializer_class = NotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """Show only current user's notifications."""
+        return Notification.objects.filter(user=self.request.user).order_by("-created_at")
+
+    @extend_schema(
+        summary="Список сповіщень",
+        description="Отримати список сповіщень поточного користувача.",
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Позначити як прочитане",
+        description="Позначити сповіщення як прочитане.",
+        responses={200: NotificationSerializer},
+    )
+    @action(detail=True, methods=["post"])
+    def mark_read(self, request, pk=None):
+        """Mark notification as read."""
+        notification = self.get_object()
+        notification.is_read = True
+        notification.save()
+        return Response(NotificationSerializer(notification).data)
+
+    @extend_schema(
+        summary="Позначити всі як прочитані",
+        description="Позначити всі сповіщення користувача як прочитані.",
+        responses={200: {"description": "Кількість оновлених сповіщень"}},
+    )
+    @action(detail=False, methods=["post"])
+    def mark_all_read(self, request):
+        """Mark all notifications as read."""
+        count = Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+        return Response({"count": count})
+
+
+@extend_schema(
+    summary="Поточний користувач",
+    description="Отримати інформацію про поточного користувача, його членства та права доступу.",
+    responses={200: MeSerializer},
+)
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def me(request):
+    """Get current user info with memberships and permissions."""
+    serializer = MeSerializer({"user": request.user, "memberships": request.user.memberships.all(), "permissions": []})
+    serializer.instance = request.user
+    return Response(serializer.data)
+
+
+@extend_schema(
+    summary="Запит на відновлення пароля",
+    description="Надіслати запит на відновлення пароля (email з посиланням).",
+    request=PasswordResetRequestSerializer,
+    responses={200: {"description": "Якщо email існує, надіслано лист"}},
+)
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def password_reset_request(request):
+    """Request password reset (MVP: just return success, no email sending yet)."""
+    serializer = PasswordResetRequestSerializer(data=request.data)
+    if serializer.is_valid():
+        email = serializer.validated_data["email"]
+        # In MVP, we don't send emails yet
+        # TODO: Implement email sending with reset token
+        return Response({"message": "Якщо email існує, надіслано лист з інструкціями."})
+    return Response(serializer.errors, status=400)
+
+
+@extend_schema(
+    summary="Підтвердження відновлення пароля",
+    description="Підтвердити відновлення пароля за токеном.",
+    request=PasswordResetConfirmSerializer,
+    responses={200: {"description": "Пароль успішно змінено"}},
+)
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def password_reset_confirm(request):
+    """Confirm password reset (MVP: placeholder)."""
+    serializer = PasswordResetConfirmSerializer(data=request.data)
+    if serializer.is_valid():
+        # TODO: Implement token validation and password reset
+        return Response({"message": "Пароль успішно змінено."})
+    return Response(serializer.errors, status=400)
+
+
+@extend_schema(
+    summary="Зміна пароля",
+    description="Змінити пароль для автентифікованого користувача.",
+    request=PasswordChangeSerializer,
+    responses={200: {"description": "Пароль успішно змінено"}},
+)
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def password_change(request):
+    """Change password for authenticated user."""
+    serializer = PasswordChangeSerializer(data=request.data)
+    if serializer.is_valid():
+        user = request.user
+        if not user.check_password(serializer.validated_data["old_password"]):
+            return Response({"old_password": "Невірний поточний пароль."}, status=400)
+        user.set_password(serializer.validated_data["new_password"])
+        user.save()
+        return Response({"message": "Пароль успішно змінено."})
+    return Response(serializer.errors, status=400)
+
+
+class BranchViewSet(viewsets.ModelViewSet):
+    """
+    Branch management (tree structure).
+    """
+
+    serializer_class = BranchSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """Filter by user's companies."""
+        user = self.request.user
+        if user.is_superuser:
+            return Branch.objects.all()
+        # Only show branches for companies where user is member
+        user_companies = CompanyUser.objects.filter(
+            user=user, status=CompanyUser.Status.APPROVED
+        ).values_list("company_id", flat=True)
+        return Branch.objects.filter(company_id__in=user_companies).select_related("parent", "company")
+
+    @extend_schema(
+        summary="Список філіалів",
+        description="Отримати дерево філіалів компанії (тільки кореневі елементи, діти вкладено).",
+    )
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset().filter(parent__isnull=True)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @extend_schema(
+        summary="Створити філіал",
+        description="Створити новий філіал.",
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Оновити філіал",
+        description="Оновити інформацію про філіал.",
+    )
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Видалити філіал",
+        description="Видалити філіал (також видаляться дочірні філіали та підрозділи).",
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
+
+class DepartmentViewSet(viewsets.ModelViewSet):
+    """
+    Department management (tree structure, belongs to branch).
+    """
+
+    serializer_class = DepartmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """Filter by branch."""
+        branch_id = self.request.query_params.get("branch_id")
+        if branch_id:
+            return Department.objects.filter(branch_id=branch_id).select_related("parent", "branch")
+        return Department.objects.none()
+
+    @extend_schema(
+        summary="Список підрозділів",
+        description="Отримати дерево підрозділів для філіалу (потрібен параметр branch_id).",
+        parameters=[
+            OpenApiParameter(name="branch_id", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY, required=True)
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        branch_id = request.query_params.get("branch_id")
+        if not branch_id:
+            return Response({"error": "Параметр branch_id обов'язковий"}, status=400)
+        queryset = self.get_queryset().filter(parent__isnull=True)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @extend_schema(
+        summary="Створити підрозділ",
+        description="Створити новий підрозділ.",
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Оновити підрозділ",
+        description="Оновити інформацію про підрозділ.",
+    )
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Видалити підрозділ",
+        description="Видалити підрозділ (також видаляться дочірні підрозділи).",
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
+
+class BranchUserViewSet(viewsets.ModelViewSet):
+    """
+    BranchUser management (assign users to branches).
+    """
+
+    serializer_class = BranchUserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """Filter by branch."""
+        branch_id = self.request.query_params.get("branch_id")
+        if branch_id:
+            return BranchUser.objects.filter(branch_id=branch_id).select_related("user", "branch")
+        return BranchUser.objects.none()
+
+    @extend_schema(
+        summary="Список користувачів філіалу",
+        description="Отримати список користувачів філіалу (потрібен параметр branch_id).",
+        parameters=[
+            OpenApiParameter(name="branch_id", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY, required=True)
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Додати користувачів до філіалу",
+        description="Додати одного або кілька користувачів до філіалу (масив user_ids).",
+    )
+    def create(self, request, *args, **kwargs):
+        branch_id = request.data.get("branch")
+        user_ids = request.data.get("user_ids", [])
+        if not isinstance(user_ids, list):
+            return Response({"error": "user_ids повинен бути масивом"}, status=400)
+
+        created = []
+        for user_id in user_ids:
+            serializer = self.get_serializer(data={"branch": branch_id, "user_id": user_id})
+            if serializer.is_valid():
+                instance, created_flag = BranchUser.objects.get_or_create(
+                    branch_id=branch_id, user_id=user_id
+                )
+                if created_flag:
+                    created.append(BranchUserSerializer(instance).data)
+        return Response(created, status=201)
+
+    @extend_schema(
+        summary="Видалити користувача з філіалу",
+        description="Видалити користувача з філіалу.",
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
+
+class DepartmentUserViewSet(viewsets.ModelViewSet):
+    """
+    DepartmentUser management (assign users to departments).
+    """
+
+    serializer_class = DepartmentUserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """Filter by department."""
+        department_id = self.request.query_params.get("department_id")
+        if department_id:
+            return DepartmentUser.objects.filter(department_id=department_id).select_related("user", "department")
+        return DepartmentUser.objects.none()
+
+    @extend_schema(
+        summary="Список користувачів підрозділу",
+        description="Отримати список користувачів підрозділу (потрібен параметр department_id).",
+        parameters=[
+            OpenApiParameter(name="department_id", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY, required=True)
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Додати користувачів до підрозділу",
+        description="Додати одного або кілька користувачів до підрозділу (масив user_ids).",
+    )
+    def create(self, request, *args, **kwargs):
+        department_id = request.data.get("department")
+        user_ids = request.data.get("user_ids", [])
+        if not isinstance(user_ids, list):
+            return Response({"error": "user_ids повинен бути масивом"}, status=400)
+
+        created = []
+        for user_id in user_ids:
+            serializer = self.get_serializer(data={"department": department_id, "user_id": user_id})
+            if serializer.is_valid():
+                instance, created_flag = DepartmentUser.objects.get_or_create(
+                    department_id=department_id, user_id=user_id
+                )
+                if created_flag:
+                    created.append(DepartmentUserSerializer(instance).data)
+        return Response(created, status=201)
+
+    @extend_schema(
+        summary="Видалити користувача з підрозділу",
+        description="Видалити користувача з підрозділу.",
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
