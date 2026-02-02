@@ -10,7 +10,7 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from drf_spectacular.types import OpenApiTypes
 
-from .models import Company, CompanyUser, Role, Permission, Notification, Branch, Department, BranchUser, DepartmentUser
+from .models import Company, CompanyUser, Role, Permission, Notification, Branch, Department, BranchUser, DepartmentUser, Category, CategoryUser
 from .serializers import (
     UserSerializer,
     UserRegistrationStep1Serializer,
@@ -30,6 +30,8 @@ from .serializers import (
     DepartmentSerializer,
     BranchUserSerializer,
     DepartmentUserSerializer,
+    CategorySerializer,
+    CategoryUserSerializer,
 )
 
 User = get_user_model()
@@ -588,11 +590,23 @@ class BranchUserViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        """Filter by branch."""
+        """Filter by user's companies and optionally by branch."""
+        user = self.request.user
+        if user.is_superuser:
+            queryset = BranchUser.objects.all()
+        else:
+            # Only show BranchUser for branches in user's companies
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            queryset = BranchUser.objects.filter(branch__company_id__in=user_companies)
+        
+        # Filter by branch_id if provided (for list endpoint)
         branch_id = self.request.query_params.get("branch_id")
         if branch_id:
-            return BranchUser.objects.filter(branch_id=branch_id).select_related("user", "branch")
-        return BranchUser.objects.none()
+            queryset = queryset.filter(branch_id=branch_id)
+        
+        return queryset.select_related("user", "branch")
 
     @extend_schema(
         summary="Список користувачів філіалу",
@@ -642,11 +656,23 @@ class DepartmentUserViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        """Filter by department."""
+        """Filter by user's companies and optionally by department."""
+        user = self.request.user
+        if user.is_superuser:
+            queryset = DepartmentUser.objects.all()
+        else:
+            # Only show DepartmentUser for departments in branches of user's companies
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            queryset = DepartmentUser.objects.filter(department__branch__company_id__in=user_companies)
+        
+        # Filter by department_id if provided (for list endpoint)
         department_id = self.request.query_params.get("department_id")
         if department_id:
-            return DepartmentUser.objects.filter(department_id=department_id).select_related("user", "department")
-        return DepartmentUser.objects.none()
+            queryset = queryset.filter(department_id=department_id)
+        
+        return queryset.select_related("user", "department")
 
     @extend_schema(
         summary="Список користувачів підрозділу",
@@ -682,6 +708,121 @@ class DepartmentUserViewSet(viewsets.ModelViewSet):
     @extend_schema(
         summary="Видалити користувача з підрозділу",
         description="Видалити користувача з підрозділу.",
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
+
+class CategoryViewSet(viewsets.ModelViewSet):
+    """
+    Category management (company-scoped flat list).
+    """
+
+    serializer_class = CategorySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """Filter by user's companies."""
+        user = self.request.user
+        if user.is_superuser:
+            return Category.objects.all().select_related("parent", "company")
+        user_companies = CompanyUser.objects.filter(
+            user=user, status=CompanyUser.Status.APPROVED
+        ).values_list("company_id", flat=True)
+        return Category.objects.filter(company_id__in=user_companies).select_related("parent", "company")
+
+    @extend_schema(
+        summary="Список категорій",
+        description="Отримати дерево категорій компанії (тільки кореневі елементи, діти вкладено).",
+    )
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset().filter(parent__isnull=True)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @extend_schema(
+        summary="Створити категорію",
+        description="Створити нову категорію.",
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Оновити категорію",
+        description="Оновити інформацію про категорію.",
+    )
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Видалити категорію",
+        description="Видалити категорію.",
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
+
+class CategoryUserViewSet(viewsets.ModelViewSet):
+    """
+    CategoryUser management (assign users to categories).
+    """
+
+    serializer_class = CategoryUserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """Filter by user's companies and optionally by category."""
+        user = self.request.user
+        if user.is_superuser:
+            queryset = CategoryUser.objects.all()
+        else:
+            # Only show CategoryUser for categories in user's companies
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            queryset = CategoryUser.objects.filter(category__company_id__in=user_companies)
+        
+        # Filter by category_id if provided (for list endpoint)
+        category_id = self.request.query_params.get("category_id")
+        if category_id:
+            queryset = queryset.filter(category_id=category_id)
+        
+        return queryset.select_related("user", "category")
+
+    @extend_schema(
+        summary="Список користувачів категорії",
+        description="Отримати список користувачів категорії (потрібен параметр category_id).",
+        parameters=[
+            OpenApiParameter(name="category_id", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY, required=True)
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Додати користувачів до категорії",
+        description="Додати одного або кілька користувачів до категорії (масив user_ids).",
+    )
+    def create(self, request, *args, **kwargs):
+        category_id = request.data.get("category")
+        user_ids = request.data.get("user_ids", [])
+        if not isinstance(user_ids, list):
+            return Response({"error": "user_ids повинен бути масивом"}, status=400)
+
+        result = []
+        for user_id in user_ids:
+            serializer = self.get_serializer(data={"category": category_id, "user_id": user_id})
+            if serializer.is_valid():
+                instance, created_flag = CategoryUser.objects.get_or_create(
+                    category_id=category_id, user_id=user_id
+                )
+                if created_flag:
+                    result.append(CategoryUserSerializer(instance).data)
+        return Response(result, status=201)
+
+    @extend_schema(
+        summary="Видалити користувача з категорії",
+        description="Видалити користувача з категорії.",
     )
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)

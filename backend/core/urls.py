@@ -16,6 +16,8 @@ from .views import (
     DepartmentViewSet,
     BranchUserViewSet,
     DepartmentUserViewSet,
+    CategoryViewSet,
+    CategoryUserViewSet,
     me,
     password_reset_request,
     password_reset_confirm,
@@ -32,6 +34,8 @@ router.register(r"branches", BranchViewSet, basename="branch")
 router.register(r"departments", DepartmentViewSet, basename="department")
 router.register(r"branch-users", BranchUserViewSet, basename="branch-user")
 router.register(r"department-users", DepartmentUserViewSet, basename="department-user")
+router.register(r"categories", CategoryViewSet, basename="category")
+router.register(r"category-users", CategoryUserViewSet, basename="category-user")
 
 urlpatterns = [
     # Auth

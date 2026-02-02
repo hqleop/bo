@@ -1,1 +1,5 @@
 /* Global styles for Bid Open */
+UButton {
+  width: 12vw;
+  height: 5vh;
+}

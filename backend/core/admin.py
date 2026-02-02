@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import User, Company, CompanyUser, Role, Permission, Notification, Branch, Department, BranchUser, DepartmentUser
+from .models import User, Company, CompanyUser, Role, Permission, Notification, Branch, Department, BranchUser, DepartmentUser, Category, CategoryUser
 
 
 @admin.register(User)
@@ -69,3 +69,17 @@ class DepartmentUserAdmin(admin.ModelAdmin):
     list_display = ("user", "department", "created_at")
     list_filter = ("department", "created_at")
     search_fields = ("user__email", "department__name")
+
+
+@admin.register(Category)
+class CategoryAdmin(admin.ModelAdmin):
+    list_display = ("name", "company", "code", "created_at")
+    list_filter = ("company",)
+    search_fields = ("name", "code", "company__name")
+
+
+@admin.register(CategoryUser)
+class CategoryUserAdmin(admin.ModelAdmin):
+    list_display = ("user", "category", "created_at")
+    list_filter = ("category", "created_at")
+    search_fields = ("user__email", "category__name")

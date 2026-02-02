@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import get_user_model
-from .models import Company, CompanyUser, Role, Permission, Notification, Branch, Department, BranchUser, DepartmentUser
+from .models import Company, CompanyUser, Role, Permission, Notification, Branch, Department, BranchUser, DepartmentUser, Category, CategoryUser
 
 User = get_user_model()
 
@@ -255,4 +255,36 @@ class DepartmentUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = DepartmentUser
         fields = ("id", "department", "user", "user_id", "created_at")
+        read_only_fields = ("id", "created_at")
+
+
+class CategorySerializer(serializers.ModelSerializer):
+    """Category serializer with tree structure."""
+
+    children = serializers.SerializerMethodField()
+    user_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Category
+        fields = ("id", "company", "parent", "name", "code", "description", "children", "user_count", "created_at", "updated_at")
+        read_only_fields = ("id", "created_at", "updated_at")
+
+    def get_children(self, obj):
+        """Get direct children categories."""
+        children = obj.children.all()
+        return CategorySerializer(children, many=True).data
+
+    def get_user_count(self, obj):
+        return obj.users.count()
+
+
+class CategoryUserSerializer(serializers.ModelSerializer):
+    """CategoryUser serializer."""
+
+    user = UserSerializer(read_only=True)
+    user_id = serializers.IntegerField(write_only=True)
+
+    class Meta:
+        model = CategoryUser
+        fields = ("id", "category", "user", "user_id", "created_at")
         read_only_fields = ("id", "created_at")

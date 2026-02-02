@@ -211,3 +211,46 @@ class DepartmentUser(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user.email} - {self.department.name}"
+
+
+class Category(models.Model):
+    """
+    Категорія компанії (дерево).
+    """
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="categories")
+    parent = models.ForeignKey(
+        "self", on_delete=models.CASCADE, null=True, blank=True, related_name="children"
+    )
+    name = models.CharField(max_length=255)
+    code = models.CharField(max_length=50, blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Категорія"
+        verbose_name_plural = "Категорії"
+        ordering = ["name"]
+        unique_together = (("company", "name"),)
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class CategoryUser(models.Model):
+    """
+    Зв'язок користувача з категорією.
+    """
+
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name="users")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="categories")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = (("category", "user"),)
+        verbose_name = "Користувач категорії"
+        verbose_name_plural = "Користувачі категорій"
+
+    def __str__(self) -> str:
+        return f"{self.user.email} - {self.category.name}"
