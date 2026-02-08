@@ -2,7 +2,7 @@
 # Python
 # =====================
 .venv/
-__pycache__/
+backend/core/__pycache__/
 *.pyc
 *.pyo
 
