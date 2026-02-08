@@ -1,0 +1,30 @@
+# =====================
+# Python
+# =====================
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# =====================
+# Django
+# =====================
+db.sqlite3
+*.log
+media/
+staticfiles/
+
+# =====================
+# Node / Nuxt
+# =====================
+node_modules/
+.nuxt/
+.output/
+
+# =====================
+# OS / IDE
+# =====================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
