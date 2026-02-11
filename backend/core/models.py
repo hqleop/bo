@@ -213,6 +213,26 @@ class DepartmentUser(models.Model):
         return f"{self.user.email} - {self.department.name}"
 
 
+class CpvDictionary(models.Model):
+    """
+    Довідник CPV-кодів (імпортований у таблицю cpv_dictionary).
+    """
+
+    cpv_parent_code = models.CharField(max_length=50)
+    cpv_level_code = models.CharField(max_length=50)
+    cpv_code = models.CharField(max_length=50)
+    name_ua = models.TextField(blank=True, default="")
+    name_en = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "cpv_dictionary"
+        managed = False  # таблиця створюється скриптом імпорту, Django її не змінює
+        ordering = ["cpv_code"]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.cpv_code} - {self.name_ua}"
+
+
 class Category(models.Model):
     """
     Категорія компанії (дерево).
@@ -225,6 +245,12 @@ class Category(models.Model):
     name = models.CharField(max_length=255)
     code = models.CharField(max_length=50, blank=True, default="")
     description = models.TextField(blank=True, default="")
+    cpvs = models.ManyToManyField(
+        CpvDictionary,
+        related_name="categories",
+        blank=True,
+        help_text="CPV-коди, прив'язані до категорії",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

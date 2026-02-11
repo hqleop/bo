@@ -10,7 +10,20 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from drf_spectacular.types import OpenApiTypes
 
-from .models import Company, CompanyUser, Role, Permission, Notification, Branch, Department, BranchUser, DepartmentUser, Category, CategoryUser
+from .models import (
+    Company,
+    CompanyUser,
+    Role,
+    Permission,
+    Notification,
+    Branch,
+    Department,
+    BranchUser,
+    DepartmentUser,
+    Category,
+    CategoryUser,
+    CpvDictionary,
+)
 from .serializers import (
     UserSerializer,
     UserRegistrationStep1Serializer,
@@ -32,6 +45,8 @@ from .serializers import (
     DepartmentUserSerializer,
     CategorySerializer,
     CategoryUserSerializer,
+    # CPV
+    # (окремого ViewSet не потребує модель, бо це довідник тільки для читання)
 )
 
 User = get_user_model()
@@ -826,3 +841,61 @@ class CategoryUserViewSet(viewsets.ModelViewSet):
     )
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
+
+
+class CpvDictionaryTreeView(APIView):
+    """
+    Повертає дерево CPV-кодів для вибору у довіднику.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        summary="Дерево CPV-кодів",
+        description=(
+            "Повертає повний перелік CPV-кодів у вигляді дерева. "
+            "Деревоподібна структура будується за полями cpv_parent_code / cpv_level_code. "
+            "Кожен елемент містить id, cpv_code, name_ua, name_en, cpv_parent_code, cpv_level_code та children."
+        ),
+        responses={200: OpenApiResponse(description="Список кореневих CPV-елементів з вкладеними дітьми")},
+    )
+    def get(self, request):
+        # Отримуємо усі записи
+        items = list(CpvDictionary.objects.all())
+
+        # Індекс за внутрішнім кодом рівня
+        by_level_code = {i.cpv_level_code: i for i in items}
+
+        # Підготуємо список коренів
+        roots: list[CpvDictionary] = []
+
+        # Тимчасово додаємо атрибут _children до об'єктів
+        for item in items:
+            parent_code = (item.cpv_parent_code or "").strip()
+            if not parent_code or parent_code == "0":
+                roots.append(item)
+            else:
+                parent = by_level_code.get(parent_code)
+                if parent is None:
+                    # Якщо батько не знайдений, вважаємо елемент коренем
+                    roots.append(item)
+                else:
+                    children = getattr(parent, "_children", [])
+                    children.append(item)
+                    parent._children = children
+
+        def serialize_node(node: CpvDictionary) -> dict:
+            children = [serialize_node(c) for c in getattr(node, "_children", [])]
+            return {
+                "id": node.id,
+                "cpv_parent_code": node.cpv_parent_code,
+                "cpv_level_code": node.cpv_level_code,
+                "cpv_code": node.cpv_code,
+                "name_ua": node.name_ua,
+                "name_en": node.name_en,
+                "label": f"{node.cpv_code} - {node.name_ua}",
+                "children": children,
+            }
+
+        data = [serialize_node(root) for root in roots]
+        return Response(data)

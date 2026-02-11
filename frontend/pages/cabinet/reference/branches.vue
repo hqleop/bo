@@ -214,7 +214,7 @@
         </template>
         <div class="space-y-2 max-h-96 overflow-y-auto">
           <div
-            v-for="user in companyUsers"
+            v-for="user in availableCompanyUsers"
             :key="user.id"
             class="flex items-center p-2 rounded hover:bg-gray-50"
           >
@@ -303,6 +303,13 @@ const branches = ref<any[]>([]);
 const departments = ref<any[]>([]);
 const currentUsers = ref<any[]>([]);
 const companyUsers = ref<any[]>([]);
+// користувачі компанії, які ще не додані в поточний філіал/підрозділ
+const availableCompanyUsers = computed(() => {
+  const assignedIds = new Set<number>(
+    currentUsers.value.map((u: any) => u.user.id),
+  );
+  return companyUsers.value.filter((u: any) => !assignedIds.has(u.id));
+});
 
 // Вибраний елемент
 const selectedBranch = ref<any>(null);

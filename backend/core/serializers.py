@@ -1,7 +1,20 @@
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import get_user_model
-from .models import Company, CompanyUser, Role, Permission, Notification, Branch, Department, BranchUser, DepartmentUser, Category, CategoryUser
+from .models import (
+    Company,
+    CompanyUser,
+    Role,
+    Permission,
+    Notification,
+    Branch,
+    Department,
+    BranchUser,
+    DepartmentUser,
+    Category,
+    CategoryUser,
+    CpvDictionary,
+)
 
 User = get_user_model()
 
@@ -259,14 +272,36 @@ class DepartmentUserSerializer(serializers.ModelSerializer):
 
 
 class CategorySerializer(serializers.ModelSerializer):
-    """Category serializer with tree structure."""
+    """Category serializer with tree structure and CPV binding."""
 
     children = serializers.SerializerMethodField()
     user_count = serializers.SerializerMethodField()
+    cpvs = serializers.SerializerMethodField()
+    cpv_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        write_only=True,
+        required=False,
+        source="cpvs",
+        queryset=CpvDictionary.objects.all(),
+        help_text="Масив ID CPV-кодів, прив'язаних до категорії",
+    )
 
     class Meta:
         model = Category
-        fields = ("id", "company", "parent", "name", "code", "description", "children", "user_count", "created_at", "updated_at")
+        fields = (
+            "id",
+            "company",
+            "parent",
+            "name",
+            "code",
+            "description",
+            "children",
+            "user_count",
+            "cpvs",
+            "cpv_ids",
+            "created_at",
+            "updated_at",
+        )
         read_only_fields = ("id", "created_at", "updated_at")
 
     def get_children(self, obj):
@@ -276,6 +311,19 @@ class CategorySerializer(serializers.ModelSerializer):
 
     def get_user_count(self, obj):
         return obj.users.count()
+
+    def get_cpvs(self, obj):
+        """Return short CPV info for UI."""
+        qs = obj.cpvs.all()
+        return [
+            {
+                "id": cpv.id,
+                "cpv_code": cpv.cpv_code,
+                "name_ua": cpv.name_ua,
+                "label": f"{cpv.cpv_code} - {cpv.name_ua}",
+            }
+            for cpv in qs
+        ]
 
 
 class CategoryUserSerializer(serializers.ModelSerializer):

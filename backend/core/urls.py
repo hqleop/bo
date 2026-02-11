@@ -18,6 +18,7 @@ from .views import (
     DepartmentUserViewSet,
     CategoryViewSet,
     CategoryUserViewSet,
+    CpvDictionaryTreeView,
     me,
     password_reset_request,
     password_reset_confirm,
@@ -49,6 +50,8 @@ urlpatterns = [
     path("registration/step1/", registration_step1, name="registration_step1"),
     path("registration/step2/new/", registration_step2_new_company, name="registration_step2_new"),
     path("registration/step2/existing/", registration_step2_existing_company, name="registration_step2_existing"),
+    # CPV довідник
+    path("cpv/tree/", CpvDictionaryTreeView.as_view(), name="cpv-tree"),
     # Router viewsets
     path("", include(router.urls)),
 ]

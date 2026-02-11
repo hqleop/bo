@@ -111,6 +111,38 @@
               "
             />
           </UFormGroup>
+          <UFormGroup label="CPV" name="cpv">
+            <UPopover v-model="showCpvPopover">
+              <UButton block variant="outline">
+                <span v-if="selectedCpvLabels.length">{{
+                  selectedCpvLabels.join(", ")
+                }}</span>
+                <span v-else>Оберіть CPV</span>
+              </UButton>
+              <template #panel>
+                <div class="p-2 w-96 max-h-80 overflow-y-auto space-y-2">
+                  <UInput
+                    v-model="cpvSearch"
+                    size="sm"
+                    placeholder="Пошук за кодом або назвою"
+                  />
+                  <p class="mt-1 text-xs text-gray-500">
+                    Введіть цифри — пошук по <code>cpv_code</code>, текст — по
+                    назві українською.
+                  </p>
+                  <div class="mt-2 space-y-1">
+                    <CpvTreeItem
+                      v-for="node in filteredCpvTree"
+                      :key="node.id"
+                      :item="node"
+                      :selected-ids="selectedCpvIds"
+                      @toggle="toggleCpv"
+                    />
+                  </div>
+                </div>
+              </template>
+            </UPopover>
+          </UFormGroup>
           <UFormGroup label="Опис" name="description">
             <UTextarea v-model="categoryForm.description" />
           </UFormGroup>
@@ -132,7 +164,7 @@
         </template>
         <div class="space-y-2 max-h-96 overflow-y-auto">
           <div
-            v-for="user in companyUsers"
+            v-for="user in availableCompanyUsers"
             :key="user.id"
             class="flex items-center p-2 rounded hover:bg-gray-50"
           >
@@ -237,12 +269,35 @@ const categoryForm = reactive({
 const usersToAdd = ref<number[]>([]);
 const usersToRemove = ref<number[]>([]);
 
+// CPV
+const cpvTree = ref<any[]>([]);
+const cpvSearch = ref("");
+const selectedCpvIds = ref<number[]>([]);
+const showCpvPopover = ref(false);
+
+// користувачі компанії, які ще не додані до поточної категорії
+const availableCompanyUsers = computed(() => {
+  const assignedIds = new Set<number>(
+    currentUsers.value.map((u: any) => u.user.id),
+  );
+  return companyUsers.value.filter((u: any) => !assignedIds.has(u.id));
+});
+
 const loadCategories = async () => {
   const { data } = await fetch("/categories/", {
     headers: getAuthHeaders(),
   });
   if (data) {
     categories.value = data;
+  }
+};
+
+const loadCpvTree = async () => {
+  const { data } = await fetch("/cpv/tree/", {
+    headers: getAuthHeaders(),
+  });
+  if (data) {
+    cpvTree.value = data;
   }
 };
 
@@ -273,6 +328,7 @@ const loadCompanyUsers = async () => {
 
 const selectCategory = (cat: any) => {
   selectedCategory.value = cat;
+  selectedCpvIds.value = (cat.cpvs || []).map((c: any) => c.id);
   selectedUsers.value = [];
   loadUsers();
 };
@@ -304,11 +360,13 @@ const openCategoryModal = (cat?: any) => {
     categoryForm.code = cat.code || "";
     categoryForm.description = cat.description || "";
     categoryForm.parent_id = cat.parent || null;
+    selectedCpvIds.value = (cat.cpvs || []).map((c: any) => c.id);
   } else {
     categoryForm.name = "";
     categoryForm.code = "";
     categoryForm.description = "";
     categoryForm.parent_id = null;
+    selectedCpvIds.value = [];
   }
   showCategoryModal.value = true;
 };
@@ -324,6 +382,9 @@ const saveCategory = async () => {
   };
   if (categoryForm.parent_id) {
     payload.parent = categoryForm.parent_id;
+  }
+  if (selectedCpvIds.value.length) {
+    payload.cpv_ids = selectedCpvIds.value;
   }
 
   const endpoint = editingCategory.value
@@ -481,8 +542,69 @@ const categoryParentOptions = computed(() => {
   return [{ value: null, label: "Без батьківської категорії" }, ...withPrefix];
 });
 
+// Фільтрація дерева CPV по введеному рядку
+function filterCpvTree(
+  list: any[],
+  predicate: (node: any) => boolean,
+): any[] {
+  const result: any[] = [];
+  for (const node of list) {
+    const children = node.children ? filterCpvTree(node.children, predicate) : [];
+    if (predicate(node) || children.length) {
+      result.push({
+        ...node,
+        children,
+      });
+    }
+  }
+  return result;
+}
+
+const filteredCpvTree = computed(() => {
+  const term = cpvSearch.value.trim();
+  if (!term) return cpvTree.value;
+  const lower = term.toLowerCase();
+  const isDigit = /^[0-9]/.test(lower);
+  const predicate = (node: any) => {
+    if (isDigit) {
+      return (node.cpv_code || "").toLowerCase().includes(lower);
+    }
+    return (node.name_ua || "").toLowerCase().includes(lower);
+  };
+  return filterCpvTree(cpvTree.value, predicate);
+});
+
+const selectedCpvLabels = computed(() => {
+  const labels: string[] = [];
+  const allNodes: any[] = [];
+  const walk = (nodes: any[]) => {
+    for (const n of nodes) {
+      allNodes.push(n);
+      if (n.children?.length) walk(n.children);
+    }
+  };
+  walk(cpvTree.value);
+  for (const id of selectedCpvIds.value) {
+    const node = allNodes.find((n) => n.id === id);
+    if (node) {
+      labels.push(`${node.cpv_code} - ${node.name_ua}`);
+    }
+  }
+  return labels;
+});
+
+const toggleCpv = (id: number) => {
+  const idx = selectedCpvIds.value.indexOf(id);
+  if (idx > -1) {
+    selectedCpvIds.value.splice(idx, 1);
+  } else {
+    selectedCpvIds.value.push(id);
+  }
+};
+
 onMounted(async () => {
   await loadCategories();
   await loadCompanyUsers();
+  await loadCpvTree();
 });
 </script>
