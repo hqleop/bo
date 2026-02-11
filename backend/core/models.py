@@ -280,3 +280,47 @@ class CategoryUser(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user.email} - {self.category.name}"
+
+
+class ExpenseArticle(models.Model):
+    """
+    Стаття витрат (дерево всередині компанії).
+    """
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="expense_articles")
+    parent = models.ForeignKey(
+        "self", on_delete=models.CASCADE, null=True, blank=True, related_name="children"
+    )
+    name = models.CharField(max_length=255)
+    code = models.CharField(max_length=50, blank=True, default="")
+    year_start = models.PositiveIntegerField()
+    year_end = models.PositiveIntegerField(null=True, blank=True)
+    description = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Стаття витрат"
+        verbose_name_plural = "Статті витрат"
+        ordering = ["name"]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return self.name
+
+
+class ExpenseArticleUser(models.Model):
+    """
+    Прив'язка користувачів до статті витрат.
+    """
+
+    expense = models.ForeignKey(ExpenseArticle, on_delete=models.CASCADE, related_name="users")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="expense_articles")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = (("expense", "user"),)
+        verbose_name = "Користувач статті витрат"
+        verbose_name_plural = "Користувачі статей витрат"
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.user.email} - {self.expense.name}"

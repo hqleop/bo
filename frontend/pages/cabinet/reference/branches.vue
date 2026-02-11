@@ -152,10 +152,15 @@
             />
           </UFormGroup>
           <div class="flex gap-4">
-            <UButton variant="outline" block @click="showBranchModal = false"
+            <UButton
+              variant="outline"
+              class="flex-1"
+              @click="showBranchModal = false"
               >Скасувати</UButton
             >
-            <UButton type="submit" block :loading="saving">Зберегти</UButton>
+            <UButton type="submit" class="flex-1" :loading="saving"
+              >Зберегти</UButton
+            >
           </div>
         </UForm>
       </UCard>
@@ -196,11 +201,13 @@
           <div class="flex gap-4">
             <UButton
               variant="outline"
-              block
+              class="flex-1"
               @click="showDepartmentModal = false"
               >Скасувати</UButton
             >
-            <UButton type="submit" block :loading="saving">Зберегти</UButton>
+            <UButton type="submit" class="flex-1" :loading="saving"
+              >Зберегти</UButton
+            >
           </div>
         </UForm>
       </UCard>
@@ -232,10 +239,15 @@
         </div>
         <template #footer>
           <div class="flex gap-4">
-            <UButton variant="outline" block @click="showAddUsersModal = false"
+            <UButton
+              variant="outline"
+              class="flex-1"
+              @click="showAddUsersModal = false"
               >Скасувати</UButton
             >
-            <UButton block @click="addUsers" :loading="saving">Додати</UButton>
+            <UButton class="flex-1" @click="addUsers" :loading="saving"
+              >Додати</UButton
+            >
           </div>
         </template>
       </UCard>
@@ -271,11 +283,15 @@
           <div class="flex gap-4">
             <UButton
               variant="outline"
-              block
+              class="flex-1"
               @click="showRemoveUsersModal = false"
               >Скасувати</UButton
             >
-            <UButton block color="red" @click="removeUsers" :loading="saving"
+            <UButton
+              class="flex-1"
+              color="red"
+              @click="removeUsers"
+              :loading="saving"
               >Видалити</UButton
             >
           </div>

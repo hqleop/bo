@@ -23,6 +23,8 @@ from .models import (
     Category,
     CategoryUser,
     CpvDictionary,
+    ExpenseArticle,
+    ExpenseArticleUser,
 )
 from .serializers import (
     UserSerializer,
@@ -45,8 +47,8 @@ from .serializers import (
     DepartmentUserSerializer,
     CategorySerializer,
     CategoryUserSerializer,
-    # CPV
-    # (окремого ViewSet не потребує модель, бо це довідник тільки для читання)
+    ExpenseArticleSerializer,
+    ExpenseArticleUserSerializer,
 )
 
 User = get_user_model()
@@ -899,3 +901,116 @@ class CpvDictionaryTreeView(APIView):
 
         data = [serialize_node(root) for root in roots]
         return Response(data)
+
+
+class ExpenseArticleViewSet(viewsets.ModelViewSet):
+    """
+    ExpenseArticle management (tree, company-scoped).
+    """
+
+    serializer_class = ExpenseArticleSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """Filter by user's companies."""
+        user = self.request.user
+        if user.is_superuser:
+            return ExpenseArticle.objects.all().select_related("parent", "company")
+        user_companies = CompanyUser.objects.filter(
+            user=user, status=CompanyUser.Status.APPROVED
+        ).values_list("company_id", flat=True)
+        return ExpenseArticle.objects.filter(company_id__in=user_companies).select_related("parent", "company")
+
+    @extend_schema(
+        summary="Список статей витрат",
+        description="Отримати дерево статей витрат компанії (тільки кореневі елементи, діти вкладено).",
+    )
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset().filter(parent__isnull=True)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @extend_schema(
+        summary="Створити статтю витрат",
+        description="Створити нову статтю витрат.",
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Оновити статтю витрат",
+        description="Оновити інформацію про статтю витрат.",
+    )
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Видалити статтю витрат",
+        description="Видалити статтю витрат.",
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
+
+class ExpenseArticleUserViewSet(viewsets.ModelViewSet):
+    """
+    ExpenseArticleUser management (assign users to expense articles).
+    """
+
+    serializer_class = ExpenseArticleUserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """Filter by user's companies and optionally by expense article."""
+        user = self.request.user
+        if user.is_superuser:
+            queryset = ExpenseArticleUser.objects.all()
+        else:
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            queryset = ExpenseArticleUser.objects.filter(expense__company_id__in=user_companies)
+
+        expense_id = self.request.query_params.get("expense_id")
+        if expense_id:
+            queryset = queryset.filter(expense_id=expense_id)
+
+        return queryset.select_related("user", "expense")
+
+    @extend_schema(
+        summary="Список користувачів статті витрат",
+        description="Отримати список користувачів статті витрат (потрібен параметр expense_id).",
+        parameters=[
+            OpenApiParameter(name="expense_id", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY, required=True)
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Додати користувачів до статті витрат",
+        description="Додати одного або кілька користувачів до статті витрат (масив user_ids).",
+    )
+    def create(self, request, *args, **kwargs):
+        expense_id = request.data.get("expense")
+        user_ids = request.data.get("user_ids", [])
+        if not isinstance(user_ids, list):
+            return Response({"error": "user_ids повинен бути масивом"}, status=400)
+
+        result = []
+        for user_id in user_ids:
+            serializer = self.get_serializer(data={"expense": expense_id, "user_id": user_id})
+            if serializer.is_valid():
+                instance, created_flag = ExpenseArticleUser.objects.get_or_create(
+                    expense_id=expense_id, user_id=user_id
+                )
+                if created_flag:
+                    result.append(ExpenseArticleUserSerializer(instance).data)
+        return Response(result, status=201)
+
+    @extend_schema(
+        summary="Видалити користувача зі статті витрат",
+        description="Видалити користувача зі статті витрат.",
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)

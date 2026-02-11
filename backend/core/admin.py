@@ -1,5 +1,20 @@
 from django.contrib import admin
-from .models import User, Company, CompanyUser, Role, Permission, Notification, Branch, Department, BranchUser, DepartmentUser, Category, CategoryUser
+from .models import (
+    User,
+    Company,
+    CompanyUser,
+    Role,
+    Permission,
+    Notification,
+    Branch,
+    Department,
+    BranchUser,
+    DepartmentUser,
+    Category,
+    CategoryUser,
+    ExpenseArticle,
+    ExpenseArticleUser,
+)
 
 
 @admin.register(User)
@@ -83,3 +98,17 @@ class CategoryUserAdmin(admin.ModelAdmin):
     list_display = ("user", "category", "created_at")
     list_filter = ("category", "created_at")
     search_fields = ("user__email", "category__name")
+
+
+@admin.register(ExpenseArticle)
+class ExpenseArticleAdmin(admin.ModelAdmin):
+    list_display = ("name", "company", "code", "year_start", "year_end", "created_at")
+    list_filter = ("company", "year_start", "year_end")
+    search_fields = ("name", "code", "company__name")
+
+
+@admin.register(ExpenseArticleUser)
+class ExpenseArticleUserAdmin(admin.ModelAdmin):
+    list_display = ("user", "expense", "created_at")
+    list_filter = ("expense", "created_at")
+    search_fields = ("user__email", "expense__name")

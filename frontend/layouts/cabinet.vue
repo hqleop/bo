@@ -4,7 +4,7 @@
     <div class="flex">
       <!-- Sidebar -->
       <aside class="w-64 bg-white shadow-sm min-h-screen flex flex-col">
-        <div class="p-4 border-b">
+        <div class="h-16 px-4 border-b flex items-center">
           <h2 class="text-xl font-bold text-gray-900">Bid Open</h2>
         </div>
         <nav class="p-4 flex-1 overflow-y-auto space-y-1">
@@ -72,7 +72,7 @@
       <!-- Main Content -->
       <main class="flex-1">
         <!-- Top Bar -->
-        <header class="bg-white shadow-sm border-b">
+        <header class="bg-white shadow-sm border-b h-16">
           <div class="px-6 py-4 flex justify-between items-center">
             <h1 class="text-xl font-semibold text-gray-900">{{ pageTitle }}</h1>
             <div class="flex items-center gap-4">

@@ -14,6 +14,8 @@ from .models import (
     Category,
     CategoryUser,
     CpvDictionary,
+    ExpenseArticle,
+    ExpenseArticleUser,
 )
 
 User = get_user_model()
@@ -335,4 +337,48 @@ class CategoryUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CategoryUser
         fields = ("id", "category", "user", "user_id", "created_at")
+        read_only_fields = ("id", "created_at")
+
+
+class ExpenseArticleSerializer(serializers.ModelSerializer):
+    """ExpenseArticle serializer with tree structure."""
+
+    children = serializers.SerializerMethodField()
+    user_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ExpenseArticle
+        fields = (
+            "id",
+            "company",
+            "parent",
+            "name",
+            "code",
+            "year_start",
+            "year_end",
+            "description",
+            "children",
+            "user_count",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
+
+    def get_children(self, obj):
+        children = obj.children.all()
+        return ExpenseArticleSerializer(children, many=True).data
+
+    def get_user_count(self, obj):
+        return obj.users.count()
+
+
+class ExpenseArticleUserSerializer(serializers.ModelSerializer):
+    """ExpenseArticleUser serializer."""
+
+    user = UserSerializer(read_only=True)
+    user_id = serializers.IntegerField(write_only=True)
+
+    class Meta:
+        model = ExpenseArticleUser
+        fields = ("id", "expense", "user", "user_id", "created_at")
         read_only_fields = ("id", "created_at")

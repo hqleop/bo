@@ -113,7 +113,7 @@
           </UFormGroup>
           <UFormGroup label="CPV" name="cpv">
             <UPopover v-model="showCpvPopover">
-              <UButton block variant="outline">
+              <UButton class="flex-1" variant="outline">
                 <span v-if="selectedCpvLabels.length">{{
                   selectedCpvLabels.join(", ")
                 }}</span>
@@ -147,10 +147,15 @@
             <UTextarea v-model="categoryForm.description" />
           </UFormGroup>
           <div class="flex gap-4">
-            <UButton variant="outline" block @click="showCategoryModal = false"
+            <UButton
+              variant="outline"
+              class="flex-1"
+              @click="showCategoryModal = false"
               >Скасувати</UButton
             >
-            <UButton type="submit" block :loading="saving">Зберегти</UButton>
+            <UButton type="submit" class="flex-1" :loading="saving"
+              >Зберегти</UButton
+            >
           </div>
         </UForm>
       </UCard>
@@ -182,10 +187,15 @@
         </div>
         <template #footer>
           <div class="flex gap-4">
-            <UButton variant="outline" block @click="showAddUsersModal = false"
+            <UButton
+              variant="outline"
+              class="flex-1"
+              @click="showAddUsersModal = false"
               >Скасувати</UButton
             >
-            <UButton block @click="addUsers" :loading="saving">Додати</UButton>
+            <UButton class="flex-1" @click="addUsers" :loading="saving"
+              >Додати</UButton
+            >
           </div>
         </template>
       </UCard>
@@ -221,11 +231,15 @@
           <div class="flex gap-4">
             <UButton
               variant="outline"
-              block
+              class="flex-1"
               @click="showRemoveUsersModal = false"
               >Скасувати</UButton
             >
-            <UButton block color="red" @click="removeUsers" :loading="saving"
+            <UButton
+              class="flex-1"
+              color="red"
+              @click="removeUsers"
+              :loading="saving"
               >Видалити</UButton
             >
           </div>
@@ -543,13 +557,12 @@ const categoryParentOptions = computed(() => {
 });
 
 // Фільтрація дерева CPV по введеному рядку
-function filterCpvTree(
-  list: any[],
-  predicate: (node: any) => boolean,
-): any[] {
+function filterCpvTree(list: any[], predicate: (node: any) => boolean): any[] {
   const result: any[] = [];
   for (const node of list) {
-    const children = node.children ? filterCpvTree(node.children, predicate) : [];
+    const children = node.children
+      ? filterCpvTree(node.children, predicate)
+      : [];
     if (predicate(node) || children.length) {
       result.push({
         ...node,

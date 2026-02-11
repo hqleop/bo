@@ -18,6 +18,8 @@ from .views import (
     DepartmentUserViewSet,
     CategoryViewSet,
     CategoryUserViewSet,
+    ExpenseArticleViewSet,
+    ExpenseArticleUserViewSet,
     CpvDictionaryTreeView,
     me,
     password_reset_request,
@@ -37,6 +39,8 @@ router.register(r"branch-users", BranchUserViewSet, basename="branch-user")
 router.register(r"department-users", DepartmentUserViewSet, basename="department-user")
 router.register(r"categories", CategoryViewSet, basename="category")
 router.register(r"category-users", CategoryUserViewSet, basename="category-user")
+router.register(r"expenses", ExpenseArticleViewSet, basename="expense")
+router.register(r"expense-users", ExpenseArticleUserViewSet, basename="expense-user")
 
 urlpatterns = [
     # Auth

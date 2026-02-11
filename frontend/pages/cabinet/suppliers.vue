@@ -2,7 +2,9 @@
   <div>
     <div class="flex justify-between items-center mb-4">
       <h2 class="text-2xl font-bold">Постачальники</h2>
-      <UButton icon="i-heroicons-plus" @click="showAddModal = true">Додати постачальника</UButton>
+      <UButton icon="i-heroicons-plus" @click="showAddModal = true"
+        >Додати постачальника</UButton
+      >
     </div>
 
     <div class="bg-white rounded-lg shadow p-6">
@@ -33,8 +35,13 @@
             <UInput v-model="addForm.email" type="email" />
           </UFormGroup>
           <div class="flex gap-4">
-            <UButton variant="outline" block @click="showAddModal = false">Скасувати</UButton>
-            <UButton type="submit" block>Додати</UButton>
+            <UButton
+              variant="outline"
+              class="flex-1"
+              @click="showAddModal = false"
+              >Скасувати</UButton
+            >
+            <UButton type="submit" class="flex-1">Додати</UButton>
           </div>
         </UForm>
       </UCard>
@@ -44,25 +51,25 @@
 
 <script setup lang="ts">
 definePageMeta({
-  layout: 'cabinet',
-  middleware: 'auth',
+  layout: "cabinet",
+  middleware: "auth",
   meta: {
-    title: 'Постачальники'
-  }
-})
+    title: "Постачальники",
+  },
+});
 
-const showAddModal = ref(false)
+const showAddModal = ref(false);
 const addForm = reactive({
-  name: '',
-  edrpou: '',
-  contact_person: '',
-  phone: '',
-  email: ''
-})
+  name: "",
+  edrpou: "",
+  contact_person: "",
+  phone: "",
+  email: "",
+});
 
 const onAdd = () => {
   // TODO: Implement add supplier logic
-  alert('Функція додавання постачальника буде реалізована')
-  showAddModal.value = false
-}
+  alert("Функція додавання постачальника буде реалізована");
+  showAddModal.value = false;
+};
 </script>
