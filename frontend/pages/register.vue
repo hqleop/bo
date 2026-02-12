@@ -9,29 +9,29 @@
       <!-- Step 1: User Info -->
       <div v-if="currentStep === 1">
         <UForm :state="step1Form" @submit="onStep1Submit" class="space-y-4">
-          <UFormGroup label="Прізвище" name="last_name" required>
+          <UFormField label="Прізвище" name="last_name" required>
             <UInput v-model="step1Form.last_name" />
-          </UFormGroup>
+          </UFormField>
 
-          <UFormGroup label="Ім'я" name="first_name" required>
+          <UFormField label="Ім'я" name="first_name" required>
             <UInput v-model="step1Form.first_name" />
-          </UFormGroup>
+          </UFormField>
 
-          <UFormGroup label="По батькові" name="middle_name">
+          <UFormField label="По батькові" name="middle_name">
             <UInput v-model="step1Form.middle_name" />
-          </UFormGroup>
+          </UFormField>
 
-          <UFormGroup label="Телефон" name="phone" required>
+          <UFormField label="Телефон" name="phone" required>
             <UInput v-model="step1Form.phone" type="tel" />
-          </UFormGroup>
+          </UFormField>
 
-          <UFormGroup label="Email" name="email" required>
+          <UFormField label="Email" name="email" required>
             <UInput v-model="step1Form.email" type="email" />
-          </UFormGroup>
+          </UFormField>
 
-          <UFormGroup label="Пароль" name="password" required>
+          <UFormField label="Пароль" name="password" required>
             <UInput v-model="step1Form.password" type="password" />
-          </UFormGroup>
+          </UFormField>
 
           <UButton type="submit" block :loading="loading">Далі</UButton>
         </UForm>
@@ -40,38 +40,37 @@
       <!-- Step 2: Company -->
       <div v-if="currentStep === 2">
         <UForm :state="step2Form" @submit="onStep2Submit" class="space-y-4">
-          <UFormGroup label="Тип реєстрації" name="type" required>
+          <UFormField label="Тип реєстрації" name="type" required>
             <URadioGroup
               v-model="step2Form.type"
               :options="companyTypeOptions"
             />
-          </UFormGroup>
+          </UFormField>
 
           <!-- Existing Company -->
           <div v-if="step2Form.type === 'existing'">
-            <UFormGroup label="Компанія" name="company_id" required>
+            <UFormField label="Компанія" name="company_id" required>
               <USelect
                 v-model="step2Form.company_id"
-                :options="companies"
-                option-attribute="name"
-                value-attribute="id"
+                :items="companyItems"
+                value-key="id"
+                label-key="name"
                 placeholder="Оберіть компанію"
-                searchable
               />
-            </UFormGroup>
+            </UFormField>
           </div>
 
           <!-- New Company -->
           <div v-if="step2Form.type === 'new'">
-            <UFormGroup label="Код ЄДРПОУ" name="edrpou" required>
+            <UFormField label="Код ЄДРПОУ" name="edrpou" required>
               <UInput v-model="step2Form.edrpou" />
-            </UFormGroup>
+            </UFormField>
 
-            <UFormGroup label="Назва компанії" name="name" required>
+            <UFormField label="Назва компанії" name="name" required>
               <UInput v-model="step2Form.name" />
-            </UFormGroup>
+            </UFormField>
 
-            <UFormGroup label="Цілі реєстрації" name="goals" required>
+            <UFormField label="Цілі реєстрації" name="goals" required>
               <UCheckbox
                 v-model="step2Form.goal_tenders"
                 label="Проведення тендерів"
@@ -80,7 +79,7 @@
                 v-model="step2Form.goal_participation"
                 label="Участь у тендерах"
               />
-            </UFormGroup>
+            </UFormField>
           </div>
 
           <div class="flex gap-4">
@@ -144,6 +143,12 @@ const { data: companiesData } = await useFetch(
   `${config.public.apiBase}/companies/`,
 );
 const companies = computed(() => companiesData.value || []);
+const companyItems = computed(() =>
+  (companies.value as any[]).map((c) => ({
+    id: c.id,
+    name: c.name ?? c.label ?? String(c.id),
+  }))
+);
 
 const onStep1Submit = async () => {
   loading.value = true;

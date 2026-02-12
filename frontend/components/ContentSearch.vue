@@ -1,19 +1,19 @@
 <template>
-  <UFormGroup :label="label" :help="help">
+  <UFormField :label="label" :help="help">
     <UInput
       v-if="!showTree"
       v-model="localSearchTerm"
       :placeholder="placeholder"
       @input="$emit('update:searchTerm', localSearchTerm)"
     />
-    <UPopover v-else v-model="isOpen">
+    <UPopover v-else v-model:open="isOpen">
       <UButton block variant="outline" :disabled="disabled">
         <span v-if="selectedLabels.length">
           {{ selectedLabels.join(", ") }}
         </span>
         <span v-else>{{ placeholder }}</span>
       </UButton>
-      <template #panel>
+      <template #content>
         <div class="p-2 w-80 max-h-80 overflow-y-auto space-y-2">
           <UInput
             v-model="localSearchTerm"
@@ -34,7 +34,7 @@
         </div>
       </template>
     </UPopover>
-  </UFormGroup>
+  </UFormField>
 </template>
 
 <script setup lang="ts">

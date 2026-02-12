@@ -6,21 +6,21 @@
       </template>
 
       <UForm :state="form" @submit="onSubmit" class="space-y-4">
-        <UFormGroup label="Email" name="email" required>
+        <UFormField label="Email" name="email" required>
           <UInput
             v-model="form.email"
             type="email"
             placeholder="your@email.com"
           />
-        </UFormGroup>
+        </UFormField>
 
-        <UFormGroup label="Пароль" name="password" required>
+        <UFormField label="Пароль" name="password" required>
           <UInput
             v-model="form.password"
             type="password"
             placeholder="••••••••"
           />
-        </UFormGroup>
+        </UFormField>
 
         <UButton type="submit" block :loading="loading">Увійти</UButton>
       </UForm>

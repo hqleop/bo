@@ -95,14 +95,15 @@
         </UButton>
       </div>
 
-      <UFormGroup label="Користувач">
+      <UFormField label="Користувач" help="Пошук по імені та прізвищу">
         <UInput
           v-model="filters.userSearch"
-          placeholder="Пошук по імені та прізвищу"
+          placeholder="Почніть вводити ПІБ користувача"
         />
-      </UFormGroup>
+      </UFormField>
 
       <ContentSearch
+        label="Філіали"
         placeholder="Оберіть філіали"
         search-placeholder="Пошук філіалу"
         :tree="branchesTree"
@@ -113,6 +114,7 @@
       />
 
       <ContentSearch
+        label="Підрозділи"
         placeholder="Оберіть підрозділи"
         search-placeholder="Пошук підрозділу"
         :disabled="filters.branchIds.length === 0"
@@ -124,6 +126,7 @@
       />
 
       <ContentSearch
+        label="Категорії"
         placeholder="Оберіть категорії"
         search-placeholder="Пошук категорії"
         :tree="categoriesTree"
@@ -134,6 +137,7 @@
       />
 
       <ContentSearch
+        label="Статті витрат"
         placeholder="Оберіть статті витрат"
         search-placeholder="Пошук статті витрат"
         :tree="expensesTree"
@@ -145,34 +149,35 @@
     </div>
 
     <!-- Модальне вікно Додати користувача -->
-    <UModal v-model="showAddModal">
+    <UModal v-model:open="showAddModal">
+      <template #content>
       <UCard>
         <template #header>
           <h3>Додати користувача</h3>
         </template>
         <UForm :state="addForm" @submit="onAddUser" class="space-y-4">
-          <UFormGroup label="Прізвище" name="last_name" required>
+          <UFormField label="Прізвище" name="last_name" required>
             <UInput v-model="addForm.last_name" />
-          </UFormGroup>
-          <UFormGroup label="Ім'я" name="first_name" required>
+          </UFormField>
+          <UFormField label="Ім'я" name="first_name" required>
             <UInput v-model="addForm.first_name" />
-          </UFormGroup>
-          <UFormGroup label="Електронна пошта" name="email" required>
+          </UFormField>
+          <UFormField label="Електронна пошта" name="email" required>
             <UInput v-model="addForm.email" type="email" />
-          </UFormGroup>
-          <UFormGroup label="Телефон" name="phone">
+          </UFormField>
+          <UFormField label="Телефон" name="phone">
             <UInput v-model="addForm.phone" />
-          </UFormGroup>
-          <UFormGroup label="Пароль" name="password" required>
+          </UFormField>
+          <UFormField label="Пароль" name="password" required>
             <UInput v-model="addForm.password" type="password" />
-          </UFormGroup>
-          <UFormGroup
+          </UFormField>
+          <UFormField
             label="Підтвердження пароля"
             name="password_confirm"
             required
           >
             <UInput v-model="addForm.password_confirm" type="password" />
-          </UFormGroup>
+          </UFormField>
           <div class="flex gap-4">
             <UButton
               variant="outline"
@@ -187,41 +192,43 @@
           </div>
         </UForm>
       </UCard>
+      </template>
     </UModal>
 
     <!-- Модальне вікно Редагувати користувача -->
-    <UModal v-model="showEditModal">
+    <UModal v-model:open="showEditModal">
+      <template #content>
       <UCard>
         <template #header>
           <h3>Редагувати користувача</h3>
         </template>
         <UForm :state="editForm" @submit="onEditUser" class="space-y-4">
-          <UFormGroup label="Прізвище" name="last_name">
+          <UFormField label="Прізвище" name="last_name">
             <UInput v-model="editForm.last_name" />
-          </UFormGroup>
-          <UFormGroup label="Ім'я" name="first_name">
+          </UFormField>
+          <UFormField label="Ім'я" name="first_name">
             <UInput v-model="editForm.first_name" />
-          </UFormGroup>
-          <UFormGroup label="Електронна пошта" name="email" required>
+          </UFormField>
+          <UFormField label="Електронна пошта" name="email" required>
             <UInput v-model="editForm.email" type="email" />
-          </UFormGroup>
-          <UFormGroup label="Телефон" name="phone">
+          </UFormField>
+          <UFormField label="Телефон" name="phone">
             <UInput v-model="editForm.phone" />
-          </UFormGroup>
-          <UFormGroup
+          </UFormField>
+          <UFormField
             label="Новий пароль"
             name="password"
             help="Залиште порожнім, якщо не потрібно змінювати"
           >
             <UInput v-model="editForm.password" type="password" />
-          </UFormGroup>
-          <UFormGroup
+          </UFormField>
+          <UFormField
             label="Підтвердження пароля"
             name="password_confirm"
             help="Заповніть, якщо вказали новий пароль"
           >
             <UInput v-model="editForm.password_confirm" type="password" />
-          </UFormGroup>
+          </UFormField>
           <div class="flex gap-4">
             <UButton
               variant="outline"
@@ -236,6 +243,7 @@
           </div>
         </UForm>
       </UCard>
+      </template>
     </UModal>
   </div>
 </template>

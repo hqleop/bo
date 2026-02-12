@@ -83,7 +83,8 @@
     </div>
 
     <!-- Модальне вікно для категорії -->
-    <UModal v-model="showCategoryModal">
+    <UModal v-model:open="showCategoryModal">
+      <template #content>
       <UCard>
         <template #header>
           <h3>
@@ -91,35 +92,29 @@
           </h3>
         </template>
         <UForm :state="categoryForm" @submit="saveCategory" class="space-y-4">
-          <UFormGroup label="Назва" name="name" required>
+          <UFormField label="Назва" name="name" required>
             <UInput v-model="categoryForm.name" />
-          </UFormGroup>
-          <UFormGroup label="Код" name="code">
+          </UFormField>
+          <UFormField label="Код" name="code">
             <UInput v-model="categoryForm.code" />
-          </UFormGroup>
-          <UFormGroup label="Батьківська категорія" name="parent_id">
+          </UFormField>
+          <UFormField label="Батьківська категорія" name="parent_id">
             <USelectMenu
-              :model-value="categoryForm.parent_id"
-              :options="categoryParentOptions"
-              value-attribute="value"
-              option-attribute="label"
+              v-model="categoryForm.parent_id"
+              :items="categoryParentOptions"
+              value-key="value"
               placeholder="Без батьківської категорії"
-              @update:model-value="
-                (v) => {
-                  categoryForm.parent_id = v ?? null;
-                }
-              "
             />
-          </UFormGroup>
-          <UFormGroup label="CPV" name="cpv">
-            <UPopover v-model="showCpvPopover">
+          </UFormField>
+          <UFormField label="CPV" name="cpv">
+            <UPopover v-model:open="showCpvPopover">
               <UButton class="flex-1" variant="outline">
                 <span v-if="selectedCpvLabels.length">{{
                   selectedCpvLabels.join(", ")
                 }}</span>
                 <span v-else>Оберіть CPV</span>
               </UButton>
-              <template #panel>
+              <template #content>
                 <div class="p-2 w-96 max-h-80 overflow-y-auto space-y-2">
                   <UInput
                     v-model="cpvSearch"
@@ -142,10 +137,10 @@
                 </div>
               </template>
             </UPopover>
-          </UFormGroup>
-          <UFormGroup label="Опис" name="description">
+          </UFormField>
+          <UFormField label="Опис" name="description">
             <UTextarea v-model="categoryForm.description" />
-          </UFormGroup>
+          </UFormField>
           <div class="flex gap-4">
             <UButton
               variant="outline"
@@ -159,10 +154,12 @@
           </div>
         </UForm>
       </UCard>
+      </template>
     </UModal>
 
     <!-- Модальне вікно для додавання користувачів -->
-    <UModal v-model="showAddUsersModal">
+    <UModal v-model:open="showAddUsersModal">
+      <template #content>
       <UCard>
         <template #header>
           <h3>Додати користувачів</h3>
@@ -199,10 +196,12 @@
           </div>
         </template>
       </UCard>
+      </template>
     </UModal>
 
     <!-- Модальне вікно для видалення користувачів -->
-    <UModal v-model="showRemoveUsersModal">
+    <UModal v-model:open="showRemoveUsersModal">
+      <template #content>
       <UCard>
         <template #header>
           <h3>Видалити користувачів</h3>
@@ -245,6 +244,7 @@
           </div>
         </template>
       </UCard>
+      </template>
     </UModal>
   </div>
 </template>

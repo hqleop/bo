@@ -83,7 +83,8 @@
     </div>
 
     <!-- Модальне вікно для статті витрат -->
-    <UModal v-model="showExpenseModal">
+    <UModal v-model:open="showExpenseModal">
+      <template #content>
       <UCard>
         <template #header>
           <h3>
@@ -95,37 +96,31 @@
           </h3>
         </template>
         <UForm :state="expenseForm" @submit="saveExpense" class="space-y-4">
-          <UFormGroup label="Назва" name="name" required>
+          <UFormField label="Назва" name="name" required>
             <UInput v-model="expenseForm.name" />
-          </UFormGroup>
-          <UFormGroup label="Код" name="code">
+          </UFormField>
+          <UFormField label="Код" name="code">
             <UInput v-model="expenseForm.code" />
-          </UFormGroup>
-          <UFormGroup label="Батьківська стаття" name="parent_id">
+          </UFormField>
+          <UFormField label="Батьківська стаття" name="parent_id">
             <USelectMenu
-              :model-value="expenseForm.parent_id"
-              :options="expenseParentOptions"
-              value-attribute="value"
-              option-attribute="label"
+              v-model="expenseForm.parent_id"
+              :items="expenseParentOptions"
+              value-key="value"
               placeholder="Без батьківської статті"
-              @update:model-value="
-                (v) => {
-                  expenseForm.parent_id = v ?? null;
-                }
-              "
             />
-          </UFormGroup>
+          </UFormField>
           <div class="grid grid-cols-2 gap-4">
-            <UFormGroup label="Рік початку дії" name="year_start">
+            <UFormField label="Рік початку дії" name="year_start">
               <UInput v-model="expenseForm.year_start" type="number" />
-            </UFormGroup>
-            <UFormGroup label="Рік завершення дії" name="year_end">
+            </UFormField>
+            <UFormField label="Рік завершення дії" name="year_end">
               <UInput v-model="expenseForm.year_end" type="number" />
-            </UFormGroup>
+            </UFormField>
           </div>
-          <UFormGroup label="Опис" name="description">
+          <UFormField label="Опис" name="description">
             <UTextarea v-model="expenseForm.description" />
-          </UFormGroup>
+          </UFormField>
           <div class="flex gap-4">
             <UButton
               variant="outline"
@@ -140,10 +135,12 @@
           </div>
         </UForm>
       </UCard>
+      </template>
     </UModal>
 
     <!-- Модальне вікно для додавання користувачів -->
-    <UModal v-model="showAddUsersModal">
+    <UModal v-model:open="showAddUsersModal">
+      <template #content>
       <UCard>
         <template #header>
           <h3>Додати користувачів</h3>
@@ -181,10 +178,12 @@
           </div>
         </template>
       </UCard>
+      </template>
     </UModal>
 
     <!-- Модальне вікно для видалення користувачів -->
-    <UModal v-model="showRemoveUsersModal">
+    <UModal v-model:open="showRemoveUsersModal">
+      <template #content>
       <UCard>
         <template #header>
           <h3>Видалити користувачів</h3>
@@ -229,6 +228,7 @@
           </div>
         </template>
       </UCard>
+      </template>
     </UModal>
   </div>
 </template>

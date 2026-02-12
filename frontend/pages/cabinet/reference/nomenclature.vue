@@ -57,55 +57,45 @@
         </div>
       </div>
 
-      <div class="flex-1 overflow-y-auto space-y-1">
-        <div
-          v-for="item in filteredNomenclatures"
-          :key="item.id"
-          class="flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-gray-50"
-          :class="{
-            'bg-blue-50 border border-blue-200':
-              selectedNomenclature && selectedNomenclature.id === item.id,
-          }"
-          @click="selectNomenclature(item)"
+      <div class="flex-1 overflow-y-auto min-h-0 flex flex-col gap-3">
+        <UTable
+          :data="tableData"
+          :columns="tableColumns"
+          :meta="tableMeta"
+          class="w-full"
+          @on-select="(_e, row) => selectNomenclature(row.original)"
         >
-          <div class="flex flex-col">
-            <span class="font-medium">
-              {{ item.name }}
-              <span
-                v-if="!item.is_active"
-                class="ml-2 text-xs text-red-500 font-normal"
-              >
-                (деактивована)
-              </span>
-            </span>
-            <span v-if="item.code" class="text-xs text-gray-500">
-              Код / Артикул: {{ item.code }}
-            </span>
-            <span v-if="item.external_number" class="text-xs text-gray-500">
-              Зовнішній номер: {{ item.external_number }}
-            </span>
-            <span v-if="item.category_name" class="text-xs text-gray-500">
-              Категорія: {{ item.category_name }}
-            </span>
-            <span
-              v-else-if="item.cpv_label"
-              class="text-xs text-gray-500"
-            >
-              Категорія CPV: {{ item.cpv_label }}
-            </span>
-          </div>
-          <UButton
-            icon="i-heroicons-pencil-square"
-            size="xs"
-            variant="ghost"
-            @click.stop="openNomenclatureModal(item)"
-          />
-        </div>
+          <template #actions-cell="{ row }">
+            <UButton
+              icon="i-heroicons-pencil-square"
+              size="xs"
+              variant="ghost"
+              aria-label="Редагувати"
+              @click.stop="openNomenclatureModal(row.original)"
+            />
+          </template>
+        </UTable>
         <div
           v-if="filteredNomenclatures.length === 0"
           class="text-center text-gray-400 py-8"
         >
           Номенклатур не знайдено за вибраними фільтрами
+        </div>
+        <div
+          v-else
+          class="flex items-center justify-between gap-4 py-2 border-t border-gray-200"
+        >
+          <span class="text-sm text-gray-600">
+            Показано {{ tableData.length }} з {{ totalFilteredCount }}
+            номенклатур
+          </span>
+          <UPagination
+            v-model:page="currentPage"
+            :total="totalFilteredCount"
+            :items-per-page="NOMENCLATURE_PAGE_SIZE"
+            :sibling-count="1"
+            show-edges
+          />
         </div>
       </div>
     </div>
@@ -125,42 +115,41 @@
         </UButton>
       </div>
 
-      <UFormGroup label="Назва номенклатури">
+      <UFormField label="Назва номенклатури">
         <UInput
           v-model="filters.name"
           placeholder="Пошук по назві номенклатури"
         />
-      </UFormGroup>
+      </UFormField>
 
-      <UFormGroup label="Категорія">
+      <UFormField label="Категорія">
         <USelectMenu
-          :model-value="filters.categoryId"
-          :options="categoryFilterOptions"
-          value-attribute="value"
-          option-attribute="label"
+          v-model="filters.categoryId"
+          :items="categoryFilterOptions"
+          value-key="value"
           placeholder="Оберіть категорію"
           :disabled="
             !!filters.cpvId || categoryFilterOptions.length === 0
           "
           @update:model-value="onCategoryFilterChange"
         />
-      </UFormGroup>
+      </UFormField>
 
-      <UFormGroup label="Категорія CPV">
+      <UFormField label="Категорія CPV">
         <USelectMenu
-          :model-value="filters.cpvId"
-          :options="cpvFilterOptions"
-          value-attribute="value"
-          option-attribute="label"
+          v-model="filters.cpvId"
+          :items="cpvFilterOptions"
+          value-key="value"
           placeholder="Оберіть CPV-категорію"
           :disabled="!!filters.categoryId || cpvFilterOptions.length === 0"
           @update:model-value="onCpvFilterChange"
         />
-      </UFormGroup>
+      </UFormField>
     </div>
 
     <!-- Модальне вікно номенклатури -->
-    <UModal v-model="showNomenclatureModal">
+    <UModal v-model:open="showNomenclatureModal">
+      <template #content>
       <UCard>
         <template #header>
           <h3>
@@ -176,71 +165,64 @@
           @submit="saveNomenclature"
           class="space-y-4"
         >
-          <UFormGroup label="Назва" name="name" required>
+          <UFormField label="Назва" name="name" required>
             <UInput v-model="nomenclatureForm.name" />
-          </UFormGroup>
+          </UFormField>
 
-          <UFormGroup label="Одиниця виміру" name="unit" required>
+          <UFormField label="Одиниця виміру" name="unit" required>
             <USelectMenu
-              :model-value="nomenclatureForm.unit"
-              :options="unitOptions"
-              value-attribute="value"
-              option-attribute="label"
+              v-model="nomenclatureForm.unit"
+              :items="unitOptions"
+              value-key="value"
               placeholder="Оберіть одиницю виміру"
-              @update:model-value="
-                (v) => {
-                  nomenclatureForm.unit = v ?? null;
-                }
-              "
             />
-          </UFormGroup>
+          </UFormField>
 
           <div class="grid grid-cols-2 gap-4">
-            <UFormGroup label="Код / Артикул" name="code">
+            <UFormField label="Код / Артикул" name="code">
               <UInput v-model="nomenclatureForm.code" />
-            </UFormGroup>
-            <UFormGroup label="Зовнішній номер" name="external_number">
+            </UFormField>
+            <UFormField label="Зовнішній номер" name="external_number">
               <UInput v-model="nomenclatureForm.external_number" />
-            </UFormGroup>
+            </UFormField>
           </div>
 
-          <UFormGroup label="Опис" name="description">
+          <UFormField label="Опис" name="description">
             <UTextarea v-model="nomenclatureForm.description" />
-          </UFormGroup>
+          </UFormField>
 
           <div class="grid grid-cols-2 gap-4">
-            <UFormGroup label="Специфікація (файл)" name="specification_file">
+            <UFormField label="Специфікація (файл)" name="specification_file">
               <UInput
                 v-model="nomenclatureForm.specification_file"
                 placeholder="Назва або шлях до файлу"
               />
-            </UFormGroup>
-            <UFormGroup label="Зображення (файл)" name="image_file">
+            </UFormField>
+            <UFormField label="Зображення (файл)" name="image_file">
               <UInput
                 v-model="nomenclatureForm.image_file"
                 placeholder="Назва або шлях до файлу"
               />
-            </UFormGroup>
+            </UFormField>
           </div>
 
-          <UFormGroup label="Категорія" name="category">
+          <UFormField label="Категорія" name="category">
             <USelectMenu
-              :model-value="nomenclatureForm.category"
-              :options="categoryOptions"
-              value-attribute="value"
-              option-attribute="label"
+              v-model="nomenclatureForm.category"
+              :items="categoryOptions"
+              value-key="value"
               placeholder="Без категорії"
               :disabled="selectedCpvIds.length > 0"
               @update:model-value="onFormCategoryChange"
             />
-          </UFormGroup>
+          </UFormField>
 
-          <UFormGroup
+          <UFormField
             label="Категорія CPV"
             name="cpv_category"
             help="Доступна, якщо не обрана звичайна категорія"
           >
-            <UPopover v-model="showCpvPopover">
+            <UPopover v-model:open="showCpvPopover">
               <UButton
                 block
                 variant="outline"
@@ -251,7 +233,7 @@
                 </span>
                 <span v-else>Оберіть CPV-категорію</span>
               </UButton>
-              <template #panel>
+              <template #content>
                 <div
                   class="p-2 w-96 max-h-80 overflow-y-auto space-y-2 bg-white dark:bg-gray-900 rounded-lg shadow"
                 >
@@ -272,7 +254,7 @@
                 </div>
               </template>
             </UPopover>
-          </UFormGroup>
+          </UFormField>
 
           <div class="flex gap-4 mt-4">
             <UButton
@@ -288,10 +270,12 @@
           </div>
         </UForm>
       </UCard>
+      </template>
     </UModal>
 
     <!-- Модальне вікно одиниць виміру -->
-    <UModal v-model="showUnitsModal">
+    <UModal v-model:open="showUnitsModal">
+      <template #content>
       <UCard>
         <template #header>
           <h3>Одиниці виміру</h3>
@@ -343,6 +327,7 @@
           </div>
         </template>
       </UCard>
+      </template>
     </UModal>
   </div>
 </template>
@@ -374,7 +359,8 @@ const filters = reactive({
   cpvId: null as number | null,
 });
 
-const defaultFilterInitialized = ref(false);
+const NOMENCLATURE_PAGE_SIZE = 50;
+const currentPage = ref(1);
 
 // Стан форм / модалок
 const showNomenclatureModal = ref(false);
@@ -494,17 +480,42 @@ const categoryOptions = computed(() => {
   ];
 });
 
-// Опції фільтрів на основі вже існуючої номенклатури
-const categoryFilterOptions = computed(() => {
-  const map = new Map<number, string>();
-  for (const n of nomenclatures.value) {
-    if (n.category && n.category_name) {
-      map.set(n.category, n.category_name);
+// Сплощення дерева категорій з збереженням cpv_ids (для фільтра по категорії з прив'язкою CPV)
+function flattenCategoriesWithCpvs(
+  list: any[],
+  level = 0,
+): { id: number; name: string; level: number; cpv_ids: number[] }[] {
+  const out: { id: number; name: string; level: number; cpv_ids: number[] }[] = [];
+  if (!list?.length) return out;
+  for (const n of list) {
+    const cpv_ids = (n.cpvs || []).map((c: any) => c.id);
+    out.push({ id: n.id, name: n.name, level, cpv_ids });
+    if (n.children?.length) {
+      out.push(...flattenCategoriesWithCpvs(n.children, level + 1));
     }
   }
-  const arr = Array.from(map.entries()).map(([id, name]) => ({
-    value: id,
-    label: name,
+  return out;
+}
+
+// Усі категорії для фільтра (з дерева)
+const flattenedCategoriesWithCpvs = computed(() =>
+  flattenCategoriesWithCpvs(categories.value),
+);
+
+// Map: categoryId -> cpv_ids (прив'язки CPV до категорії)
+const categoryCpvIdsMap = computed(() => {
+  const map = new Map<number, number[]>();
+  for (const c of flattenedCategoriesWithCpvs.value) {
+    if (c.cpv_ids?.length) map.set(c.id, c.cpv_ids);
+  }
+  return map;
+});
+
+// Опції фільтра "Категорія" — усі категорії з дерева
+const categoryFilterOptions = computed(() => {
+  const arr = flattenedCategoriesWithCpvs.value.map((c) => ({
+    value: c.id,
+    label: (c.level ? "  ".repeat(c.level) : "") + c.name,
   }));
   arr.sort((a, b) => a.label.localeCompare(b.label, "uk"));
   return arr;
@@ -526,27 +537,7 @@ const cpvFilterOptions = computed(() => {
   return arr;
 });
 
-// Ініціалізація фільтрів за замовчуванням
-const initDefaultFilter = () => {
-  if (defaultFilterInitialized.value || !nomenclatures.value.length) return;
-
-  if (categoryFilterOptions.value.length > 0) {
-    // Беремо першу категорію за алфавітом
-    filters.categoryId = categoryFilterOptions.value[0].value as number;
-    filters.cpvId = null;
-    defaultFilterInitialized.value = true;
-    return;
-  }
-
-  if (cpvFilterOptions.value.length > 0) {
-    // Якщо немає звичайних категорій, але є CPV — беремо з найменшим id
-    filters.cpvId = cpvFilterOptions.value[0].value as number;
-    filters.categoryId = null;
-    defaultFilterInitialized.value = true;
-  }
-};
-
-// Обробники фільтрів
+// Обробники фільтрів (взаємна виключність: категорія або CPV)
 const onCategoryFilterChange = (value: number | null) => {
   filters.categoryId = value ?? null;
   if (filters.categoryId) {
@@ -565,11 +556,10 @@ const clearFilters = () => {
   filters.name = "";
   filters.categoryId = null;
   filters.cpvId = null;
-  defaultFilterInitialized.value = false;
-  initDefaultFilter();
 };
 
 // Обчислення відфільтрованого списку
+// При фільтрі по категорії: показувати номенклатури, що належать категорії, або мають CPV з прив'язок категорії
 const filteredNomenclatures = computed(() => {
   let list = nomenclatures.value.slice();
 
@@ -581,7 +571,13 @@ const filteredNomenclatures = computed(() => {
   }
 
   if (filters.categoryId) {
-    list = list.filter((n: any) => n.category === filters.categoryId);
+    const cpvIds = categoryCpvIdsMap.value.get(filters.categoryId);
+    list = list.filter((n: any) => {
+      if (n.category === filters.categoryId) return true;
+      if (n.cpv_category && cpvIds?.length && cpvIds.includes(n.cpv_category))
+        return true;
+      return false;
+    });
   } else if (filters.cpvId) {
     list = list.filter((n: any) => n.cpv_category === filters.cpvId);
   }
@@ -593,6 +589,65 @@ const filteredNomenclatures = computed(() => {
 const selectNomenclature = (item: any) => {
   selectedNomenclature.value = item;
 };
+
+// Колонки таблиці номенклатур
+const tableColumns = [
+  { accessorKey: "name", header: "Назва" },
+  { accessorKey: "code", header: "Код/Артикул" },
+  { accessorKey: "external_number", header: "Зовн. номер" },
+  { accessorKey: "unit_name", header: "Од. виміру" },
+  { accessorKey: "category_display", header: "Категорія" },
+  {
+    accessorKey: "is_active",
+    header: "Активна",
+    cell: ({ getValue }) => (getValue() ? "Так" : "Ні"),
+  },
+  { id: "actions", header: "Дії" },
+];
+
+// Підсвітка обраного рядка та дані для таблиці (category_display)
+const tableMeta = computed(() => ({
+  class: {
+    tr: (row: any) =>
+      row.original?.id === selectedNomenclature.value?.id
+        ? "bg-blue-50 cursor-pointer"
+        : "cursor-pointer",
+  },
+}));
+
+// Пагінація: загальна кількість відфільтрованих записів
+const totalFilteredCount = computed(
+  () => filteredNomenclatures.value.length,
+);
+
+// Скидання на першу сторінку при зміні фільтрів
+watch(
+  [() => filters.name, () => filters.categoryId, () => filters.cpvId],
+  () => {
+    currentPage.value = 1;
+  },
+);
+
+// Якщо після фільтрації сторінок стало менше — перейти на останню допустиму
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(totalFilteredCount.value / NOMENCLATURE_PAGE_SIZE)),
+);
+watch([totalPages, currentPage], () => {
+  if (currentPage.value > totalPages.value) {
+    currentPage.value = totalPages.value;
+  }
+}, { immediate: true });
+
+// Дані для таблиці: лише поточна сторінка (50 записів) + category_display
+const tableData = computed(() => {
+  const list = filteredNomenclatures.value;
+  const start = (currentPage.value - 1) * NOMENCLATURE_PAGE_SIZE;
+  const pageItems = list.slice(start, start + NOMENCLATURE_PAGE_SIZE);
+  return pageItems.map((n: any) => ({
+    ...n,
+    category_display: n.category_name || n.cpv_label || "—",
+  }));
+});
 
 // Модалка номенклатури
 const openNomenclatureModal = (item?: any) => {
@@ -740,7 +795,6 @@ const saveNomenclature = async () => {
 
     showNomenclatureModal.value = false;
     await loadNomenclatures();
-    initDefaultFilter();
   } finally {
     saving.value = false;
   }
@@ -809,7 +863,6 @@ const deleteSelected = async () => {
   }
   selectedNomenclature.value = null;
   await loadNomenclatures();
-  initDefaultFilter();
 };
 
 // Одиниці виміру
@@ -868,6 +921,5 @@ onMounted(async () => {
     loadCategories(),
     loadCpvTree(),
   ]);
-  initDefaultFilter();
 });
 </script>

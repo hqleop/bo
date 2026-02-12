@@ -125,32 +125,27 @@
     </div>
 
     <!-- Модальне вікно для філіалу -->
-    <UModal v-model="showBranchModal">
+    <UModal v-model:open="showBranchModal">
+      <template #content>
       <UCard>
         <template #header>
           <h3>{{ editingBranch ? "Редагувати філіал" : "Додати філіал" }}</h3>
         </template>
         <UForm :state="branchForm" @submit="saveBranch" class="space-y-4">
-          <UFormGroup label="Назва" name="name" required>
+          <UFormField label="Назва" name="name" required>
             <UInput v-model="branchForm.name" />
-          </UFormGroup>
-          <UFormGroup label="Код" name="code">
+          </UFormField>
+          <UFormField label="Код" name="code">
             <UInput v-model="branchForm.code" />
-          </UFormGroup>
-          <UFormGroup label="Батьківський філіал" name="parent_id">
+          </UFormField>
+          <UFormField label="Батьківський філіал" name="parent_id">
             <USelectMenu
-              :model-value="branchForm.parent_id"
-              :options="branchParentOptions"
-              value-attribute="value"
-              option-attribute="label"
+              v-model="branchForm.parent_id"
+              :items="branchParentOptions"
+              value-key="value"
               placeholder="Без батьківського філіалу"
-              @update:model-value="
-                (v) => {
-                  branchForm.parent_id = v ?? null;
-                }
-              "
             />
-          </UFormGroup>
+          </UFormField>
           <div class="flex gap-4">
             <UButton
               variant="outline"
@@ -164,10 +159,12 @@
           </div>
         </UForm>
       </UCard>
+      </template>
     </UModal>
 
     <!-- Модальне вікно для підрозділу -->
-    <UModal v-model="showDepartmentModal">
+    <UModal v-model:open="showDepartmentModal">
+      <template #content>
       <UCard>
         <template #header>
           <h3>
@@ -181,23 +178,17 @@
           @submit="saveDepartment"
           class="space-y-4"
         >
-          <UFormGroup label="Назва" name="name" required>
+          <UFormField label="Назва" name="name" required>
             <UInput v-model="departmentForm.name" />
-          </UFormGroup>
-          <UFormGroup label="Батьківський підрозділ" name="parent_id">
+          </UFormField>
+          <UFormField label="Батьківський підрозділ" name="parent_id">
             <USelectMenu
-              :model-value="departmentForm.parent_id"
-              :options="departmentParentOptions"
-              value-attribute="value"
-              option-attribute="label"
+              v-model="departmentForm.parent_id"
+              :items="departmentParentOptions"
+              value-key="value"
               placeholder="Без батьківського підрозділу"
-              @update:model-value="
-                (v) => {
-                  departmentForm.parent_id = v ?? null;
-                }
-              "
             />
-          </UFormGroup>
+          </UFormField>
           <div class="flex gap-4">
             <UButton
               variant="outline"
@@ -211,10 +202,12 @@
           </div>
         </UForm>
       </UCard>
+      </template>
     </UModal>
 
     <!-- Модальне вікно для додавання користувачів -->
-    <UModal v-model="showAddUsersModal">
+    <UModal v-model:open="showAddUsersModal">
+      <template #content>
       <UCard>
         <template #header>
           <h3>Додати користувачів</h3>
@@ -251,10 +244,12 @@
           </div>
         </template>
       </UCard>
+      </template>
     </UModal>
 
     <!-- Модальне вікно для видалення користувачів -->
-    <UModal v-model="showRemoveUsersModal">
+    <UModal v-model:open="showRemoveUsersModal">
+      <template #content>
       <UCard>
         <template #header>
           <h3>Видалити користувачів</h3>
@@ -297,6 +292,7 @@
           </div>
         </template>
       </UCard>
+      </template>
     </UModal>
   </div>
 </template>

@@ -1,82 +1,34 @@
 <template>
-  <div class="min-h-screen bg-gray-50">
-    <!-- Sidebar + Main -->
-    <div class="flex">
-      <!-- Sidebar -->
-      <aside class="w-64 bg-white shadow-sm min-h-screen flex flex-col">
-        <div class="h-16 px-4 border-b flex items-center">
+  <div class="h-screen flex flex-col overflow-hidden bg-gray-50">
+    <!-- Sidebar + Main: фіксована висота по екрану, окремий скрол у сайдбарі та в контенті -->
+    <div class="flex flex-1 min-h-0">
+      <!-- Sidebar: висота по екрану, скрол лише у навігації -->
+      <aside class="w-64 flex-shrink-0 h-full flex flex-col overflow-hidden bg-white shadow-sm">
+        <div class="h-16 flex-shrink-0 px-4 border-b flex items-center">
           <h2 class="text-xl font-bold text-gray-900">Bid Open</h2>
         </div>
-        <nav class="p-4 flex-1 overflow-y-auto space-y-1">
-          <div v-for="item in menuLinks" :key="item.label" class="space-y-1">
-            <!-- Рівень 1 -->
-            <button
-              type="button"
-              class="w-full flex items-center justify-between px-2.5 py-2 text-sm rounded-md hover:bg-gray-100 focus:outline-none group"
-              :class="{
-                'bg-gray-100 text-gray-900': isItemActive(item),
-              }"
-              @click="handleMenuClick(item)"
-            >
-              <div class="flex items-center gap-2 min-w-0">
-                <UIcon
-                  v-if="item.icon"
-                  :name="item.icon"
-                  class="shrink-0 size-5 text-gray-500 group-hover:text-gray-700"
-                />
-                <span class="truncate text-left">
-                  {{ item.label }}
-                </span>
-              </div>
-              <UIcon
-                v-if="item.children && item.children.length"
-                name="i-heroicons-chevron-down"
-                class="size-4 text-gray-400 transition-transform duration-200"
-                :class="{ '-rotate-90': !isExpanded(item) }"
-              />
-            </button>
-
-            <!-- Підрівень -->
-            <div
-              v-if="item.children && item.children.length && isExpanded(item)"
-              class="ms-4 border-s border-gray-200 ps-2 space-y-0.5"
-            >
-              <button
-                v-for="child in item.children"
-                :key="child.label"
-                type="button"
-                class="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-md hover:bg-gray-50 focus:outline-none group"
-                :class="{
-                  'bg-gray-100 text-gray-900': isItemActive(child),
-                }"
-                @click="handleMenuClick(child)"
-              >
-                <UIcon
-                  v-if="child.icon"
-                  :name="child.icon"
-                  class="shrink-0 size-4 text-gray-400 group-hover:text-gray-600"
-                />
-                <span class="truncate text-left">
-                  {{ child.label }}
-                </span>
-              </button>
-            </div>
-          </div>
+        <nav class="flex-1 min-h-0 overflow-y-auto p-4">
+          <UNavigationMenu
+            orientation="vertical"
+            :items="navigationItems"
+            color="neutral"
+            variant="link"
+            highlight
+            class="data-[orientation=vertical]:w-full data-[orientation=vertical]:flex-col data-[orientation=vertical]:gap-0.5"
+          />
         </nav>
       </aside>
 
-      <!-- Main Content -->
-      <main class="flex-1">
-        <!-- Top Bar -->
-        <header class="bg-white shadow-sm border-b h-16">
-          <div class="px-6 py-4 flex justify-between items-center">
+      <!-- Main: висота по екрану, скрол лише у робочій області -->
+      <main class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+        <header class="h-16 flex-shrink-0 bg-white shadow-sm border-b">
+          <div class="px-6 py-4 flex justify-between items-center h-full">
             <h1 class="text-xl font-semibold text-gray-900">{{ pageTitle }}</h1>
             <div class="flex items-center gap-4">
-              <!-- Notifications -->
               <UButton
                 icon="i-heroicons-bell"
                 variant="ghost"
-                color="gray"
+                color="neutral"
                 :badge="
                   unreadNotificationsCount > 0
                     ? unreadNotificationsCount
@@ -84,7 +36,6 @@
                 "
                 @click="showNotifications = !showNotifications"
               />
-              <!-- User Menu -->
               <UDropdown :items="userMenuItems">
                 <UAvatar :alt="userEmail" />
               </UDropdown>
@@ -92,15 +43,15 @@
           </div>
         </header>
 
-        <!-- Content -->
-        <div class="p-6">
+        <div class="flex-1 min-h-0 overflow-y-auto p-6">
           <slot />
         </div>
       </main>
     </div>
 
     <!-- Notifications Panel -->
-    <UModal v-model="showNotifications">
+    <UModal v-model:open="showNotifications">
+      <template #content>
       <UCard>
         <template #header>
           <h3 class="text-lg font-semibold">Сповіщення</h3>
@@ -126,6 +77,7 @@
           </div>
         </div>
       </UCard>
+      </template>
     </UModal>
   </div>
 </template>
@@ -348,48 +300,33 @@ const menuLinks = computed(() => {
   return links;
 });
 
-// Розгортання пунктів меню з підпунктами
-const expandedSections = ref<string[]>([]);
-
-const isExpanded = (item: any) => {
-  return expandedSections.value.includes(item.label);
-};
-
-const toggleSection = (item: any) => {
-  const label = item.label;
-  if (!label) return;
-  const idx = expandedSections.value.indexOf(label);
-  if (idx > -1) {
-    expandedSections.value.splice(idx, 1);
-  } else {
-    expandedSections.value.push(label);
-  }
-};
-
 const route = useRoute();
 
-const isItemActive = (item: any) => {
-  if (!item.to) {
-    // активний, якщо будь-який дочірній активний
-    return (
-      Array.isArray(item.children) &&
-      item.children.some((child: any) => isItemActive(child))
-    );
-  }
-  const [pathOnly] = String(item.to).split("?");
+const isPathActive = (to: string | undefined) => {
+  if (!to) return false;
+  const [pathOnly] = String(to).split("?");
   return route.path === pathOnly;
 };
 
-const handleMenuClick = (item: any) => {
-  if (item.children && item.children.length) {
-    // пункт з підменю — просто розгортаємо/згортаємо
-    toggleSection(item);
-    return;
-  }
-  if (item.to) {
-    navigateTo(item.to);
-  }
-};
+// Пункти меню для UNavigationMenu з позначкою активного та defaultOpen для розділу з активним дочірнім
+const navigationItems = computed(() => {
+  return menuLinks.value.map((item: any) => {
+    const hasChildren = Array.isArray(item.children) && item.children.length;
+    const children = hasChildren
+      ? item.children.map((child: any) => ({
+          ...child,
+          active: isPathActive(child.to),
+        }))
+      : undefined;
+    const hasActiveChild = hasChildren && children.some((c: any) => c.active);
+    return {
+      ...item,
+      ...(children && { children }),
+      active: hasChildren ? false : isPathActive(item.to),
+      defaultOpen: hasActiveChild,
+    };
+  });
+});
 
 const userMenuItems = [
   [

@@ -10,24 +10,25 @@
     <UTable :rows="roles" :columns="columns" />
 
     <!-- Add Role Modal -->
-    <UModal v-model="showAddModal">
+    <UModal v-model:open="showAddModal">
+      <template #content>
       <UCard>
         <template #header>
           <h3>Створити роль</h3>
         </template>
         <UForm :state="addForm" @submit="onAddRole" class="space-y-4">
-          <UFormGroup label="Назва" name="name" required>
+          <UFormField label="Назва" name="name" required>
             <UInput v-model="addForm.name" />
-          </UFormGroup>
-          <UFormGroup label="Права доступу" name="permission_ids">
+          </UFormField>
+          <UFormField label="Права доступу" name="permission_ids">
             <USelectMenu
               v-model="addForm.permission_ids"
-              :options="permissions"
-              option-attribute="label"
-              value-attribute="id"
+              :items="permissionItems"
+              value-key="id"
+              label-key="label"
               multiple
             />
-          </UFormGroup>
+          </UFormField>
           <div class="flex gap-4">
             <UButton
               variant="outline"
@@ -39,6 +40,7 @@
           </div>
         </UForm>
       </UCard>
+      </template>
     </UModal>
   </div>
 </template>
@@ -79,6 +81,12 @@ const { data: permissionsData } = await useFetch(
   },
 );
 const permissions = computed(() => permissionsData.value || []);
+const permissionItems = computed(() =>
+  (permissions.value as any[]).map((p) => ({
+    id: p.id,
+    label: p.label ?? p.name ?? String(p.id),
+  }))
+);
 
 const addForm = reactive({
   name: "",

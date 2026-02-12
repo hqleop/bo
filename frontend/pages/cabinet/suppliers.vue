@@ -13,27 +13,28 @@
     </div>
 
     <!-- Add Modal -->
-    <UModal v-model="showAddModal">
+    <UModal v-model:open="showAddModal">
+      <template #content>
       <UCard>
         <template #header>
           <h3>Додати постачальника</h3>
         </template>
         <UForm :state="addForm" @submit="onAdd" class="space-y-4">
-          <UFormGroup label="Назва" name="name" required>
+          <UFormField label="Назва" name="name" required>
             <UInput v-model="addForm.name" />
-          </UFormGroup>
-          <UFormGroup label="ЄДРПОУ" name="edrpou">
+          </UFormField>
+          <UFormField label="ЄДРПОУ" name="edrpou">
             <UInput v-model="addForm.edrpou" />
-          </UFormGroup>
-          <UFormGroup label="Контактна особа" name="contact_person">
+          </UFormField>
+          <UFormField label="Контактна особа" name="contact_person">
             <UInput v-model="addForm.contact_person" />
-          </UFormGroup>
-          <UFormGroup label="Телефон" name="phone">
+          </UFormField>
+          <UFormField label="Телефон" name="phone">
             <UInput v-model="addForm.phone" type="tel" />
-          </UFormGroup>
-          <UFormGroup label="Email" name="email">
+          </UFormField>
+          <UFormField label="Email" name="email">
             <UInput v-model="addForm.email" type="email" />
-          </UFormGroup>
+          </UFormField>
           <div class="flex gap-4">
             <UButton
               variant="outline"
@@ -45,6 +46,7 @@
           </div>
         </UForm>
       </UCard>
+      </template>
     </UModal>
   </div>
 </template>
