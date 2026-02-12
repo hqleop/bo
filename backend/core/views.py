@@ -5,6 +5,8 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
@@ -310,6 +312,129 @@ class CompanyUserViewSet(viewsets.ModelViewSet):
             meta={"membership_id": membership.id, "company_id": membership.company.id},
         )
 
+        return Response(CompanyUserSerializer(membership).data)
+
+    @extend_schema(
+        summary="Створити нового користувача компанії",
+        description="Адміністратор створює нового користувача (User) і одразу додає його до компанії зі статусом 'Підтверджено'.",
+        request=UserRegistrationStep1Serializer,
+        responses={201: CompanyUserSerializer, 400: OpenApiResponse(description="Помилка валідації")},
+    )
+    @action(detail=False, methods=["post"], url_path="create-user")
+    def create_user(self, request):
+        """
+        Create a new User and CompanyUser for the current admin's company.
+        """
+        user = request.user
+
+        # Визначаємо компанію адміністратора (беремо першу доступну)
+        admin_memberships = CompanyUser.objects.filter(
+            user=user, status=CompanyUser.Status.APPROVED, role__name="Адміністратор"
+        )
+        if not admin_memberships.exists() and not user.is_superuser:
+            return Response(
+                {"error": "Тільки адміністратор компанії може створювати користувачів."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        company = admin_memberships.first().company if admin_memberships.exists() else None
+
+        # Створюємо користувача через існуючий серіалізатор реєстрації (крок 1)
+        serializer = UserRegistrationStep1Serializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        new_user = serializer.save()
+
+        # Отримуємо / створюємо роль "Користувач" для компанії
+        default_role, _ = Role.objects.get_or_create(
+            company=company, name="Користувач", defaults={"is_system": True}
+        )
+
+        membership = CompanyUser.objects.create(
+            user=new_user,
+            company=company,
+            role=default_role,
+            status=CompanyUser.Status.APPROVED,
+        )
+
+        return Response(CompanyUserSerializer(membership).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        summary="Оновити дані користувача компанії",
+        description="Адміністратор може відредагувати ім'я, прізвище, email, телефон та пароль користувача компанії.",
+        responses={200: CompanyUserSerializer, 400: OpenApiResponse(description="Помилка валідації")},
+    )
+    @action(detail=True, methods=["patch"], url_path="update-user")
+    def update_user(self, request, pk=None):
+        membership = self.get_object()
+        user = membership.user
+
+        first_name = request.data.get("first_name")
+        last_name = request.data.get("last_name")
+        email = request.data.get("email")
+        phone = request.data.get("phone")
+        password = request.data.get("password")
+        password_confirm = request.data.get("password_confirm")
+
+        if first_name is not None:
+            user.first_name = first_name
+        if last_name is not None:
+            user.last_name = last_name
+        if email is not None:
+            # Перевірка на унікальність email
+            if User.objects.filter(email=email).exclude(pk=user.pk).exists():
+                return Response({"email": ["Користувач з таким email вже існує."]}, status=status.HTTP_400_BAD_REQUEST)
+            user.email = email
+        if phone is not None:
+            user.phone = phone
+
+        if password is not None and password != "":
+            if password != password_confirm:
+                return Response(
+                    {"password_confirm": ["Паролі не співпадають."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                validate_password(password, user)
+            except DjangoValidationError as e:
+                return Response(
+                    {"password": list(e.messages)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            user.set_password(password)
+
+        user.save()
+        return Response(CompanyUserSerializer(membership).data)
+
+    @extend_schema(
+        summary="Деактивувати користувача компанії",
+        description="Адміністратор може вимкнути активність користувача (is_active = False), після чого він не зможе входити в систему.",
+        responses={200: CompanyUserSerializer},
+    )
+    @action(detail=True, methods=["post"])
+    def deactivate(self, request, pk=None):
+        membership = self.get_object()
+        user = membership.user
+        if not user.is_active:
+            return Response({"detail": "Користувач вже деактивований."}, status=status.HTTP_400_BAD_REQUEST)
+        user.is_active = False
+        user.save(update_fields=["is_active"])
+        return Response(CompanyUserSerializer(membership).data)
+
+    @extend_schema(
+        summary="Активувати користувача компанії",
+        description="Адміністратор може увімкнути активність користувача (is_active = True), після чого він зможе входити в систему.",
+        responses={200: CompanyUserSerializer},
+    )
+    @action(detail=True, methods=["post"])
+    def activate(self, request, pk=None):
+        membership = self.get_object()
+        user = membership.user
+        if user.is_active:
+            return Response({"detail": "Користувач вже активований."}, status=status.HTTP_400_BAD_REQUEST)
+        user.is_active = True
+        user.save(update_fields=["is_active"])
         return Response(CompanyUserSerializer(membership).data)
 
 

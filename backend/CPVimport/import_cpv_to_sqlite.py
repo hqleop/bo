@@ -4,8 +4,9 @@ import os
 import sys
 
 # === ФАЙЛИ ===
-EXCEL_FILE = "cpv_with_hierarchy.xlsx"
-DB_FILE = "db.sqlite3"  # існуюча БД
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+EXCEL_FILE = os.path.join(BASE_DIR, "cpv_with_hierarchy.xlsx")
+DB_FILE = os.path.join(BASE_DIR, "db.sqlite3")
 
 # === Перевірка, що файл БД існує ===
 if not os.path.isfile(DB_FILE):
