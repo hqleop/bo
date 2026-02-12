@@ -95,15 +95,14 @@
         </UButton>
       </div>
 
-      <UFormGroup label="Користувач" help="Пошук по імені та прізвищу">
+      <UFormGroup label="Користувач">
         <UInput
           v-model="filters.userSearch"
-          placeholder="Почніть вводити ПІБ користувача"
+          placeholder="Пошук по імені та прізвищу"
         />
       </UFormGroup>
 
       <ContentSearch
-        label="Філіали"
         placeholder="Оберіть філіали"
         search-placeholder="Пошук філіалу"
         :tree="branchesTree"
@@ -114,7 +113,6 @@
       />
 
       <ContentSearch
-        label="Підрозділи"
         placeholder="Оберіть підрозділи"
         search-placeholder="Пошук підрозділу"
         :disabled="filters.branchIds.length === 0"
@@ -126,7 +124,6 @@
       />
 
       <ContentSearch
-        label="Категорії"
         placeholder="Оберіть категорії"
         search-placeholder="Пошук категорії"
         :tree="categoriesTree"
@@ -137,7 +134,6 @@
       />
 
       <ContentSearch
-        label="Статті витрат"
         placeholder="Оберіть статті витрат"
         search-placeholder="Пошук статті витрат"
         :tree="expensesTree"

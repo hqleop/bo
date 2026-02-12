@@ -27,6 +27,8 @@ from .models import (
     CpvDictionary,
     ExpenseArticle,
     ExpenseArticleUser,
+    UnitOfMeasure,
+    Nomenclature,
 )
 from .serializers import (
     UserSerializer,
@@ -51,6 +53,8 @@ from .serializers import (
     CategoryUserSerializer,
     ExpenseArticleSerializer,
     ExpenseArticleUserSerializer,
+    UnitOfMeasureSerializer,
+    NomenclatureSerializer,
 )
 
 User = get_user_model()
@@ -224,25 +228,32 @@ class CompanyViewSet(viewsets.ReadOnlyModelViewSet):
 class CompanyUserViewSet(viewsets.ModelViewSet):
     """
     CompanyUser membership management.
+
+    В рамках поточного MVP всі підтверджені учасники компанії мають однакові права
+    доступу в межах своїх компаній (без поділу на адміністраторів та користувачів).
     """
 
     serializer_class = CompanyUserSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        """Filter by user's companies."""
+        """
+        Повертаємо всі членства компаній, в яких поточний користувач має
+        підтверджений статус. Ролі не враховуються.
+        """
         user = self.request.user
         if user.is_superuser:
             return CompanyUser.objects.all()
-        # Only show memberships for companies where user is admin
-        admin_companies = CompanyUser.objects.filter(
-            user=user, status=CompanyUser.Status.APPROVED, role__name="Адміністратор"
+
+        user_companies = CompanyUser.objects.filter(
+            user=user,
+            status=CompanyUser.Status.APPROVED,
         ).values_list("company_id", flat=True)
-        return CompanyUser.objects.filter(company_id__in=admin_companies)
+        return CompanyUser.objects.filter(company_id__in=user_companies)
 
     @extend_schema(
         summary="Список членів компанії",
-        description="Отримати список користувачів компанії (тільки для адміністраторів).",
+        description="Отримати список користувачів компаній, в яких поточний користувач має підтверджене членство.",
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -256,7 +267,7 @@ class CompanyUserViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         summary="Додати користувача до компанії",
-        description="Адміністратор може додати користувача до компанії вручну.",
+        description="Додати користувача до компанії вручну (будь-який підтверджений учасник компанії).",
         request=CompanyUserSerializer,
     )
     def create(self, request, *args, **kwargs):
@@ -264,7 +275,7 @@ class CompanyUserViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         summary="Підтвердити членство",
-        description="Адміністратор підтверджує запит на приєднання.",
+        description="Підтвердити запит на приєднання до компанії.",
         responses={200: CompanyUserSerializer, 400: OpenApiResponse(description="Помилка")},
     )
     @action(detail=True, methods=["post"])
@@ -290,7 +301,7 @@ class CompanyUserViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         summary="Відхилити членство",
-        description="Адміністратор відхиляє запит на приєднання.",
+        description="Відхилити запит на приєднання до компанії.",
         responses={200: CompanyUserSerializer, 400: OpenApiResponse(description="Помилка")},
     )
     @action(detail=True, methods=["post"])
@@ -316,28 +327,30 @@ class CompanyUserViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         summary="Створити нового користувача компанії",
-        description="Адміністратор створює нового користувача (User) і одразу додає його до компанії зі статусом 'Підтверджено'.",
+        description="Створити нового користувача (User) і одразу додати його до компанії зі статусом 'Підтверджено' (будь-який підтверджений учасник компанії).",
         request=UserRegistrationStep1Serializer,
         responses={201: CompanyUserSerializer, 400: OpenApiResponse(description="Помилка валідації")},
     )
     @action(detail=False, methods=["post"], url_path="create-user")
     def create_user(self, request):
         """
-        Create a new User and CompanyUser for the current admin's company.
+        Створити нового користувача та прив'язати його до першої компанії,
+        в якій поточний користувач має підтверджене членство.
         """
         user = request.user
 
-        # Визначаємо компанію адміністратора (беремо першу доступну)
-        admin_memberships = CompanyUser.objects.filter(
-            user=user, status=CompanyUser.Status.APPROVED, role__name="Адміністратор"
+        # Знаходимо компанії, де користувач має підтверджене членство
+        memberships = CompanyUser.objects.filter(
+            user=user,
+            status=CompanyUser.Status.APPROVED,
         )
-        if not admin_memberships.exists() and not user.is_superuser:
+        if not memberships.exists() and not user.is_superuser:
             return Response(
-                {"error": "Тільки адміністратор компанії може створювати користувачів."},
+                {"error": "Користувач не має підтвердженого членства ні в одній компанії."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        company = admin_memberships.first().company if admin_memberships.exists() else None
+        company = memberships.first().company if memberships.exists() else None
 
         # Створюємо користувача через існуючий серіалізатор реєстрації (крок 1)
         serializer = UserRegistrationStep1Serializer(data=request.data)
@@ -680,11 +693,31 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        """Filter by branch."""
+        """
+        Повертає підрозділи, обмежені компаніями поточного користувача.
+
+        - Для superuser: всі підрозділи.
+        - Для звичайного користувача: лише підрозділи філіалів компаній,
+          де в нього є підтверджене членство.
+        - Додатково можна обмежити результат параметром branch_id.
+        """
+        user = self.request.user
+        if user.is_superuser:
+            queryset = Department.objects.all()
+        else:
+            user_companies = CompanyUser.objects.filter(
+                user=user,
+                status=CompanyUser.Status.APPROVED,
+            ).values_list("company_id", flat=True)
+            queryset = Department.objects.filter(
+                branch__company_id__in=user_companies
+            )
+
         branch_id = self.request.query_params.get("branch_id")
         if branch_id:
-            return Department.objects.filter(branch_id=branch_id).select_related("parent", "branch")
-        return Department.objects.none()
+            queryset = queryset.filter(branch_id=branch_id)
+
+        return queryset.select_related("parent", "branch")
 
     @extend_schema(
         summary="Список підрозділів",
@@ -697,6 +730,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         branch_id = request.query_params.get("branch_id")
         if not branch_id:
             return Response({"error": "Параметр branch_id обов'язковий"}, status=400)
+        # get_queryset вже відфільтрує за branch_id, тут лише беремо корені
         queryset = self.get_queryset().filter(parent__isnull=True)
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
@@ -853,6 +887,33 @@ class DepartmentUserViewSet(viewsets.ModelViewSet):
     )
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Масово видалити користувачів з підрозділу",
+        description="Видалити одного або кількох користувачів з підрозділу (масив user_ids).",
+    )
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        department_id = request.data.get("department")
+        user_ids = request.data.get("user_ids", [])
+        if not department_id:
+            return Response({"error": "Параметр department обов'язковий"}, status=400)
+        if not isinstance(user_ids, list):
+            return Response({"error": "user_ids повинен бути масивом"}, status=400)
+
+        user = request.user
+        if user.is_superuser:
+            qs = DepartmentUser.objects.all()
+        else:
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            qs = DepartmentUser.objects.filter(
+                department__branch__company_id__in=user_companies
+            )
+
+        qs.filter(department_id=department_id, user_id__in=user_ids).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -1139,3 +1200,110 @@ class ExpenseArticleUserViewSet(viewsets.ModelViewSet):
     )
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
+
+
+class UnitOfMeasureViewSet(viewsets.ModelViewSet):
+    """
+    Довідник одиниць виміру (company-scoped).
+    """
+
+    serializer_class = UnitOfMeasureSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """Повертає одиниці виміру компаній поточного користувача."""
+        user = self.request.user
+        if user.is_superuser:
+            return UnitOfMeasure.objects.all().select_related("company")
+        user_companies = CompanyUser.objects.filter(
+            user=user, status=CompanyUser.Status.APPROVED
+        ).values_list("company_id", flat=True)
+        return UnitOfMeasure.objects.filter(company_id__in=user_companies).select_related("company")
+
+
+class NomenclatureViewSet(viewsets.ModelViewSet):
+    """
+    Номенклатура (company-scoped).
+    """
+
+    serializer_class = NomenclatureSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """Фільтрує номенклатуру за компаніями користувача та параметрами."""
+        user = self.request.user
+        if user.is_superuser:
+            qs = Nomenclature.objects.all().select_related(
+                "company", "unit", "category", "cpv_category"
+            )
+        else:
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            qs = Nomenclature.objects.filter(
+                company_id__in=user_companies
+            ).select_related("company", "unit", "category", "cpv_category")
+
+        # Фільтри
+        name = self.request.query_params.get("name")
+        category_id = self.request.query_params.get("category_id")
+        cpv_id = self.request.query_params.get("cpv_id")
+
+        if name:
+            qs = qs.filter(name__icontains=name)
+        if category_id:
+            qs = qs.filter(category_id=category_id)
+        if cpv_id:
+            qs = qs.filter(cpv_category_id=cpv_id)
+
+        return qs
+
+    @extend_schema(
+        summary="Список номенклатури",
+        description="Отримати список номенклатури компанії з можливими фільтрами (name, category_id, cpv_id).",
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Створити номенклатуру",
+        description="Створити новий елемент номенклатури.",
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Оновити номенклатуру",
+        description="Оновити дані номенклатури.",
+    )
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Видалити номенклатуру",
+        description="Видалити елемент номенклатури.",
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Деактивувати номенклатуру",
+        description="Позначити номенклатуру як неактивну (is_active = False).",
+    )
+    @action(detail=True, methods=["post"])
+    def deactivate(self, request, pk=None):
+        obj = self.get_object()
+        obj.is_active = False
+        obj.save(update_fields=["is_active"])
+        return Response(self.get_serializer(obj).data)
+
+    @extend_schema(
+        summary="Активувати номенклатуру",
+        description="Позначити номенклатуру як активну (is_active = True).",
+    )
+    @action(detail=True, methods=["post"])
+    def activate(self, request, pk=None):
+        obj = self.get_object()
+        obj.is_active = True
+        obj.save(update_fields=["is_active"])
+        return Response(self.get_serializer(obj).data)

@@ -111,8 +111,8 @@
             <div class="text-sm text-gray-500">{{ user.user.email }}</div>
           </div>
           <UCheckbox
-            :model-value="selectedUsers.includes(user.id)"
-            @update:model-value="toggleUserSelection(user.id)"
+            :model-value="selectedUsers.includes(user.user.id)"
+            @update:model-value="toggleUserSelection(user.user.id)"
           />
         </div>
         <div
@@ -262,14 +262,14 @@
         <div class="space-y-2 max-h-96 overflow-y-auto">
           <div
             v-for="user in currentUsers.filter((u) =>
-              selectedUsers.includes(u.id),
+              selectedUsers.includes(u.user.id),
             )"
             :key="user.id"
             class="flex items-center p-2 rounded hover:bg-gray-50"
           >
             <UCheckbox
-              :model-value="usersToRemove.includes(user.id)"
-              @update:model-value="toggleUserToRemove(user.id)"
+              :model-value="usersToRemove.includes(user.user.id)"
+              @update:model-value="toggleUserToRemove(user.user.id)"
             />
             <div class="ml-3 flex-1">
               <div class="font-medium">
@@ -636,18 +636,27 @@ const removeUsers = async () => {
   if (usersToRemove.value.length === 0) return;
 
   saving.value = true;
-  const endpoint = selectedDepartment.value
-    ? "/department-users/"
-    : "/branch-users/";
-
-  // Видаляємо по одному
-  for (const userId of usersToRemove.value) {
-    const userItem = currentUsers.value.find((u) => u.user.id === userId);
-    if (userItem) {
-      await fetch(`${endpoint}${userItem.id}/`, {
-        method: "DELETE",
-        headers: getAuthHeaders(),
-      });
+  if (selectedDepartment.value) {
+    // Масове видалення з підрозділу за department + user_ids
+    await fetch("/department-users/bulk-delete/", {
+      method: "POST",
+      body: {
+        department: selectedDepartment.value.id,
+        user_ids: usersToRemove.value,
+      },
+      headers: getAuthHeaders(),
+    });
+  } else {
+    // Старий механізм для філіалів — видаляємо по одному
+    const endpoint = "/branch-users/";
+    for (const userId of usersToRemove.value) {
+      const userItem = currentUsers.value.find((u) => u.user.id === userId);
+      if (userItem) {
+        await fetch(`${endpoint}${userItem.id}/`, {
+          method: "DELETE",
+          headers: getAuthHeaders(),
+        });
+      }
     }
   }
 

@@ -16,6 +16,8 @@ from .models import (
     CpvDictionary,
     ExpenseArticle,
     ExpenseArticleUser,
+    UnitOfMeasure,
+    Nomenclature,
 )
 
 User = get_user_model()
@@ -382,3 +384,49 @@ class ExpenseArticleUserSerializer(serializers.ModelSerializer):
         model = ExpenseArticleUser
         fields = ("id", "expense", "user", "user_id", "created_at")
         read_only_fields = ("id", "created_at")
+
+
+class UnitOfMeasureSerializer(serializers.ModelSerializer):
+    """Серіалізатор довідника одиниць виміру."""
+
+    class Meta:
+        model = UnitOfMeasure
+        fields = ("id", "company", "name", "is_active")
+        read_only_fields = ("id",)
+
+
+class NomenclatureSerializer(serializers.ModelSerializer):
+    """Серіалізатор номенклатури."""
+
+    unit_name = serializers.CharField(source="unit.name", read_only=True)
+    category_name = serializers.CharField(source="category.name", read_only=True)
+    cpv_label = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Nomenclature
+        fields = (
+            "id",
+            "company",
+            "name",
+            "unit",
+            "unit_name",
+            "code",
+            "external_number",
+            "description",
+            "specification_file",
+            "image_file",
+            "category",
+            "category_name",
+            "cpv_category",
+            "cpv_label",
+            "is_active",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
+
+    def get_cpv_label(self, obj):
+        cpv = obj.cpv_category
+        if not cpv:
+            return ""
+        return f"{cpv.cpv_code} - {cpv.name_ua}"

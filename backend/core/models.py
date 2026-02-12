@@ -324,3 +324,80 @@ class ExpenseArticleUser(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover
         return f"{self.user.email} - {self.expense.name}"
+
+
+class UnitOfMeasure(models.Model):
+    """
+    Довідник одиниць виміру в межах компанії.
+    """
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="units_of_measure")
+    name = models.CharField(max_length=100)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = "Одиниця виміру"
+        verbose_name_plural = "Одиниці виміру"
+        ordering = ["name"]
+        unique_together = (("company", "name"),)
+
+    def __str__(self) -> str:  # pragma: no cover
+        return self.name
+
+
+class Nomenclature(models.Model):
+    """
+    Номенклатура товарів/послуг компанії.
+    """
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="nomenclatures")
+    name = models.CharField(max_length=255)
+    unit = models.ForeignKey(
+        UnitOfMeasure,
+        on_delete=models.PROTECT,
+        related_name="nomenclatures",
+        help_text="Одиниця виміру",
+    )
+    code = models.CharField(max_length=100, blank=True, default="", help_text="Код / артикул")
+    external_number = models.CharField(max_length=100, blank=True, default="", help_text="Зовнішній номер")
+    description = models.TextField(blank=True, default="")
+    specification_file = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Шлях або ідентифікатор файлу специфікації (MVP: як текстове поле)",
+    )
+    image_file = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Шлях або ідентифікатор зображення (MVP: як текстове поле)",
+    )
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="nomenclatures",
+        help_text="Звичайна категорія довідника",
+    )
+    cpv_category = models.ForeignKey(
+        CpvDictionary,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="nomenclatures",
+        help_text="CPV-категорія, якщо не використовується звичайна категорія",
+    )
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Номенклатура"
+        verbose_name_plural = "Номенклатура"
+        ordering = ["name"]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return self.name
