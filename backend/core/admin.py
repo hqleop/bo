@@ -14,6 +14,10 @@ from .models import (
     CategoryUser,
     ExpenseArticle,
     ExpenseArticleUser,
+    Currency,
+    TenderCriterion,
+    ProcurementTender,
+    SalesTender,
 )
 
 
@@ -112,3 +116,32 @@ class ExpenseArticleUserAdmin(admin.ModelAdmin):
     list_display = ("user", "expense", "created_at")
     list_filter = ("expense", "created_at")
     search_fields = ("user__email", "expense__name")
+
+
+@admin.register(Currency)
+class CurrencyAdmin(admin.ModelAdmin):
+    list_display = ("code", "name")
+    search_fields = ("code", "name")
+
+
+@admin.register(TenderCriterion)
+class TenderCriterionAdmin(admin.ModelAdmin):
+    list_display = ("name", "company", "type", "created_at")
+    list_filter = ("company", "type")
+    search_fields = ("name", "company__name")
+
+
+@admin.register(ProcurementTender)
+class ProcurementTenderAdmin(admin.ModelAdmin):
+    list_display = ("number", "tour_number", "name", "company", "stage", "conduct_type", "created_at")
+    list_filter = ("company", "stage", "conduct_type", "publication_type")
+    search_fields = ("name", "company__name")
+    raw_id_fields = ("company", "category", "cpv_category", "expense_article", "branch", "department", "currency", "created_by", "parent")
+
+
+@admin.register(SalesTender)
+class SalesTenderAdmin(admin.ModelAdmin):
+    list_display = ("number", "tour_number", "name", "company", "stage", "conduct_type", "created_at")
+    list_filter = ("company", "stage", "conduct_type", "publication_type")
+    search_fields = ("name", "company__name")
+    raw_id_fields = ("company", "category", "cpv_category", "expense_article", "branch", "department", "currency", "created_by", "parent")

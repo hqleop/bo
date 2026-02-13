@@ -22,7 +22,12 @@ from .views import (
     ExpenseArticleUserViewSet,
     UnitOfMeasureViewSet,
     NomenclatureViewSet,
+    CurrencyViewSet,
+    TenderCriterionViewSet,
+    ProcurementTenderViewSet,
+    SalesTenderViewSet,
     CpvDictionaryTreeView,
+    CpvDictionaryChildrenView,
     me,
     password_reset_request,
     password_reset_confirm,
@@ -45,6 +50,10 @@ router.register(r"expenses", ExpenseArticleViewSet, basename="expense")
 router.register(r"expense-users", ExpenseArticleUserViewSet, basename="expense-user")
 router.register(r"units", UnitOfMeasureViewSet, basename="unit")
 router.register(r"nomenclatures", NomenclatureViewSet, basename="nomenclature")
+router.register(r"currencies", CurrencyViewSet, basename="currency")
+router.register(r"tender-criteria", TenderCriterionViewSet, basename="tender-criterion")
+router.register(r"procurement-tenders", ProcurementTenderViewSet, basename="procurement-tender")
+router.register(r"sales-tenders", SalesTenderViewSet, basename="sales-tender")
 
 urlpatterns = [
     # Auth
@@ -60,6 +69,7 @@ urlpatterns = [
     path("registration/step2/existing/", registration_step2_existing_company, name="registration_step2_existing"),
     # CPV довідник
     path("cpv/tree/", CpvDictionaryTreeView.as_view(), name="cpv-tree"),
+    path("cpv/children/", CpvDictionaryChildrenView.as_view(), name="cpv-children"),
     # Router viewsets
     path("", include(router.urls)),
 ]

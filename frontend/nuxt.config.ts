@@ -8,5 +8,9 @@ export default defineNuxtConfig({
       apiBase: process.env.NUXT_PUBLIC_API_BASE || 'http://localhost:8000/api'
     }
   },
-  css: ['~/assets/css/main.css']
+  css: ['~/assets/css/main.css'],
+  // Вимикаємо SSR для кабінету — уникаємо hydration mismatch (різний стан auth/даних на сервері та клієнті)
+  routeRules: {
+    '/cabinet/**': { ssr: false }
+  }
 })

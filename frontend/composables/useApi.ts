@@ -1,13 +1,18 @@
 export const useApi = () => {
   const config = useRuntimeConfig()
   const apiBase = config.public.apiBase
-  const { getAuthHeaders, refreshAccessToken, logout } = useAuth()
+  const { getAuthHeaders, checkAuth, refreshAccessToken, logout } = useAuth()
 
   const fetch = async <T>(endpoint: string, options: any = {}) => {
+    // Якщо токена немає — спробувати оновити з refresh перед запитом
+    if (!getAuthHeaders().Authorization) {
+      await checkAuth()
+    }
+    const authHeaders = getAuthHeaders()
     const headers = {
       'Content-Type': 'application/json',
-      ...getAuthHeaders(),
-      ...options.headers
+      ...authHeaders,
+      ...(options.headers || {})
     }
 
     try {

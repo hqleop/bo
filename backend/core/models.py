@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
+from django.db.models import Max
 
 
 class UserManager(BaseUserManager):
@@ -401,3 +402,314 @@ class Nomenclature(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover
         return self.name
+
+
+class Currency(models.Model):
+    """
+    Довідник валют (системний, спільний для всіх компаній).
+    """
+
+    code = models.CharField(max_length=10, unique=True)
+    name = models.CharField(max_length=100)
+
+    class Meta:
+        verbose_name = "Валюта"
+        verbose_name_plural = "Валюти"
+        ordering = ["code"]
+
+    def __str__(self) -> str:
+        return f"{self.code} - {self.name}"
+
+
+class TenderCriterion(models.Model):
+    """
+    Критерій тендеру — елемент, на який відповідає учасник під час проведення.
+    Типи: числовий, текстовий, файловий, булевий.
+    """
+
+    class Type(models.TextChoices):
+        NUMERIC = "numeric", "Числовий"
+        TEXT = "text", "Текстовий"
+        FILE = "file", "Файловий"
+        BOOLEAN = "boolean", "Булевий (Так/Ні)"
+
+    company = models.ForeignKey(
+        Company, on_delete=models.CASCADE, related_name="tender_criteria"
+    )
+    name = models.CharField(max_length=255)
+    type = models.CharField(max_length=20, choices=Type.choices)
+    # Додаткові параметри за типом: range_min/range_max, numeric_choices, text_choices
+    options = models.JSONField(default=dict, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Критерій тендеру"
+        verbose_name_plural = "Критерії тендерів"
+        ordering = ["name"]
+        unique_together = (("company", "name"),)
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class ProcurementTender(models.Model):
+    """
+    Тендер на закупівлю. Етапи: паспорт → підготовка → прийом пропозицій → вибір рішення → затвердження → завершений.
+    """
+
+    class Stage(models.TextChoices):
+        PASSPORT = "passport", "Паспорт тендера"
+        PREPARATION = "preparation", "Підготовка процедури"
+        ACCEPTANCE = "acceptance", "Прийом пропозицій"
+        DECISION = "decision", "Вибір рішення"
+        APPROVAL = "approval", "Затвердження"
+        COMPLETED = "completed", "Завершений"
+
+    class ConductType(models.TextChoices):
+        REGISTRATION = "registration", "Реєстрація закупівлі"
+        RFX = "rfx", "Збір пропозицій (RFx)"
+        ONLINE_AUCTION = "online_auction", "Онлайн торги"
+
+    class PublicationType(models.TextChoices):
+        OPEN = "open", "Відкрита процедура"
+        CLOSED = "closed", "Закрита процедура"
+
+    company = models.ForeignKey(
+        Company, on_delete=models.CASCADE, related_name="procurement_tenders"
+    )
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="next_tours",
+        help_text="Попередній тур, якщо це наступний тур того ж тендера",
+    )
+    tour_number = models.PositiveIntegerField(default=1)
+    number = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Порядковий номер тендера в компанії (присвоюється при першому збереженні)",
+    )
+    name = models.CharField(max_length=500)
+    stage = models.CharField(
+        max_length=20, choices=Stage.choices, default=Stage.PASSPORT
+    )
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="procurement_tenders",
+    )
+    cpv_category = models.ForeignKey(
+        CpvDictionary,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="procurement_tenders",
+    )
+    expense_article = models.ForeignKey(
+        ExpenseArticle,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="procurement_tenders",
+    )
+    estimated_budget = models.DecimalField(
+        max_digits=18, decimal_places=2, null=True, blank=True
+    )
+    branch = models.ForeignKey(
+        Branch,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="procurement_tenders",
+    )
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="procurement_tenders",
+    )
+    conduct_type = models.CharField(
+        max_length=20,
+        choices=ConductType.choices,
+        default=ConductType.RFX,
+    )
+    publication_type = models.CharField(
+        max_length=20,
+        choices=PublicationType.choices,
+        default=PublicationType.OPEN,
+    )
+    currency = models.ForeignKey(
+        Currency,
+        on_delete=models.PROTECT,
+        related_name="procurement_tenders",
+    )
+    general_terms = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_procurement_tenders",
+    )
+    start_at = models.DateTimeField(null=True, blank=True)
+    end_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Тендер на закупівлю"
+        verbose_name_plural = "Тендери на закупівлю"
+        ordering = ["-created_at"]
+        unique_together = (("company", "number", "tour_number"),)
+
+    def save(self, *args, **kwargs):
+        if not self.pk and self.company_id and self.number is None:
+            if self.parent_id:
+                self.number = self.parent.number
+            else:
+                agg = ProcurementTender.objects.filter(
+                    company_id=self.company_id
+                ).aggregate(Max("number"))
+                self.number = (agg["number__max"] or 0) + 1
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"#{self.number or '?'} {self.name}"
+
+
+class SalesTender(models.Model):
+    """
+    Тендер на продаж. Та сама структура та етапи, що й закупівля.
+    Відмінність: переможець рекомендується за найбільшою ціною за позицію.
+    """
+
+    class Stage(models.TextChoices):
+        PASSPORT = "passport", "Паспорт тендера"
+        PREPARATION = "preparation", "Підготовка процедури"
+        ACCEPTANCE = "acceptance", "Прийом пропозицій"
+        DECISION = "decision", "Вибір рішення"
+        APPROVAL = "approval", "Затвердження"
+        COMPLETED = "completed", "Завершений"
+
+    class ConductType(models.TextChoices):
+        REGISTRATION = "registration", "Реєстрація продажу"
+        RFX = "rfx", "Збір пропозицій (RFx)"
+        ONLINE_AUCTION = "online_auction", "Онлайн торги"
+
+    class PublicationType(models.TextChoices):
+        OPEN = "open", "Відкрита процедура"
+        CLOSED = "closed", "Закрита процедура"
+
+    company = models.ForeignKey(
+        Company, on_delete=models.CASCADE, related_name="sales_tenders"
+    )
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="next_tours",
+        help_text="Попередній тур, якщо це наступний тур того ж тендера",
+    )
+    tour_number = models.PositiveIntegerField(default=1)
+    number = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Порядковий номер тендера в компанії (присвоюється при першому збереженні)",
+    )
+    name = models.CharField(max_length=500)
+    stage = models.CharField(
+        max_length=20, choices=Stage.choices, default=Stage.PASSPORT
+    )
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sales_tenders",
+    )
+    cpv_category = models.ForeignKey(
+        CpvDictionary,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sales_tenders",
+    )
+    expense_article = models.ForeignKey(
+        ExpenseArticle,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sales_tenders",
+    )
+    estimated_budget = models.DecimalField(
+        max_digits=18, decimal_places=2, null=True, blank=True
+    )
+    branch = models.ForeignKey(
+        Branch,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sales_tenders",
+    )
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sales_tenders",
+    )
+    conduct_type = models.CharField(
+        max_length=20,
+        choices=ConductType.choices,
+        default=ConductType.RFX,
+    )
+    publication_type = models.CharField(
+        max_length=20,
+        choices=PublicationType.choices,
+        default=PublicationType.OPEN,
+    )
+    currency = models.ForeignKey(
+        Currency,
+        on_delete=models.PROTECT,
+        related_name="sales_tenders",
+    )
+    general_terms = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_sales_tenders",
+    )
+    start_at = models.DateTimeField(null=True, blank=True)
+    end_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Тендер на продаж"
+        verbose_name_plural = "Тендери на продаж"
+        ordering = ["-created_at"]
+        unique_together = (("company", "number", "tour_number"),)
+
+    def save(self, *args, **kwargs):
+        if not self.pk and self.company_id and self.number is None:
+            if self.parent_id:
+                self.number = self.parent.number
+            else:
+                agg = SalesTender.objects.filter(
+                    company_id=self.company_id
+                ).aggregate(Max("number"))
+                self.number = (agg["number__max"] or 0) + 1
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"#{self.number or '?'} {self.name}"

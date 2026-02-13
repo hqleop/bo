@@ -16,6 +16,10 @@ from .models import (
     CpvDictionary,
     ExpenseArticle,
     ExpenseArticleUser,
+    Currency,
+    TenderCriterion,
+    ProcurementTender,
+    SalesTender,
     UnitOfMeasure,
     Nomenclature,
 )
@@ -430,3 +434,203 @@ class NomenclatureSerializer(serializers.ModelSerializer):
         if not cpv:
             return ""
         return f"{cpv.cpv_code} - {cpv.name_ua}"
+
+
+class CurrencySerializer(serializers.ModelSerializer):
+    """Довідник валют (тільки читання для API)."""
+
+    class Meta:
+        model = Currency
+        fields = ("id", "code", "name")
+
+
+class TenderCriterionSerializer(serializers.ModelSerializer):
+    """Серіалізатор критерію тендеру."""
+
+    type_label = serializers.CharField(source="get_type_display", read_only=True)
+
+    class Meta:
+        model = TenderCriterion
+        fields = (
+            "id",
+            "company",
+            "name",
+            "type",
+            "type_label",
+            "options",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
+
+
+class ProcurementTenderSerializer(serializers.ModelSerializer):
+    """Тендер на закупівлю (паспорт та етапи)."""
+
+    stage_label = serializers.CharField(source="get_stage_display", read_only=True)
+    conduct_type_label = serializers.CharField(
+        source="get_conduct_type_display", read_only=True
+    )
+    publication_type_label = serializers.CharField(
+        source="get_publication_type_display", read_only=True
+    )
+    currency_code = serializers.CharField(source="currency.code", read_only=True)
+    category_name = serializers.SerializerMethodField()
+    cpv_label = serializers.SerializerMethodField()
+    expense_article_name = serializers.SerializerMethodField()
+    branch_name = serializers.SerializerMethodField()
+    department_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProcurementTender
+        fields = (
+            "id",
+            "company",
+            "parent",
+            "tour_number",
+            "number",
+            "name",
+            "stage",
+            "stage_label",
+            "category",
+            "category_name",
+            "cpv_category",
+            "cpv_label",
+            "expense_article",
+            "expense_article_name",
+            "estimated_budget",
+            "branch",
+            "branch_name",
+            "department",
+            "department_name",
+            "conduct_type",
+            "conduct_type_label",
+            "publication_type",
+            "publication_type_label",
+            "currency",
+            "currency_code",
+            "general_terms",
+            "created_by",
+            "start_at",
+            "end_at",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id",
+            "number",
+            "created_at",
+            "updated_at",
+            "stage_label",
+            "conduct_type_label",
+            "publication_type_label",
+            "currency_code",
+            "category_name",
+            "cpv_label",
+            "expense_article_name",
+            "branch_name",
+            "department_name",
+        )
+
+    def get_category_name(self, obj):
+        return obj.category.name if obj.category else ""
+
+    def get_cpv_label(self, obj):
+        if not obj.cpv_category_id:
+            return ""
+        return f"{obj.cpv_category.cpv_code} - {obj.cpv_category.name_ua}"
+
+    def get_expense_article_name(self, obj):
+        return obj.expense_article.name if obj.expense_article else ""
+
+    def get_branch_name(self, obj):
+        return obj.branch.name if obj.branch else ""
+
+    def get_department_name(self, obj):
+        return obj.department.name if obj.department else ""
+
+
+class SalesTenderSerializer(serializers.ModelSerializer):
+    """Тендер на продаж (паспорт та етапи)."""
+
+    stage_label = serializers.CharField(source="get_stage_display", read_only=True)
+    conduct_type_label = serializers.CharField(
+        source="get_conduct_type_display", read_only=True
+    )
+    publication_type_label = serializers.CharField(
+        source="get_publication_type_display", read_only=True
+    )
+    currency_code = serializers.CharField(source="currency.code", read_only=True)
+    category_name = serializers.SerializerMethodField()
+    cpv_label = serializers.SerializerMethodField()
+    expense_article_name = serializers.SerializerMethodField()
+    branch_name = serializers.SerializerMethodField()
+    department_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SalesTender
+        fields = (
+            "id",
+            "company",
+            "parent",
+            "tour_number",
+            "number",
+            "name",
+            "stage",
+            "stage_label",
+            "category",
+            "category_name",
+            "cpv_category",
+            "cpv_label",
+            "expense_article",
+            "expense_article_name",
+            "estimated_budget",
+            "branch",
+            "branch_name",
+            "department",
+            "department_name",
+            "conduct_type",
+            "conduct_type_label",
+            "publication_type",
+            "publication_type_label",
+            "currency",
+            "currency_code",
+            "general_terms",
+            "created_by",
+            "start_at",
+            "end_at",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id",
+            "number",
+            "created_at",
+            "updated_at",
+            "stage_label",
+            "conduct_type_label",
+            "publication_type_label",
+            "currency_code",
+            "category_name",
+            "cpv_label",
+            "expense_article_name",
+            "branch_name",
+            "department_name",
+        )
+
+    def get_category_name(self, obj):
+        return obj.category.name if obj.category else ""
+
+    def get_cpv_label(self, obj):
+        if not obj.cpv_category_id:
+            return ""
+        return f"{obj.cpv_category.cpv_code} - {obj.cpv_category.name_ua}"
+
+    def get_expense_article_name(self, obj):
+        return obj.expense_article.name if obj.expense_article else ""
+
+    def get_branch_name(self, obj):
+        return obj.branch.name if obj.branch else ""
+
+    def get_department_name(self, obj):
+        return obj.department.name if obj.department else ""

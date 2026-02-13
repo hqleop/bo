@@ -3,17 +3,21 @@ export const useAuth = () => {
   const apiBase = config.public.apiBase
 
   // Cookies зберігаються до виходу або очищення кешу (maxAge: 7 днів для refresh token)
+  // secure: тільки в production (на localhost без HTTPS cookie з secure не зберігається)
+  const isProd = typeof import.meta !== 'undefined' ? !import.meta.dev : process.env.NODE_ENV === 'production'
+  const cookieOptions = {
+    secure: isProd,
+    sameSite: 'lax' as const
+  }
   const accessToken = useCookie<string | null>('access_token', { 
     default: () => null,
     maxAge: 60 * 15, // 15 хвилин (access token lifetime)
-    secure: true,
-    sameSite: 'lax'
+    ...cookieOptions
   })
   const refreshToken = useCookie<string | null>('refresh_token', { 
     default: () => null,
     maxAge: 60 * 60 * 24 * 7, // 7 днів (refresh token lifetime)
-    secure: true,
-    sameSite: 'lax'
+    ...cookieOptions
   })
 
   const login = async (email: string, password: string) => {

@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from drf_spectacular.types import OpenApiTypes
@@ -27,6 +28,10 @@ from .models import (
     CpvDictionary,
     ExpenseArticle,
     ExpenseArticleUser,
+    Currency,
+    TenderCriterion,
+    ProcurementTender,
+    SalesTender,
     UnitOfMeasure,
     Nomenclature,
 )
@@ -55,6 +60,10 @@ from .serializers import (
     ExpenseArticleUserSerializer,
     UnitOfMeasureSerializer,
     NomenclatureSerializer,
+    CurrencySerializer,
+    TenderCriterionSerializer,
+    ProcurementTenderSerializer,
+    SalesTenderSerializer,
 )
 
 User = get_user_model()
@@ -571,7 +580,7 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def me(request):
-    """Get current user info with memberships and permissions."""
+    """Get current user info with memberships and permissions (з ролей; у MVP не блокують доступ)."""
     serializer = MeSerializer({"user": request.user, "memberships": request.user.memberships.all(), "permissions": []})
     serializer.instance = request.user
     return Response(serializer.data)
@@ -1089,6 +1098,68 @@ class CpvDictionaryTreeView(APIView):
         return Response(data)
 
 
+class CpvDictionaryChildrenView(APIView):
+    """
+    Ліниве завантаження CPV-вузлів: корені або діти конкретного вузла.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        summary="CPV вузли (ліниво)",
+        description=(
+            "Повертає CPV-вузли для lazy-tree.\n"
+            "- Без параметра `parent_level_code`: повертає тільки кореневі вузли.\n"
+            "- З параметром `parent_level_code`: повертає лише прямих дітей для цього вузла."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="parent_level_code",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Внутрішній код батьківського вузла (cpv_level_code).",
+            )
+        ],
+        responses={200: OpenApiResponse(description="Список вузлів")},
+    )
+    def get(self, request):
+        parent_level_code = (request.query_params.get("parent_level_code") or "").strip()
+
+        if parent_level_code:
+            qs = CpvDictionary.objects.filter(cpv_parent_code=parent_level_code)
+        else:
+            qs = CpvDictionary.objects.filter(
+                Q(cpv_parent_code__isnull=True) | Q(cpv_parent_code="") | Q(cpv_parent_code="0")
+            )
+
+        qs = qs.order_by("cpv_code")
+        items = list(qs)
+        level_codes = [item.cpv_level_code for item in items if item.cpv_level_code]
+
+        child_parent_codes = set()
+        if level_codes:
+            child_parent_codes = set(
+                CpvDictionary.objects.filter(cpv_parent_code__in=level_codes).values_list("cpv_parent_code", flat=True)
+            )
+
+        data = [
+            {
+                "id": item.id,
+                "cpv_parent_code": item.cpv_parent_code,
+                "cpv_level_code": item.cpv_level_code,
+                "cpv_code": item.cpv_code,
+                "name_ua": item.name_ua,
+                "name_en": item.name_en,
+                "label": f"{item.cpv_code} - {item.name_ua}",
+                "has_children": item.cpv_level_code in child_parent_codes,
+                "children": [],
+            }
+            for item in items
+        ]
+        return Response(data)
+
+
 class ExpenseArticleViewSet(viewsets.ModelViewSet):
     """
     ExpenseArticle management (tree, company-scoped).
@@ -1307,3 +1378,93 @@ class NomenclatureViewSet(viewsets.ModelViewSet):
         obj.is_active = True
         obj.save(update_fields=["is_active"])
         return Response(self.get_serializer(obj).data)
+
+
+class CurrencyViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Довідник валют (системний, тільки читання).
+    """
+
+    queryset = Currency.objects.all().order_by("code")
+    serializer_class = CurrencySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class TenderCriterionViewSet(viewsets.ModelViewSet):
+    """
+    Довідник критеріїв тендерів (company-scoped).
+    """
+
+    serializer_class = TenderCriterionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser:
+            return TenderCriterion.objects.all().select_related("company")
+        user_companies = CompanyUser.objects.filter(
+            user=user, status=CompanyUser.Status.APPROVED
+        ).values_list("company_id", flat=True)
+        return TenderCriterion.objects.filter(
+            company_id__in=user_companies
+        ).select_related("company")
+
+
+class ProcurementTenderViewSet(viewsets.ModelViewSet):
+    """
+    Тендери на закупівлю (company-scoped). Номер присвоюється при першому збереженні.
+    Доступ: будь-який авторизований користувач з підтвердженим членством у компанії.
+    Права доступу (tenders.create тощо) не перевіряються — обмеження знято за бажанням замовника.
+    """
+
+    serializer_class = ProcurementTenderSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser:
+            return ProcurementTender.objects.all().select_related(
+                "company", "category", "cpv_category", "expense_article",
+                "branch", "department", "currency", "created_by", "parent",
+            )
+        user_companies = CompanyUser.objects.filter(
+            user=user, status=CompanyUser.Status.APPROVED
+        ).values_list("company_id", flat=True)
+        return ProcurementTender.objects.filter(
+            company_id__in=user_companies
+        ).select_related(
+            "company", "category", "cpv_category", "expense_article",
+            "branch", "department", "currency", "created_by", "parent",
+        )
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+
+class SalesTenderViewSet(viewsets.ModelViewSet):
+    """
+    Тендери на продаж (company-scoped).
+    """
+
+    serializer_class = SalesTenderSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser:
+            return SalesTender.objects.all().select_related(
+                "company", "category", "cpv_category", "expense_article",
+                "branch", "department", "currency", "created_by", "parent",
+            )
+        user_companies = CompanyUser.objects.filter(
+            user=user, status=CompanyUser.Status.APPROVED
+        ).values_list("company_id", flat=True)
+        return SalesTender.objects.filter(
+            company_id__in=user_companies
+        ).select_related(
+            "company", "category", "cpv_category", "expense_article",
+            "branch", "department", "currency", "created_by", "parent",
+        )
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)

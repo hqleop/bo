@@ -36,15 +36,17 @@
                 "
                 @click="showNotifications = !showNotifications"
               />
-              <UDropdown :items="userMenuItems">
+              <UButton variant="ghost" @click="logoutUser">
                 <UAvatar :alt="userEmail" />
-              </UDropdown>
+              </UButton>
             </div>
           </div>
         </header>
 
         <div class="flex-1 min-h-0 overflow-y-auto p-6">
-          <slot />
+          <div :key="route.fullPath" class="h-full">
+            <slot />
+          </div>
         </div>
       </main>
     </div>
@@ -159,7 +161,7 @@ const menuLinks = computed(() => {
   const salesChildren: any[] = [
     {
       label: "Створити процедуру",
-      to: "/cabinet/tenders/create?type=sales",
+      to: "/cabinet/tenders/create/sales",
       icon: "i-heroicons-plus-circle",
     },
     {
@@ -178,7 +180,7 @@ const menuLinks = computed(() => {
   const purchaseChildren: any[] = [
     {
       label: "Створити процедуру",
-      to: "/cabinet/tenders/create?type=purchase",
+      to: "/cabinet/tenders/create/purchase",
       icon: "i-heroicons-plus-circle",
     },
     {
@@ -345,6 +347,11 @@ const userMenuItems = [
     },
   ],
 ];
+
+function logoutUser() {
+  const { logout } = useAuth();
+  logout();
+}
 
 const pageTitle = useRoute().meta.title || "Кабінет";
 
