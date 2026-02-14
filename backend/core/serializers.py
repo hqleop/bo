@@ -3,6 +3,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import get_user_model
 from .models import (
     Company,
+    CompanySupplier,
     CompanyUser,
     Role,
     Permission,
@@ -76,6 +77,38 @@ class CompanyListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Company
         fields = ("id", "edrpou", "name", "status")
+
+
+class CompanyCreateSerializer(serializers.ModelSerializer):
+    """Create company (e.g. counterparty) with code and name only."""
+
+    class Meta:
+        model = Company
+        fields = ("edrpou", "name")
+
+    def validate_edrpou(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Код компанії обов'язковий.")
+        if Company.objects.filter(edrpou=value.strip()).exists():
+            raise serializers.ValidationError("Компанія з таким кодом вже існує.")
+        return value.strip()
+
+    def validate_name(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Назва компанії обов'язкова.")
+        return value.strip()
+
+
+class CompanySupplierSerializer(serializers.ModelSerializer):
+    """Зв'язок компанія → контрагент. Для списку контрагентів."""
+
+    supplier_company = CompanyListSerializer(read_only=True)
+    supplier_company_id = serializers.IntegerField(write_only=True, required=True)
+
+    class Meta:
+        model = CompanySupplier
+        fields = ("id", "owner_company", "supplier_company", "supplier_company_id", "source", "created_at")
+        read_only_fields = ("id", "owner_company", "supplier_company", "source", "created_at")
 
 
 class CompanyRegistrationStep2Serializer(serializers.Serializer):

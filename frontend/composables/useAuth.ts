@@ -1,3 +1,6 @@
+// Один активний refresh на весь застосунок — уникнути паралельних викликів і подвійного запису cookie
+let refreshPromise: Promise<boolean> | null = null
+
 export const useAuth = () => {
   const config = useRuntimeConfig()
   const apiBase = config.public.apiBase
@@ -9,12 +12,12 @@ export const useAuth = () => {
     secure: isProd,
     sameSite: 'lax' as const
   }
-  const accessToken = useCookie<string | null>('access_token', { 
+  const accessToken = useCookie<string | null>('access_token', {
     default: () => null,
     maxAge: 60 * 15, // 15 хвилин (access token lifetime)
     ...cookieOptions
   })
-  const refreshToken = useCookie<string | null>('refresh_token', { 
+  const refreshToken = useCookie<string | null>('refresh_token', {
     default: () => null,
     maxAge: 60 * 60 * 24 * 7, // 7 днів (refresh token lifetime)
     ...cookieOptions
@@ -26,37 +29,43 @@ export const useAuth = () => {
         method: 'POST',
         body: { email, password }
       })
-      accessToken.value = data.access
-      refreshToken.value = data.refresh
+      if (accessToken.value !== data.access) accessToken.value = data.access
+      if (refreshToken.value !== data.refresh) refreshToken.value = data.refresh
       return { success: true }
     } catch (error: any) {
       return { success: false, error: error.data?.detail || error.message || 'Помилка входу' }
     }
   }
 
-  const refreshAccessToken = async () => {
-    if (!refreshToken.value) {
-      return false
-    }
+  const refreshAccessToken = async (): Promise<boolean> => {
+    if (!refreshToken.value) return false
 
-    try {
-      const data = await $fetch<{ access: string }>(`${apiBase}/auth/refresh/`, {
-        method: 'POST',
-        body: { refresh: refreshToken.value }
-      })
-      accessToken.value = data.access
-      return true
-    } catch (error) {
-      // Якщо refresh не вдався - очищаємо токени
-      accessToken.value = null
-      refreshToken.value = null
-      return false
-    }
+    if (refreshPromise) return refreshPromise
+
+    refreshPromise = (async () => {
+      try {
+        const data = await $fetch<{ access: string }>(`${apiBase}/auth/refresh/`, {
+          method: 'POST',
+          body: { refresh: refreshToken.value }
+        })
+        if (accessToken.value !== data.access) accessToken.value = data.access
+        return true
+      } catch (error) {
+        accessToken.value = null
+        refreshToken.value = null
+        return false
+      } finally {
+        refreshPromise = null
+      }
+    })()
+
+    return refreshPromise
   }
 
   const logout = () => {
     accessToken.value = null
     refreshToken.value = null
+    refreshPromise = null
     navigateTo('/')
   }
 
@@ -69,12 +78,8 @@ export const useAuth = () => {
     }
   }
 
-  // Перевірка валідності токена при ініціалізації
   const checkAuth = async () => {
-    if (!accessToken.value && refreshToken.value) {
-      // Спробуємо оновити access token
-      await refreshAccessToken()
-    }
+    if (!accessToken.value && refreshToken.value) await refreshAccessToken()
   }
 
   return {

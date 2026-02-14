@@ -8,6 +8,7 @@ from .views import (
     registration_step2_new_company,
     registration_step2_existing_company,
     CompanyViewSet,
+    CompanySupplierViewSet,
     CompanyUserViewSet,
     RoleViewSet,
     PermissionViewSet,
@@ -36,6 +37,7 @@ from .views import (
 
 router = DefaultRouter()
 router.register(r"companies", CompanyViewSet, basename="company")
+router.register(r"company-suppliers", CompanySupplierViewSet, basename="company-supplier")
 router.register(r"memberships", CompanyUserViewSet, basename="membership")
 router.register(r"roles", RoleViewSet, basename="role")
 router.register(r"permissions", PermissionViewSet, basename="permission")

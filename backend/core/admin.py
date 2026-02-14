@@ -2,6 +2,7 @@ from django.contrib import admin
 from .models import (
     User,
     Company,
+    CompanySupplier,
     CompanyUser,
     Role,
     Permission,
@@ -33,6 +34,13 @@ class CompanyAdmin(admin.ModelAdmin):
     list_display = ("name", "edrpou", "status", "goal_tenders", "goal_participation", "created_at")
     list_filter = ("status", "goal_tenders", "goal_participation")
     search_fields = ("name", "edrpou")
+
+
+@admin.register(CompanySupplier)
+class CompanySupplierAdmin(admin.ModelAdmin):
+    list_display = ("owner_company", "supplier_company", "source", "created_at")
+    list_filter = ("source", "owner_company")
+    search_fields = ("supplier_company__name", "supplier_company__edrpou")
 
 
 @admin.register(CompanyUser)

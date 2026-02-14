@@ -10,7 +10,7 @@ PERMISSIONS = [
     ("tenders.journal.view", "Журнал тендерів"),
     ("participation.view", "Участь в тендерах"),
     ("participation.journal.view", "Журнал участі"),
-    ("suppliers.view", "Постачальники"),
+    ("suppliers.view", "Контрагенти"),
     ("reference.view", "Довідник"),
     ("nomenclature.view", "Номенклатури"),
     ("categories.view", "Категорії"),

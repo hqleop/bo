@@ -66,6 +66,45 @@ class Company(models.Model):
         return f"{self.name} ({self.edrpou})"
 
 
+class CompanySupplier(models.Model):
+    """
+    Зв'язок «наша компанія — контрагент».
+    Контрагент: створений вручну або підтвердив участь у тендері (закупівля/продаж).
+    """
+
+    class Source(models.TextChoices):
+        MANUAL = "manual", "Додано вручну"
+        PARTICIPATION = "participation", "Участь у тендері"
+
+    owner_company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="supplier_relations",
+        help_text="Компанія, для якої ведеться список контрагентів",
+    )
+    supplier_company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="as_supplier_for",
+        help_text="Компанія-контрагент",
+    )
+    source = models.CharField(
+        max_length=20,
+        choices=Source.choices,
+        default=Source.MANUAL,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Контрагент компанії"
+        verbose_name_plural = "Контрагенти компанії"
+        unique_together = (("owner_company", "supplier_company"),)
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.owner_company_id} → {self.supplier_company.name}"
+
+
 class Permission(models.Model):
     """
     Global permission catalog for menu/modules (MVP).

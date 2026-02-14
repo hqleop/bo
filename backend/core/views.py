@@ -1,5 +1,6 @@
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -15,6 +16,7 @@ from drf_spectacular.types import OpenApiTypes
 
 from .models import (
     Company,
+    CompanySupplier,
     CompanyUser,
     Role,
     Permission,
@@ -40,6 +42,8 @@ from .serializers import (
     UserRegistrationStep1Serializer,
     CompanySerializer,
     CompanyListSerializer,
+    CompanyCreateSerializer,
+    CompanySupplierSerializer,
     CompanyRegistrationStep2Serializer,
     ExistingCompanyStep2Serializer,
     PermissionSerializer,
@@ -210,14 +214,32 @@ def registration_step2_existing_company(request):
     return Response(CompanyUserSerializer(membership).data, status=status.HTTP_201_CREATED)
 
 
-class CompanyViewSet(viewsets.ReadOnlyModelViewSet):
+class CompanyViewSet(viewsets.ModelViewSet):
     """
-    Company list/retrieve (for step 2 selection).
+    Company list/retrieve (for step 2 selection). Create for adding counterparties.
     """
 
     queryset = Company.objects.filter(status=Company.Status.ACTIVE)
     serializer_class = CompanyListSerializer
     permission_classes = [permissions.AllowAny]
+    http_method_names = ["get", "post", "head", "options"]
+
+    def get_permissions(self):
+        if self.action == "create":
+            return [permissions.IsAuthenticated()]
+        return [permissions.AllowAny()]
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return CompanyCreateSerializer
+        return CompanyListSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(
+            goal_tenders=False,
+            goal_participation=True,
+            status=Company.Status.ACTIVE,
+        )
 
     @extend_schema(
         summary="Список активних компаній",
@@ -232,6 +254,81 @@ class CompanyViewSet(viewsets.ReadOnlyModelViewSet):
     )
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Створити компанію (контрагента)",
+        description="Додати компанію вручну (код та назва). Для списку контрагентів.",
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @action(detail=True, methods=["get"], permission_classes=[permissions.IsAuthenticated])
+    def members(self, request, pk=None):
+        """Список користувачів (агентів) компанії."""
+        company = self.get_object()
+        memberships = CompanyUser.objects.filter(company=company).select_related(
+            "user", "role"
+        ).order_by("-created_at")
+        serializer = CompanyUserSerializer(memberships, many=True)
+        return Response(serializer.data)
+
+
+def _user_owner_company_ids(request):
+    """Company IDs for which the current user can manage counterparties (approved memberships)."""
+    user = request.user
+    if user.is_superuser:
+        return Company.objects.filter(status=Company.Status.ACTIVE).values_list("id", flat=True)
+    return (
+        CompanyUser.objects.filter(
+            user=user,
+            status=CompanyUser.Status.APPROVED,
+        )
+        .values_list("company_id", flat=True)
+        .distinct()
+    )
+
+
+class CompanySupplierViewSet(viewsets.ModelViewSet):
+    """
+    Список контрагентів компанії: додані вручну та (згодом) ті, хто підтвердив участь у тендерах.
+    """
+
+    serializer_class = CompanySupplierSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ["get", "post", "delete", "head", "options"]
+
+    def get_queryset(self):
+        owner_ids = list(_user_owner_company_ids(self.request))
+        return (
+            CompanySupplier.objects.filter(owner_company_id__in=owner_ids)
+            .select_related("supplier_company", "owner_company")
+            .order_by("-created_at")
+        )
+
+    def perform_create(self, serializer):
+        owner_ids = list(_user_owner_company_ids(self.request))
+        if not owner_ids:
+            raise permissions.exceptions.PermissionDenied("Немає доступу до жодної компанії.")
+        owner_id = owner_ids[0]
+        supplier_id = serializer.validated_data.get("supplier_company_id")
+        if supplier_id == owner_id:
+            raise DRFValidationError({"supplier_company_id": "Не можна додати власну компанію як контрагента."})
+        if not Company.objects.filter(id=supplier_id, status=Company.Status.ACTIVE).exists():
+            raise DRFValidationError({"supplier_company_id": "Компанію не знайдено або вона неактивна."})
+        if CompanySupplier.objects.filter(owner_company_id=owner_id, supplier_company_id=supplier_id).exists():
+            raise DRFValidationError({"supplier_company_id": "Ця компанія вже є у списку контрагентів."})
+        serializer.save(
+            owner_company_id=owner_id,
+            source=CompanySupplier.Source.MANUAL,
+        )
+
+    @extend_schema(summary="Список контрагентів", description="Контрагенти: додані вручну та з участі в тендерах.")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Додати контрагента вручну", request=CompanySupplierSerializer)
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
 
 
 class CompanyUserViewSet(viewsets.ModelViewSet):

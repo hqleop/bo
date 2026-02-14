@@ -44,7 +44,7 @@
         </header>
 
         <div class="flex-1 min-h-0 overflow-y-auto p-6">
-          <div :key="route.fullPath" class="h-full">
+          <div class="h-full">
             <slot />
           </div>
         </div>
@@ -195,9 +195,9 @@ const menuLinks = computed(() => {
     children: purchaseChildren,
   });
 
-  // Постачальники
+  // Контрагенти
   links.push({
-    label: "Постачальники",
+    label: "Контрагенти",
     to: "/cabinet/suppliers",
     icon: "i-heroicons-building-office",
   });
