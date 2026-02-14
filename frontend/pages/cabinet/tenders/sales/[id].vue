@@ -29,20 +29,21 @@
                 label="Категорія"
                 placeholder="Оберіть категорію"
                 search-placeholder="Пошук категорії"
-                :disabled="!!form.cpv_category"
+                :disabled="(form.cpv_ids?.length ?? 0) > 0"
                 :tree="categoryTree"
                 :selected-ids="selectedCategoryIds"
                 :search-term="categorySearch"
                 @toggle="toggleCategory"
                 @update:search-term="categorySearch = $event"
               />
-              <CpvLazySearch
+              <CpvLazyMultiSearch
                 label="Категорія CPV"
                 placeholder="Оберіть CPV"
                 :disabled="!!form.category"
-                :selected-id="form.cpv_category"
-                :selected-label="tender?.cpv_label || ''"
-                @update:selected-id="onCpvSelect"
+                :selected-ids="form.cpv_ids"
+                :selected-labels="tenderCpvLabels"
+                @update:selected-ids="form.cpv_ids = $event"
+                @update:selected-labels="tenderCpvLabels = $event"
               />
               <UFormField label="Стаття бюджету">
                 <USelectMenu v-model="form.expense_article" :items="expenseOptions" value-key="value" placeholder="Оберіть статтю" />
@@ -127,12 +128,81 @@
                   </div>
                 </div>
 
-                <div v-else class="space-y-3 text-sm text-gray-600">
-                  <div class="p-3 border rounded bg-gray-50">
-                    Фіксований критерій <b>Ціна</b> (з ПДВ/без ПДВ, з доставкою/без доставки).
+                <div v-else class="space-y-6">
+                  <!-- Параметри цінового критерія -->
+                  <div class="border rounded-lg p-4 bg-gray-50/50">
+                    <h4 class="text-sm font-semibold text-gray-700 mb-3">
+                      Параметри цінового критерія
+                    </h4>
+                    <div class="flex flex-wrap gap-6">
+                      <UFormField label="ПДВ" class="min-w-[200px]">
+                        <USelectMenu
+                          v-model="priceCriterionVat"
+                          :items="vatOptions"
+                          value-key="value"
+                          placeholder="Оберіть варіант"
+                        />
+                      </UFormField>
+                      <UFormField label="Доставка" class="min-w-[260px]">
+                        <USelectMenu
+                          v-model="priceCriterionDelivery"
+                          :items="deliveryOptions"
+                          value-key="value"
+                          placeholder="Оберіть варіант"
+                        />
+                      </UFormField>
+                    </div>
                   </div>
-                  <div class="p-3 border rounded">
-                    Довідникові критерії тендера додаються зі списку критеріїв.
+
+                  <!-- Інші критерії тендера -->
+                  <div class="border rounded-lg p-4">
+                    <h4 class="text-sm font-semibold text-gray-700 mb-3">
+                      Інші критерії тендера
+                    </h4>
+                    <p class="text-sm text-gray-600 mb-3">
+                      Додайте критерії з довідника. Учасники заповнюватимуть їх у пропозиціях.
+                    </p>
+                    <div class="flex items-end gap-3 mb-3">
+                      <div class="w-full max-w-xl">
+                        <ContentSearch
+                          label="Пошук і додавання критеріїв"
+                          placeholder="Критерії з довідника"
+                          search-placeholder="Пошук критеріїв"
+                          :tree="criteriaSearchTree"
+                          :selected-ids="selectedCriteriaIds"
+                          :search-term="criteriaSearch"
+                          @toggle="toggleTenderCriterion"
+                          @update:search-term="criteriaSearch = $event"
+                        />
+                      </div>
+                    </div>
+                    <ul
+                      v-if="tenderCriteria.length > 0"
+                      class="space-y-2 text-sm"
+                    >
+                      <li
+                        v-for="c in tenderCriteria"
+                        :key="c.id"
+                        class="flex items-center justify-between gap-2 py-2 px-3 rounded-md bg-gray-50 border border-gray-200"
+                      >
+                        <span class="font-medium">{{ c.name }}</span>
+                        <span class="text-gray-500 text-xs">{{ criterionTypeLabel(c.type) }}</span>
+                        <UButton
+                          icon="i-heroicons-trash"
+                          size="xs"
+                          variant="ghost"
+                          color="error"
+                          aria-label="Видалити з тендера"
+                          @click="removeCriterionFromTender(c)"
+                        />
+                      </li>
+                    </ul>
+                    <p
+                      v-else
+                      class="text-sm text-gray-500 py-2"
+                    >
+                      Критерії не додано. Оберіть критерії з довідника вище.
+                    </p>
                   </div>
                 </div>
               </template>
@@ -288,6 +358,24 @@ const prepTabs = [
   { label: "Позиції", value: "positions" },
   { label: "Критерії", value: "criteria" },
 ];
+
+// Параметри цінового критерія
+const priceCriterionVat = ref<string | undefined>(undefined);
+const priceCriterionDelivery = ref<string | undefined>(undefined);
+const vatOptions = [
+  { value: "with_vat", label: "з ПДВ" },
+  { value: "without_vat", label: "без ПДВ" },
+];
+const deliveryOptions = [
+  { value: "with_delivery", label: "Із урахуванням доставки" },
+  { value: "without_delivery", label: "Без урахування доставки" },
+];
+
+// Критерії з довідника та додані до тендера
+const referenceCriteria = ref<any[]>([]);
+const tenderCriteria = ref<any[]>([]);
+const criteriaSearch = ref("");
+
 const categorySearch = ref("");
 const nomenclatureSearch = ref("");
 const loadingNomenclatures = ref(false);
@@ -334,10 +422,11 @@ const currentStepValue = computed({
   },
 });
 
+const tenderCpvLabels = ref<string[]>([]);
 const form = reactive({
   name: "",
   category: null as number | null,
-  cpv_category: null as number | null,
+  cpv_ids: [] as number[],
   expense_article: null as number | null,
   estimated_budget: null as number | null,
   branch: null as number | null,
@@ -388,6 +477,44 @@ const canEditStart = computed(() => {
   return new Date() < new Date(tender.value.start_at);
 });
 
+// Дерево критеріїв для ContentSearch
+function criterionTypeLabel(type: string) {
+  const map: Record<string, string> = {
+    numeric: "Числовий",
+    text: "Текстовий",
+    file: "Файловий",
+    boolean: "Булевий",
+  };
+  return map[type] ?? type;
+}
+const criteriaSearchTree = computed(() =>
+  referenceCriteria.value.map((c: any) => ({
+    id: c.id,
+    name: `${c.name} (${criterionTypeLabel(c.type)})`,
+    children: [],
+  }))
+);
+const selectedCriteriaIds = computed(() => tenderCriteria.value.map((c) => c.id));
+
+async function loadReferenceCriteria() {
+  const { data } = await fetch("/tender-criteria/", { headers: getAuthHeaders() });
+  referenceCriteria.value = Array.isArray(data) ? data : [];
+}
+
+function toggleTenderCriterion(criterionId: number) {
+  const existing = tenderCriteria.value.find((c) => c.id === criterionId);
+  if (existing) {
+    tenderCriteria.value = tenderCriteria.value.filter((x) => x.id !== criterionId);
+    return;
+  }
+  const c = referenceCriteria.value.find((x) => x.id === criterionId);
+  if (c) tenderCriteria.value = [...tenderCriteria.value, c];
+}
+
+function removeCriterionFromTender(c: any) {
+  tenderCriteria.value = tenderCriteria.value.filter((x) => x.id !== c.id);
+}
+
 function flattenTree(items: any[], level = 0): { value: number; label: string }[] {
   const out: { value: number; label: string }[] = [];
   for (const item of items || []) {
@@ -399,12 +526,10 @@ function flattenTree(items: any[], level = 0): { value: number; label: string }[
 
 function toggleCategory(id: number) {
   form.category = form.category === id ? null : id;
-  if (form.category) form.cpv_category = null;
-}
-
-function onCpvSelect(id?: number) {
-  form.cpv_category = id ?? null;
-  if (form.cpv_category) form.category = null;
+  if (form.category) {
+    form.cpv_ids = [];
+    tenderCpvLabels.value = [];
+  }
 }
 
 function isoToInput(value?: string | null) {
@@ -427,10 +552,12 @@ async function loadTender() {
     }
     tender.value = data;
     displayStage.value = data.stage ?? "passport";
+    const cpvList = data.cpv_categories || [];
+    form.cpv_ids = cpvList.length ? cpvList.map((c: any) => c.id) : (data.cpv_category != null ? [data.cpv_category] : []);
+    tenderCpvLabels.value = cpvList.length ? cpvList.map((c: any) => c.label || `${c.cpv_code || ""} - ${c.name_ua || ""}`.trim()) : (data.cpv_label ? [data.cpv_label] : []);
     Object.assign(form, {
       name: data.name ?? "",
       category: data.category ?? null,
-      cpv_category: data.cpv_category ?? null,
       expense_article: data.expense_article ?? null,
       estimated_budget: data.estimated_budget ?? null,
       branch: data.branch ?? null,
@@ -468,11 +595,13 @@ async function loadNomenclaturesForPreparation() {
     const headers = getAuthHeaders();
     let items: any[] = [];
 
-    if (form.cpv_category) {
-      const { data } = await fetch(`/nomenclatures/?cpv_id=${form.cpv_category}`, {
-        headers,
-      });
-      items = (data as any[]) || [];
+    if ((form.cpv_ids?.length ?? 0) > 0) {
+      const merged = new Map<number, any>();
+      for (const cpvId of form.cpv_ids) {
+        const { data: byCpv } = await fetch(`/nomenclatures/?cpv_id=${cpvId}`, { headers });
+        for (const n of (byCpv as any[]) || []) merged.set(n.id, n);
+      }
+      items = Array.from(merged.values());
     } else if (form.category) {
       const { data: byCategory } = await fetch(
         `/nomenclatures/?category_id=${form.category}`,
@@ -559,7 +688,7 @@ async function savePassport() {
     await patchTender({
       name: form.name,
       category: form.category,
-      cpv_category: form.cpv_category,
+      cpv_ids: form.cpv_ids,
       expense_article: form.expense_article,
       estimated_budget: form.estimated_budget,
       branch: form.branch,
@@ -631,7 +760,7 @@ async function fixDecision(mode: "winner" | "cancel" | "next_round") {
       name: tender.value.name,
       stage: "preparation",
       category: tender.value.category,
-      cpv_category: tender.value.cpv_category,
+      cpv_ids: (tender.value.cpv_categories || []).map((c: any) => c.id),
       expense_article: tender.value.expense_article,
       estimated_budget: tender.value.estimated_budget,
       branch: tender.value.branch,
@@ -658,13 +787,16 @@ onMounted(async () => {
 
 watch(tenderId, () => loadTender());
 watch(
-  () => [form.category, form.cpv_category, tender.value?.stage],
+  () => [form.category, form.cpv_ids, tender.value?.stage],
   async () => {
     if (tender.value?.stage === "preparation") {
       await loadNomenclaturesForPreparation();
     }
   }
 );
+watch(prepTab, (tab) => {
+  if (tab === "criteria") loadReferenceCriteria();
+});
 </script>
 
 <style scoped>

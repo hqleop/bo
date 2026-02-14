@@ -388,7 +388,13 @@ class Nomenclature(models.Model):
         null=True,
         blank=True,
         related_name="nomenclatures",
-        help_text="CPV-категорія, якщо не використовується звичайна категорія",
+        help_text="CPV-категорія (зберігається для сумісності, використовуйте cpv_categories)",
+    )
+    cpv_categories = models.ManyToManyField(
+        CpvDictionary,
+        related_name="nomenclatures_by_cpvs",
+        blank=True,
+        help_text="CPV-категорії для прив'язки номенклатури",
     )
     is_active = models.BooleanField(default=True)
 
@@ -510,6 +516,13 @@ class ProcurementTender(models.Model):
         null=True,
         blank=True,
         related_name="procurement_tenders",
+        help_text="Зберігається для сумісності, використовуйте cpv_categories",
+    )
+    cpv_categories = models.ManyToManyField(
+        CpvDictionary,
+        related_name="procurement_tenders_by_cpvs",
+        blank=True,
+        help_text="CPV-категорії тендера",
     )
     expense_article = models.ForeignKey(
         ExpenseArticle,
@@ -641,6 +654,13 @@ class SalesTender(models.Model):
         null=True,
         blank=True,
         related_name="sales_tenders",
+        help_text="Зберігається для сумісності, використовуйте cpv_categories",
+    )
+    cpv_categories = models.ManyToManyField(
+        CpvDictionary,
+        related_name="sales_tenders_by_cpvs",
+        blank=True,
+        help_text="CPV-категорії тендера",
     )
     expense_article = models.ForeignKey(
         ExpenseArticle,

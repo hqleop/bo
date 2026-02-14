@@ -1,6 +1,6 @@
 <template>
-  <div class="h-full flex flex-col">
-    <div class="flex justify-between items-center mb-4">
+  <div class="h-full flex flex-col min-h-0">
+    <div class="flex-shrink-0 flex justify-between items-center mb-4">
       <h2 class="text-2xl font-bold">
         {{ viewType === 'purchase' ? 'Журнал закупівель' : 'Журнал продажів' }}
       </h2>
@@ -13,9 +13,10 @@
       </UButton>
     </div>
 
+    <!-- Область таблиці зі скролом -->
     <div class="flex-1 min-h-0 overflow-auto">
       <UTable
-        v-if="tenders.length > 0"
+        v-if="tableData.length > 0"
         :data="tableData"
         :columns="tableColumns"
         class="w-full"
@@ -60,6 +61,24 @@
         {{ viewType === 'purchase' ? 'Немає тендерів на закупівлю. Створіть перший.' : 'Немає тендерів на продаж. Створіть перший.' }}
       </div>
     </div>
+
+    <!-- Пагінація закріплена по нижньому краю -->
+    <div
+      v-if="totalCount > 0"
+      class="flex-shrink-0 flex items-center justify-between gap-4 py-2 border-t border-gray-200"
+    >
+      <span class="text-sm text-gray-600">
+        Показано {{ tableData.length }} з {{ totalCount }}
+        {{ viewType === 'purchase' ? 'тендерів' : 'тендерів' }}
+      </span>
+      <UPagination
+        v-model:page="currentPage"
+        :total="totalCount"
+        :items-per-page="TENDERS_PAGE_SIZE"
+        :sibling-count="1"
+        show-edges
+      />
+    </div>
   </div>
 </template>
 
@@ -73,10 +92,13 @@ definePageMeta({
 const route = useRoute();
 const viewType = computed(() => (route.query.view === 'sales' ? 'sales' : 'purchase'));
 
+const TENDERS_PAGE_SIZE = 20;
+
 const { getAuthHeaders } = useAuth();
 const { fetch } = useApi();
 
 const tenders = ref<any[]>([]);
+const currentPage = ref(1);
 
 const tableColumns = [
   { accessorKey: 'number', header: 'Номер' },
@@ -86,7 +108,13 @@ const tableColumns = [
   { accessorKey: 'created_at', header: 'Створено' },
 ];
 
-const tableData = computed(() => tenders.value);
+const totalCount = computed(() => tenders.value.length);
+
+const tableData = computed(() => {
+  const list = tenders.value;
+  const start = (currentPage.value - 1) * TENDERS_PAGE_SIZE;
+  return list.slice(start, start + TENDERS_PAGE_SIZE);
+});
 
 const createUrl = computed(() => {
   const type = viewType.value === 'purchase' ? 'purchase' : 'sales';
@@ -100,5 +128,8 @@ async function loadTenders() {
 }
 
 onMounted(() => loadTenders());
-watch(viewType, () => loadTenders());
+watch(viewType, () => {
+  currentPage.value = 1;
+  loadTenders();
+});
 </script>

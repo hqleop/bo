@@ -405,6 +405,10 @@ class NomenclatureSerializer(serializers.ModelSerializer):
     unit_name = serializers.CharField(source="unit.name", read_only=True)
     category_name = serializers.CharField(source="category.name", read_only=True)
     cpv_label = serializers.SerializerMethodField()
+    cpv_categories = serializers.SerializerMethodField()
+    cpv_ids = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=CpvDictionary.objects.all(), required=False, source="cpv_categories"
+    )
 
     class Meta:
         model = Nomenclature
@@ -423,17 +427,29 @@ class NomenclatureSerializer(serializers.ModelSerializer):
             "category_name",
             "cpv_category",
             "cpv_label",
+            "cpv_categories",
+            "cpv_ids",
             "is_active",
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "created_at", "updated_at")
+        read_only_fields = ("id", "created_at", "updated_at", "cpv_categories")
 
     def get_cpv_label(self, obj):
+        qs = obj.cpv_categories.all()
+        if qs.exists():
+            cpv = qs.first()
+            return f"{cpv.cpv_code} - {cpv.name_ua}"
         cpv = obj.cpv_category
         if not cpv:
             return ""
         return f"{cpv.cpv_code} - {cpv.name_ua}"
+
+    def get_cpv_categories(self, obj):
+        return [
+            {"id": c.id, "cpv_code": c.cpv_code, "name_ua": c.name_ua, "label": f"{c.cpv_code} - {c.name_ua}"}
+            for c in obj.cpv_categories.all()
+        ]
 
 
 class CurrencySerializer(serializers.ModelSerializer):
@@ -477,6 +493,10 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
     currency_code = serializers.CharField(source="currency.code", read_only=True)
     category_name = serializers.SerializerMethodField()
     cpv_label = serializers.SerializerMethodField()
+    cpv_categories = serializers.SerializerMethodField()
+    cpv_ids = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=CpvDictionary.objects.all(), required=False, source="cpv_categories"
+    )
     expense_article_name = serializers.SerializerMethodField()
     branch_name = serializers.SerializerMethodField()
     department_name = serializers.SerializerMethodField()
@@ -496,6 +516,8 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             "category_name",
             "cpv_category",
             "cpv_label",
+            "cpv_categories",
+            "cpv_ids",
             "expense_article",
             "expense_article_name",
             "estimated_budget",
@@ -527,6 +549,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             "currency_code",
             "category_name",
             "cpv_label",
+            "cpv_categories",
             "expense_article_name",
             "branch_name",
             "department_name",
@@ -536,9 +559,19 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
         return obj.category.name if obj.category else ""
 
     def get_cpv_label(self, obj):
+        qs = obj.cpv_categories.all()
+        if qs.exists():
+            cpv = qs.first()
+            return f"{cpv.cpv_code} - {cpv.name_ua}"
         if not obj.cpv_category_id:
             return ""
         return f"{obj.cpv_category.cpv_code} - {obj.cpv_category.name_ua}"
+
+    def get_cpv_categories(self, obj):
+        return [
+            {"id": c.id, "cpv_code": c.cpv_code, "name_ua": c.name_ua, "label": f"{c.cpv_code} - {c.name_ua}"}
+            for c in obj.cpv_categories.all()
+        ]
 
     def get_expense_article_name(self, obj):
         return obj.expense_article.name if obj.expense_article else ""
@@ -563,6 +596,10 @@ class SalesTenderSerializer(serializers.ModelSerializer):
     currency_code = serializers.CharField(source="currency.code", read_only=True)
     category_name = serializers.SerializerMethodField()
     cpv_label = serializers.SerializerMethodField()
+    cpv_categories = serializers.SerializerMethodField()
+    cpv_ids = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=CpvDictionary.objects.all(), required=False, source="cpv_categories"
+    )
     expense_article_name = serializers.SerializerMethodField()
     branch_name = serializers.SerializerMethodField()
     department_name = serializers.SerializerMethodField()
@@ -582,6 +619,8 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             "category_name",
             "cpv_category",
             "cpv_label",
+            "cpv_categories",
+            "cpv_ids",
             "expense_article",
             "expense_article_name",
             "estimated_budget",
@@ -613,6 +652,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             "currency_code",
             "category_name",
             "cpv_label",
+            "cpv_categories",
             "expense_article_name",
             "branch_name",
             "department_name",
@@ -622,9 +662,19 @@ class SalesTenderSerializer(serializers.ModelSerializer):
         return obj.category.name if obj.category else ""
 
     def get_cpv_label(self, obj):
+        qs = obj.cpv_categories.all()
+        if qs.exists():
+            cpv = qs.first()
+            return f"{cpv.cpv_code} - {cpv.name_ua}"
         if not obj.cpv_category_id:
             return ""
         return f"{obj.cpv_category.cpv_code} - {obj.cpv_category.name_ua}"
+
+    def get_cpv_categories(self, obj):
+        return [
+            {"id": c.id, "cpv_code": c.cpv_code, "name_ua": c.name_ua, "label": f"{c.cpv_code} - {c.name_ua}"}
+            for c in obj.cpv_categories.all()
+        ]
 
     def get_expense_article_name(self, obj):
         return obj.expense_article.name if obj.expense_article else ""

@@ -1325,7 +1325,9 @@ class NomenclatureViewSet(viewsets.ModelViewSet):
         if category_id:
             qs = qs.filter(category_id=category_id)
         if cpv_id:
-            qs = qs.filter(cpv_category_id=cpv_id)
+            qs = qs.filter(
+                Q(cpv_category_id=cpv_id) | Q(cpv_categories__id=cpv_id)
+            ).distinct()
 
         return qs
 

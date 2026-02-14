@@ -16,7 +16,7 @@
               label="Категорія"
               placeholder="Оберіть категорію"
               search-placeholder="Пошук категорії"
-              :disabled="!!form.cpv_category"
+              :disabled="(form.cpv_ids?.length ?? 0) > 0"
               :tree="categoryTree"
               :selected-ids="selectedCategoryIds"
               :search-term="categorySearch"
@@ -24,12 +24,14 @@
               @update:search-term="categorySearch = $event"
             />
 
-            <CpvLazySearch
+            <CpvLazyMultiSearch
               label="Категорія CPV"
               placeholder="Оберіть CPV"
               :disabled="!!form.category"
-              :selected-id="form.cpv_category"
-              @update:selected-id="onCpvSelect"
+              :selected-ids="form.cpv_ids"
+              :selected-labels="createCpvLabels"
+              @update:selected-ids="form.cpv_ids = $event"
+              @update:selected-labels="createCpvLabels = $event"
             />
 
             <UFormField label="Стаття бюджету">
@@ -98,10 +100,11 @@ const stageItems = [
 const stepperItems = stageItems.map((s) => ({ ...s, description: "" }));
 const currentStepValue = ref("passport");
 
+const createCpvLabels = ref<string[]>([]);
 const form = reactive({
   name: "",
   category: undefined as number | undefined,
-  cpv_category: undefined as number | undefined,
+  cpv_ids: [] as number[],
   expense_article: undefined as number | undefined,
   estimated_budget: undefined as number | undefined,
   branch: undefined as number | undefined,
@@ -141,12 +144,10 @@ function flattenTree(items: any[], level = 0): { value: number; label: string }[
 
 function toggleCategory(id: number) {
   form.category = form.category === id ? undefined : id;
-  if (form.category) form.cpv_category = undefined;
-}
-
-function onCpvSelect(id?: number) {
-  form.cpv_category = id;
-  if (form.cpv_category) form.category = undefined;
+  if (form.category) {
+    form.cpv_ids = [];
+    createCpvLabels.value = [];
+  }
 }
 
 async function loadOptions() {
@@ -217,7 +218,7 @@ async function saveTender() {
         name: form.name.trim(),
         stage: "preparation",
         category: form.category,
-        cpv_category: form.cpv_category,
+        cpv_ids: form.cpv_ids,
         expense_article: form.expense_article,
         estimated_budget: form.estimated_budget,
         branch: form.branch,

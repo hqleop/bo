@@ -1,7 +1,7 @@
 <template>
   <div class="h-full flex gap-4">
     <!-- Ліва область: список номенклатури -->
-    <div class="flex-[2] border-r border-gray-200 p-4 flex flex-col">
+    <div class="flex-[2] border-r border-gray-200 p-4 flex flex-col min-h-0">
       <div class="flex justify-between items-center mb-4">
         <h2 class="text-2xl font-bold">Номенклатури</h2>
         <div class="flex gap-2">
@@ -26,7 +26,8 @@
             variant="outline"
             color="green"
             :disabled="
-              !selectedNomenclature || selectedNomenclature.is_active
+              selectedNomenclatures.length === 0 ||
+              selectedNomenclatures.every((n) => n.is_active)
             "
             @click="activateSelected"
           >
@@ -38,7 +39,8 @@
             variant="outline"
             color="yellow"
             :disabled="
-              !selectedNomenclature || !selectedNomenclature.is_active
+              selectedNomenclatures.length === 0 ||
+              selectedNomenclatures.every((n) => !n.is_active)
             "
             @click="deactivateSelected"
           >
@@ -49,7 +51,7 @@
             size="sm"
             variant="outline"
             color="red"
-            :disabled="!selectedNomenclature"
+            :disabled="selectedNomenclatures.length === 0"
             @click="deleteSelected"
           >
             Видалити
@@ -57,14 +59,31 @@
         </div>
       </div>
 
-      <div class="flex-1 overflow-y-auto min-h-0 flex flex-col gap-3">
+      <!-- Область таблиці зі скролом -->
+      <div class="flex-1 min-h-0 overflow-auto">
         <UTable
           :data="tableData"
           :columns="tableColumns"
           :meta="tableMeta"
           class="w-full"
-          @on-select="(_e, row) => selectNomenclature(row.original)"
+          @on-select="(_e, row) => toggleSelectRow(row.original.id)"
         >
+          <template #select-header>
+            <UCheckbox
+              :model-value="isAllOnPageSelected"
+              :indeterminate="isSomeOnPageSelected && !isAllOnPageSelected"
+              aria-label="Обрати всі на сторінці"
+              @update:model-value="toggleSelectAllOnPage"
+            />
+          </template>
+          <template #select-cell="{ row }">
+            <UCheckbox
+              :model-value="selectedNomenclatureIds.includes(row.original.id)"
+              aria-label="Обрати рядок"
+              @update:model-value="toggleSelectRow(row.original.id)"
+              @click.stop
+            />
+          </template>
           <template #actions-cell="{ row }">
             <UButton
               icon="i-heroicons-pencil-square"
@@ -81,22 +100,23 @@
         >
           Номенклатур не знайдено за вибраними фільтрами
         </div>
-        <div
-          v-else
-          class="flex items-center justify-between gap-4 py-2 border-t border-gray-200"
-        >
-          <span class="text-sm text-gray-600">
-            Показано {{ tableData.length }} з {{ totalFilteredCount }}
-            номенклатур
-          </span>
-          <UPagination
-            v-model:page="currentPage"
-            :total="totalFilteredCount"
-            :items-per-page="NOMENCLATURE_PAGE_SIZE"
-            :sibling-count="1"
-            show-edges
-          />
-        </div>
+      </div>
+      <!-- Пагінація закріплена по нижньому краю -->
+      <div
+        v-if="filteredNomenclatures.length > 0"
+        class="flex-shrink-0 flex items-center justify-between gap-4 py-2 border-t border-gray-200"
+      >
+        <span class="text-sm text-gray-600">
+          Показано {{ tableData.length }} з {{ totalFilteredCount }}
+          номенклатур
+        </span>
+        <UPagination
+          v-model:page="currentPage"
+          :total="totalFilteredCount"
+          :items-per-page="NOMENCLATURE_PAGE_SIZE"
+          :sibling-count="1"
+          show-edges
+        />
       </div>
     </div>
 
@@ -217,44 +237,15 @@
             />
           </UFormField>
 
-          <UFormField
+          <CpvLazyMultiSearch
             label="Категорія CPV"
-            name="cpv_category"
-            help="Доступна, якщо не обрана звичайна категорія"
-          >
-            <UPopover v-model:open="showCpvPopover">
-              <UButton
-                block
-                variant="outline"
-                :disabled="!!nomenclatureForm.category"
-              >
-                <span v-if="selectedCpvLabels.length">
-                  {{ selectedCpvLabels[0] }}
-                </span>
-                <span v-else>Оберіть CPV-категорію</span>
-              </UButton>
-              <template #content>
-                <div
-                  class="p-2 w-96 max-h-80 overflow-y-auto space-y-2 bg-white dark:bg-gray-900 rounded-lg shadow"
-                >
-                  <UInput
-                    v-model="cpvSearch"
-                    size="sm"
-                    placeholder="Пошук за кодом або назвою"
-                  />
-                  <div class="mt-2 space-y-1">
-                    <CpvTreeItem
-                      v-for="node in filteredCpvTree"
-                      :key="node.id"
-                      :item="node"
-                      :selected-ids="selectedCpvIds"
-                      @toggle="toggleCpvSingle"
-                    />
-                  </div>
-                </div>
-              </template>
-            </UPopover>
-          </UFormField>
+            placeholder="Оберіть CPV-категорії (доступні, якщо не обрана звичайна категорія)"
+            :disabled="!!nomenclatureForm.category"
+            :selected-ids="selectedCpvIds"
+            :selected-labels="selectedCpvLabels"
+            @update:selected-ids="selectedCpvIds = $event"
+            @update:selected-labels="selectedCpvLabels = $event"
+          />
 
           <div class="flex gap-4 mt-4">
             <UButton
@@ -346,11 +337,11 @@ const { fetch } = useApi();
 
 // Дані
 const nomenclatures = ref<any[]>([]);
-const selectedNomenclature = ref<any | null>(null);
+/** ID обраних номенклатур (множинний вибір для Активувати/Деактивувати/Видалити) */
+const selectedNomenclatureIds = ref<number[]>([]);
 
 const units = ref<any[]>([]);
 const categories = ref<any[]>([]);
-const cpvTree = ref<any[]>([]);
 
 // Фільтри
 const filters = reactive({
@@ -365,7 +356,6 @@ const currentPage = ref(1);
 // Стан форм / модалок
 const showNomenclatureModal = ref(false);
 const showUnitsModal = ref(false);
-const showCpvPopover = ref(false);
 const saving = ref(false);
 const savingUnit = ref(false);
 const editingNomenclature = ref<any | null>(null);
@@ -387,9 +377,9 @@ const unitForm = reactive({
   name: "",
 });
 
-// CPV для форми
+// CPV для форми (мультивибір)
 const selectedCpvIds = ref<number[]>([]);
-const cpvSearch = ref("");
+const selectedCpvLabels = ref<string[]>([]);
 
 // Допоміжні функції
 const getCurrentCompany = async () => {
@@ -435,16 +425,6 @@ const loadCategories = async () => {
   }
 };
 
-const loadCpvTree = async () => {
-  const { data } = await fetch("/cpv/tree/", {
-    headers: getAuthHeaders(),
-  });
-  if (data) {
-    cpvTree.value = data;
-  } else {
-    cpvTree.value = [];
-  }
-};
 
 // Опції для селектів
 const unitOptions = computed(() =>
@@ -586,12 +566,52 @@ const filteredNomenclatures = computed(() => {
 });
 
 // Вибір номенклатури
-const selectNomenclature = (item: any) => {
-  selectedNomenclature.value = item;
+/** Обрані номенклатури (обчислюється з filtered за selectedNomenclatureIds) */
+const selectedNomenclatures = computed(() =>
+  filteredNomenclatures.value.filter((n) =>
+    selectedNomenclatureIds.value.includes(n.id),
+  ),
+);
+
+/** Чекбокс: обрано всі рядки поточної сторінки */
+const isAllOnPageSelected = computed(() => {
+  const ids = selectedNomenclatureIds.value;
+  const page = tableData.value;
+  return page.length > 0 && page.every((row) => ids.includes(row.id));
+});
+
+/** Чекбокс: обрано хоча б один рядок на сторінці */
+const isSomeOnPageSelected = computed(() => {
+  const ids = selectedNomenclatureIds.value;
+  return tableData.value.some((row) => ids.includes(row.id));
+});
+
+const toggleSelectRow = (id: number) => {
+  const idx = selectedNomenclatureIds.value.indexOf(id);
+  if (idx === -1) {
+    selectedNomenclatureIds.value = [...selectedNomenclatureIds.value, id];
+  } else {
+    selectedNomenclatureIds.value = selectedNomenclatureIds.value.filter(
+      (x) => x !== id,
+    );
+  }
+};
+
+const toggleSelectAllOnPage = () => {
+  const pageIds = tableData.value.map((r) => r.id);
+  const ids = selectedNomenclatureIds.value;
+  const allSelected = pageIds.every((id) => ids.includes(id));
+  if (allSelected) {
+    selectedNomenclatureIds.value = ids.filter((id) => !pageIds.includes(id));
+  } else {
+    const set = new Set([...ids, ...pageIds]);
+    selectedNomenclatureIds.value = [...set];
+  }
 };
 
 // Колонки таблиці номенклатур
 const tableColumns = [
+  { id: "select", header: "" },
   { accessorKey: "name", header: "Назва" },
   { accessorKey: "code", header: "Код/Артикул" },
   { accessorKey: "external_number", header: "Зовн. номер" },
@@ -605,11 +625,11 @@ const tableColumns = [
   { id: "actions", header: "Дії" },
 ];
 
-// Підсвітка обраного рядка та дані для таблиці (category_display)
+// Підсвітка обраних рядків
 const tableMeta = computed(() => ({
   class: {
     tr: (row: any) =>
-      row.original?.id === selectedNomenclature.value?.id
+      selectedNomenclatureIds.value.includes(row.original?.id)
         ? "bg-blue-50 cursor-pointer"
         : "cursor-pointer",
   },
@@ -663,7 +683,9 @@ const openNomenclatureModal = (item?: any) => {
     nomenclatureForm.specification_file = item.specification_file || "";
     nomenclatureForm.image_file = item.image_file || "";
     nomenclatureForm.category = item.category || null;
-    selectedCpvIds.value = item.cpv_category ? [item.cpv_category] : [];
+    const cpvs = item.cpv_categories || [];
+    selectedCpvIds.value = cpvs.length ? cpvs.map((c: any) => c.id) : (item.cpv_category ? [item.cpv_category] : []);
+    selectedCpvLabels.value = cpvs.length ? cpvs.map((c: any) => c.label || `${c.cpv_code || ""} - ${c.name_ua || ""}`.trim()) : (item.cpv_label ? [item.cpv_label] : []);
   } else {
     nomenclatureForm.id = null;
     nomenclatureForm.name = "";
@@ -675,6 +697,7 @@ const openNomenclatureModal = (item?: any) => {
     nomenclatureForm.image_file = "";
     nomenclatureForm.category = null;
     selectedCpvIds.value = [];
+    selectedCpvLabels.value = [];
   }
 
   showNomenclatureModal.value = true;
@@ -684,60 +707,7 @@ const onFormCategoryChange = (value: number | null) => {
   nomenclatureForm.category = value ?? null;
   if (nomenclatureForm.category) {
     selectedCpvIds.value = [];
-  }
-};
-
-// CPV дерево для форми
-function filterCpvTree(list: any[], predicate: (node: any) => boolean): any[] {
-  const result: any[] = [];
-  for (const node of list) {
-    const children = node.children ? filterCpvTree(node.children, predicate) : [];
-    if (predicate(node) || children.length) {
-      result.push({ ...node, children });
-    }
-  }
-  return result;
-}
-
-const filteredCpvTree = computed(() => {
-  const term = cpvSearch.value.trim();
-  if (!term) return cpvTree.value;
-  const lower = term.toLowerCase();
-  const isDigit = /^[0-9]/.test(lower);
-  const predicate = (node: any) => {
-    if (isDigit) {
-      return (node.cpv_code || "").toLowerCase().includes(lower);
-    }
-    return (node.name_ua || "").toLowerCase().includes(lower);
-  };
-  return filterCpvTree(cpvTree.value, predicate);
-});
-
-const selectedCpvLabels = computed(() => {
-  if (!selectedCpvIds.value.length) return [];
-  const all: any[] = [];
-  const walk = (nodes: any[]) => {
-    for (const n of nodes) {
-      all.push(n);
-      if (n.children?.length) walk(n.children);
-    }
-  };
-  walk(cpvTree.value);
-  return selectedCpvIds.value
-    .map((id) => {
-      const node = all.find((n) => n.id === id);
-      return node ? `${node.cpv_code} - ${node.name_ua}` : "";
-    })
-    .filter(Boolean);
-});
-
-const toggleCpvSingle = (id: number) => {
-  if (selectedCpvIds.value.includes(id)) {
-    selectedCpvIds.value = [];
-  } else {
-    selectedCpvIds.value = [id];
-    // якщо обрано CPV — очищаємо звичайну категорію
-    nomenclatureForm.category = null;
+    selectedCpvLabels.value = [];
   }
 };
 
@@ -767,10 +737,10 @@ const saveNomenclature = async () => {
       specification_file: nomenclatureForm.specification_file,
       image_file: nomenclatureForm.image_file,
       category: nomenclatureForm.category,
-      cpv_category:
+      cpv_ids:
         !nomenclatureForm.category && selectedCpvIds.value.length
-          ? selectedCpvIds.value[0]
-          : null,
+          ? selectedCpvIds.value
+          : [],
     };
 
     let endpoint = "/nomenclatures/";
@@ -800,68 +770,76 @@ const saveNomenclature = async () => {
   }
 };
 
-// Активувати / деактивувати / видалити
+// Активувати / деактивувати / видалити (множинний вибір)
 const deactivateSelected = async () => {
-  if (!selectedNomenclature.value) return;
-  const { id, name } = selectedNomenclature.value;
+  const toDeactivate = selectedNomenclatures.value.filter((n) => n.is_active);
+  if (toDeactivate.length === 0) return;
   if (
     !confirm(
-      `Деактивувати номенклатуру "${name}"? Вона не буде доступна для вибору.`,
+      `Деактивувати ${toDeactivate.length} номенклатур? Вони не будуть доступні для вибору.`,
     )
   ) {
     return;
   }
-  const { error } = await fetch(`/nomenclatures/${id}/deactivate/`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-  });
-  if (error) {
-    alert("Помилка деактивації номенклатури");
-    return;
+  for (const { id } of toDeactivate) {
+    const { error } = await fetch(`/nomenclatures/${id}/deactivate/`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+    });
+    if (error) {
+      alert("Помилка деактивації номенклатури");
+      return;
+    }
   }
+  selectedNomenclatureIds.value = [];
   await loadNomenclatures();
 };
 
 const activateSelected = async () => {
-  if (!selectedNomenclature.value) return;
-  const { id, name } = selectedNomenclature.value;
+  const toActivate = selectedNomenclatures.value.filter((n) => !n.is_active);
+  if (toActivate.length === 0) return;
   if (
     !confirm(
-      `Активувати номенклатуру "${name}"? Вона буде доступна для вибору.`,
+      `Активувати ${toActivate.length} номенклатур? Вони будуть доступні для вибору.`,
     )
   ) {
     return;
   }
-  const { error } = await fetch(`/nomenclatures/${id}/activate/`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-  });
-  if (error) {
-    alert("Помилка активації номенклатури");
-    return;
+  for (const { id } of toActivate) {
+    const { error } = await fetch(`/nomenclatures/${id}/activate/`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+    });
+    if (error) {
+      alert("Помилка активації номенклатури");
+      return;
+    }
   }
+  selectedNomenclatureIds.value = [];
   await loadNomenclatures();
 };
 
 const deleteSelected = async () => {
-  if (!selectedNomenclature.value) return;
-  const { id, name } = selectedNomenclature.value;
+  const toDelete = selectedNomenclatures.value;
+  if (toDelete.length === 0) return;
   if (
     !confirm(
-      `Видалити номенклатуру "${name}"? Цю дію не можна буде скасувати.`,
+      `Видалити ${toDelete.length} номенклатур? Цю дію не можна буде скасувати.`,
     )
   ) {
     return;
   }
-  const { error } = await fetch(`/nomenclatures/${id}/`, {
-    method: "DELETE",
-    headers: getAuthHeaders(),
-  });
-  if (error) {
-    alert("Помилка видалення номенклатури");
-    return;
+  for (const { id } of toDelete) {
+    const { error } = await fetch(`/nomenclatures/${id}/`, {
+      method: "DELETE",
+      headers: getAuthHeaders(),
+    });
+    if (error) {
+      alert("Помилка видалення номенклатури");
+      return;
+    }
   }
-  selectedNomenclature.value = null;
+  selectedNomenclatureIds.value = [];
   await loadNomenclatures();
 };
 
@@ -919,7 +897,6 @@ onMounted(async () => {
     loadNomenclatures(),
     loadUnits(),
     loadCategories(),
-    loadCpvTree(),
   ]);
 });
 </script>
