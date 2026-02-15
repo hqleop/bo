@@ -14,7 +14,7 @@ export const useAuth = () => {
   }
   const accessToken = useCookie<string | null>('access_token', {
     default: () => null,
-    maxAge: 60 * 15, // 15 хвилин (access token lifetime)
+    maxAge: 60 * 60 * 24, // 1 день — узгоджено з бекендом (ACCESS_TOKEN_LIFETIME)
     ...cookieOptions
   })
   const refreshToken = useCookie<string | null>('refresh_token', {

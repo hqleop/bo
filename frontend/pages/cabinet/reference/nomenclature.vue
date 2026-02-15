@@ -13,14 +13,6 @@
             Додати номенклатуру
           </UButton>
           <UButton
-            icon="i-heroicons-cog-6-tooth"
-            size="sm"
-            variant="outline"
-            @click="openUnitsModal"
-          >
-            Одиниці виміру
-          </UButton>
-          <UButton
             icon="i-heroicons-check-circle"
             size="sm"
             variant="outline"
@@ -263,63 +255,6 @@
       </UCard>
       </template>
     </UModal>
-
-    <!-- Модальне вікно одиниць виміру -->
-    <UModal v-model:open="showUnitsModal">
-      <template #content>
-      <UCard>
-        <template #header>
-          <h3>Одиниці виміру</h3>
-        </template>
-        <div class="space-y-4">
-          <div class="flex gap-2">
-            <UInput
-              v-model="unitForm.name"
-              placeholder="Назва одиниці (наприклад, шт., кг)"
-              class="flex-1"
-            />
-            <UButton :loading="savingUnit" @click="addUnit">
-              Додати
-            </UButton>
-          </div>
-          <div class="max-h-80 overflow-y-auto divide-y divide-gray-100">
-            <div
-              v-for="u in units"
-              :key="u.id"
-              class="flex items-center justify-between py-1.5"
-            >
-              <span class="text-sm">
-                {{ u.name }}
-              </span>
-              <UButton
-                icon="i-heroicons-trash"
-                size="xs"
-                variant="ghost"
-                color="red"
-                @click="deleteUnit(u)"
-              />
-            </div>
-            <div
-              v-if="units.length === 0"
-              class="text-center text-gray-400 py-4 text-sm"
-            >
-              Немає одиниць виміру
-            </div>
-          </div>
-        </div>
-        <template #footer>
-          <div class="flex justify-end">
-            <UButton
-              variant="outline"
-              @click="showUnitsModal = false"
-            >
-              Закрити
-            </UButton>
-          </div>
-        </template>
-      </UCard>
-      </template>
-    </UModal>
   </div>
 </template>
 
@@ -355,9 +290,7 @@ const currentPage = ref(1);
 
 // Стан форм / модалок
 const showNomenclatureModal = ref(false);
-const showUnitsModal = ref(false);
 const saving = ref(false);
-const savingUnit = ref(false);
 const editingNomenclature = ref<any | null>(null);
 
 const nomenclatureForm = reactive({
@@ -370,11 +303,6 @@ const nomenclatureForm = reactive({
   specification_file: "",
   image_file: "",
   category: null as number | null,
-});
-
-// Одиниці виміру
-const unitForm = reactive({
-  name: "",
 });
 
 // CPV для форми (мультивибір)
@@ -841,55 +769,6 @@ const deleteSelected = async () => {
   }
   selectedNomenclatureIds.value = [];
   await loadNomenclatures();
-};
-
-// Одиниці виміру
-const openUnitsModal = async () => {
-  unitForm.name = "";
-  await loadUnits();
-  showUnitsModal.value = true;
-};
-
-const addUnit = async () => {
-  const name = unitForm.name.trim();
-  if (!name) return;
-  savingUnit.value = true;
-  try {
-    const companyId = await getCurrentCompany();
-    const { error } = await fetch("/units/", {
-      method: "POST",
-      body: {
-        company: companyId,
-        name,
-        is_active: true,
-      },
-      headers: getAuthHeaders(),
-    });
-    if (error) {
-      alert("Помилка додавання одиниці виміру");
-      savingUnit.value = false;
-      return;
-    }
-    unitForm.name = "";
-    await loadUnits();
-  } finally {
-    savingUnit.value = false;
-  }
-};
-
-const deleteUnit = async (unit: any) => {
-  if (!confirm(`Видалити одиницю "${unit.name}"?`)) return;
-  const { error } = await fetch(`/units/${unit.id}/`, {
-    method: "DELETE",
-    headers: getAuthHeaders(),
-  });
-  if (error) {
-    alert(
-      "Не вдалося видалити одиницю. Можливо, вона використовується в номенклатурі.",
-    );
-    return;
-  }
-  await loadUnits();
 };
 
 onMounted(async () => {

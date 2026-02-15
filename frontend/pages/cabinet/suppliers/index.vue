@@ -61,11 +61,28 @@
             <h3>Додати контрагента</h3>
           </template>
           <UForm :state="addForm" @submit="onAdd" class="space-y-4">
-            <UFormField label="Код компанії" name="edrpou" required>
-              <UInput v-model="addForm.edrpou" placeholder="ЄДРПОУ або інший код" />
+            <UFormField label="Код компанії (ЄДРПОУ)" name="edrpou" required>
+              <div class="flex gap-2">
+                <UInput v-model="addForm.edrpou" placeholder="Введіть код" class="flex-1" />
+                <UButton
+                  type="button"
+                  variant="outline"
+                  :loading="checkingCode"
+                  @click="onCheckCode"
+                >
+                  Перевірити
+                </UButton>
+              </div>
             </UFormField>
-            <UFormField label="Назва компанії" name="name" required>
-              <UInput v-model="addForm.name" placeholder="Назва компанії" />
+            <UFormField
+              :label="companyByCode ? 'Назва (з довідника)' : 'Назва компанії (попередня)'"
+              name="name"
+            >
+              <UInput
+                v-model="addForm.name"
+                :placeholder="companyByCode ? 'Підставлено з системи' : 'Якщо компанії немає — введіть назву; вона оновиться після реєстрації користувача'"
+                :readonly="!!companyByCode"
+              />
             </UFormField>
             <div class="flex gap-4">
               <UButton
@@ -103,6 +120,8 @@ const saving = ref(false);
 const supplierRelations = ref<{ id: number; supplier_company: { id: number; edrpou: string; name: string }; source: string }[]>([]);
 const searchTerm = ref("");
 const showAddModal = ref(false);
+const checkingCode = ref(false);
+const companyByCode = ref<{ id: number; edrpou: string; name: string } | null>(null);
 const addForm = reactive({ edrpou: "", name: "" });
 
 const columns = [
@@ -136,53 +155,68 @@ async function loadSuppliers() {
   }
 }
 
+async function onCheckCode() {
+  const code = addForm.edrpou.trim();
+  if (!code) return;
+  checkingCode.value = true;
+  companyByCode.value = null;
+  try {
+    const { data } = await fetch(`/companies/?edrpou=${encodeURIComponent(code)}`, { headers: getAuthHeaders() });
+    const list = Array.isArray(data) ? data : [];
+    const found = list[0];
+    if (found) {
+      companyByCode.value = { id: found.id, edrpou: found.edrpou ?? code, name: found.name ?? "" };
+      addForm.name = found.name ?? "";
+    } else {
+      addForm.name = "";
+    }
+  } finally {
+    checkingCode.value = false;
+  }
+}
+
 async function onAdd() {
-  if (!addForm.edrpou.trim() || !addForm.name.trim()) return;
+  const code = addForm.edrpou.trim();
+  if (!code) {
+    alert("Введіть код компанії (ЄДРПОУ)");
+    return;
+  }
+  if (!companyByCode.value && !addForm.name.trim()) {
+    alert("Компанії з таким кодом немає. Введіть назву (попередню) для створення контрагента.");
+    return;
+  }
   saving.value = true;
   const headers = getAuthHeaders();
   try {
-    let companyId: number | null = null;
-    const { data: createData, error: createError } = await fetch("/companies/", {
+    const body: { edrpou: string; name?: string } = { edrpou: code };
+    if (addForm.name.trim()) body.name = addForm.name.trim();
+    const { data, error } = await fetch("/company-suppliers/", {
       method: "POST",
-      body: { edrpou: addForm.edrpou.trim(), name: addForm.name.trim() },
+      body,
       headers,
     });
-    if (createError) {
-      const errMsg = typeof createError === "string" ? createError : (createError as any)?.supplier_company_id ?? "Помилка";
-      if (errMsg.includes("вже існує") || errMsg.includes("already exists")) {
-        const { data: companies } = await fetch("/companies/", { headers });
-        const list = Array.isArray(companies) ? companies : [];
-        const found = list.find((c: any) => String(c.edrpou).trim() === addForm.edrpou.trim());
-        if (found) companyId = found.id;
-      }
-      if (!companyId) {
-        alert(errMsg);
-        return;
-      }
-    } else {
-      companyId = (createData as any)?.id ?? null;
-    }
-    if (!companyId) {
-      alert("Не вдалося визначити компанію");
-      return;
-    }
-    const { error: linkError } = await fetch("/company-suppliers/", {
-      method: "POST",
-      body: { supplier_company_id: companyId },
-      headers,
-    });
-    if (linkError) {
-      alert(typeof linkError === "string" ? linkError : (linkError as any)?.supplier_company_id ?? "Помилка додавання до списку контрагентів");
+    if (error) {
+      const msg = typeof error === "string" ? error : (error as any)?.name ?? (error as any)?.edrpou ?? "Помилка додавання";
+      alert(msg);
       return;
     }
     showAddModal.value = false;
     addForm.edrpou = "";
     addForm.name = "";
+    companyByCode.value = null;
     await loadSuppliers();
   } finally {
     saving.value = false;
   }
 }
+
+watch(showAddModal, (open) => {
+  if (!open) return;
+  companyByCode.value = null;
+});
+watch(() => addForm.edrpou, () => {
+  companyByCode.value = null;
+});
 
 onMounted(() => loadSuppliers());
 </script>

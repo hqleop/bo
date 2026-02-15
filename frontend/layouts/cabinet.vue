@@ -3,7 +3,9 @@
     <!-- Sidebar + Main: фіксована висота по екрану, окремий скрол у сайдбарі та в контенті -->
     <div class="flex flex-1 min-h-0">
       <!-- Sidebar: висота по екрану, скрол лише у навігації -->
-      <aside class="w-64 flex-shrink-0 h-full flex flex-col overflow-hidden bg-white shadow-sm">
+      <aside
+        class="w-64 flex-shrink-0 h-full flex flex-col overflow-hidden bg-white shadow-sm"
+      >
         <div class="h-16 flex-shrink-0 px-4 border-b flex items-center">
           <h2 class="text-xl font-bold text-gray-900">Bid Open</h2>
         </div>
@@ -24,7 +26,7 @@
         <header class="h-16 flex-shrink-0 bg-white shadow-sm border-b">
           <div class="px-6 py-4 flex justify-between items-center h-full">
             <h1 class="text-xl font-semibold text-gray-900">{{ pageTitle }}</h1>
-            <div class="flex items-center gap-4">
+            <div class="flex items-center gap-3">
               <UButton
                 icon="i-heroicons-bell"
                 variant="ghost"
@@ -36,8 +38,29 @@
                 "
                 @click="showNotifications = !showNotifications"
               />
-              <UButton variant="ghost" @click="logoutUser">
-                <UAvatar :alt="userEmail" />
+              <NuxtLink
+                to="/cabinet/profile"
+                class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-gray-100 shrink-0"
+              >
+                <UAvatar
+                  :src="headerAvatar"
+                  :alt="headerName || userEmail"
+                  size="sm"
+                  class="flex-shrink-0"
+                />
+                <span
+                  class="text-sm font-medium text-gray-700 whitespace-nowrap"
+                >
+                  {{ meLoading ? "…" : (headerName || userEmail || "Користувач") }}
+                </span>
+              </NuxtLink>
+              <UButton
+                variant="outline"
+                color="neutral"
+                size="sm"
+                @click="logoutUser"
+              >
+                Вийти
               </UButton>
             </div>
           </div>
@@ -54,31 +77,31 @@
     <!-- Notifications Panel -->
     <UModal v-model:open="showNotifications">
       <template #content>
-      <UCard>
-        <template #header>
-          <h3 class="text-lg font-semibold">Сповіщення</h3>
-        </template>
-        <div
-          v-if="notifications.length === 0"
-          class="text-center py-8 text-gray-500"
-        >
-          Немає сповіщень
-        </div>
-        <div v-else class="space-y-2">
+        <UCard>
+          <template #header>
+            <h3 class="text-lg font-semibold">Сповіщення</h3>
+          </template>
           <div
-            v-for="notification in notifications"
-            :key="notification.id"
-            class="p-3 border rounded"
-            :class="{ 'bg-gray-50': notification.is_read }"
+            v-if="notifications.length === 0"
+            class="text-center py-8 text-gray-500"
           >
-            <h4 class="font-semibold">{{ notification.title }}</h4>
-            <p class="text-sm text-gray-600">{{ notification.body }}</p>
-            <p class="text-xs text-gray-400 mt-1">
-              {{ formatDate(notification.created_at) }}
-            </p>
+            Немає сповіщень
           </div>
-        </div>
-      </UCard>
+          <div v-else class="space-y-2">
+            <div
+              v-for="notification in notifications"
+              :key="notification.id"
+              class="p-3 border rounded"
+              :class="{ 'bg-gray-50': notification.is_read }"
+            >
+              <h4 class="font-semibold">{{ notification.title }}</h4>
+              <p class="text-sm text-gray-600">{{ notification.body }}</p>
+              <p class="text-xs text-gray-400 mt-1">
+                {{ formatDate(notification.created_at) }}
+              </p>
+            </div>
+          </div>
+        </UCard>
       </template>
     </UModal>
   </div>
@@ -96,21 +119,27 @@ if (!isAuthenticated.value) {
 }
 
 const config = useRuntimeConfig();
-const headers = getAuthHeaders();
-const { data: me, error: meError } = await useFetch(
-  `${config.public.apiBase}/auth/me/`,
-  {
-    headers,
-  },
-);
+const { me, refreshMe } = useMe();
 
-// Якщо помилка автентифікації - редірект
-if (meError.value) {
-  await navigateTo("/");
+// Завантажуємо me одразу після перевірки авторизації (на клієнті), щоб ім'я та аватар були при першому рендері
+const meLoading = ref(true);
+if (import.meta.client) {
+  try {
+    await refreshMe();
+  } finally {
+    meLoading.value = false;
+  }
 }
 
-const userEmail = computed(() => me.value?.user?.email || "");
-// Права поки що не використовуємо: усі авторизовані користувачі бачать весь функціонал
+// Локальні computed безпосередньо від me — гарантована реактивність у шапці
+const headerName = computed(() => {
+  const u = me.value?.user;
+  if (!u) return "";
+  const name = [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
+  return name || u.email || "";
+});
+const headerAvatar = computed(() => me.value?.user?.avatar ?? null);
+const userEmail = computed(() => me.value?.user?.email ?? "");
 const permissions = computed(() => me.value?.permissions || []);
 const showNotifications = ref(false);
 

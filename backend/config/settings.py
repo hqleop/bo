@@ -6,6 +6,7 @@ Docs: drf-spectacular (Swagger/OpenAPI)
 DB: MySQL (via PyMySQL) configured by .env (with sqlite fallback for local dev)
 """
 
+from datetime import timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -141,6 +142,10 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+# Media (user uploads, e.g. avatars)
+MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_URL = '/media/'
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Custom user (email as login)
@@ -165,4 +170,10 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "MVP API for Bid Open cabinet.",
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
+}
+
+# JWT: після входу користувач не викидається 1 день
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=1),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
 }

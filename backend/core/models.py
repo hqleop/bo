@@ -38,6 +38,7 @@ class User(AbstractUser):
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=32, blank=True, default="")
     middle_name = models.CharField(max_length=150, blank=True, default="")
+    avatar = models.FileField(upload_to="avatars/%Y/%m/", blank=True, null=True)
 
     objects = UserManager()
 
@@ -368,10 +369,13 @@ class ExpenseArticleUser(models.Model):
 
 class UnitOfMeasure(models.Model):
     """
-    Довідник одиниць виміру в межах компанії.
+    Довідник одиниць виміру. Спільний для всіх компаній (company=null);
+    наповнюється через БД. Історично можуть бути одиниці з прив'язкою до компанії.
     """
 
-    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="units_of_measure")
+    company = models.ForeignKey(
+        Company, on_delete=models.CASCADE, related_name="units_of_measure", null=True, blank=True
+    )
     name = models.CharField(max_length=100)
     is_active = models.BooleanField(default=True)
 
@@ -379,7 +383,18 @@ class UnitOfMeasure(models.Model):
         verbose_name = "Одиниця виміру"
         verbose_name_plural = "Одиниці виміру"
         ordering = ["name"]
-        unique_together = (("company", "name"),)
+        constraints = [
+            models.UniqueConstraint(
+                fields=["name"],
+                condition=models.Q(company__isnull=True),
+                name="core_unitofmeasure_shared_name_unique",
+            ),
+            models.UniqueConstraint(
+                fields=["company", "name"],
+                condition=models.Q(company__isnull=False),
+                name="core_unitofmeasure_company_name_unique",
+            ),
+        ]
 
     def __str__(self) -> str:  # pragma: no cover
         return self.name
@@ -632,8 +647,126 @@ class ProcurementTender(models.Model):
                 self.number = (agg["number__max"] or 0) + 1
         super().save(*args, **kwargs)
 
+    # Параметри цінового критерія (для процедури реєстрації та інших)
+    price_criterion_vat = models.CharField(
+        max_length=32, blank=True, default="",
+        help_text="Наприклад: with_vat, without_vat",
+    )
+    price_criterion_delivery = models.CharField(
+        max_length=32, blank=True, default="",
+        help_text="Наприклад: with_delivery, without_delivery",
+    )
+    tender_criteria = models.ManyToManyField(
+        TenderCriterion,
+        related_name="procurement_tenders",
+        blank=True,
+        help_text="Критерії тендера (крім ціни)",
+    )
+
     def __str__(self) -> str:
         return f"#{self.number or '?'} {self.name}"
+
+
+class ProcurementTenderPosition(models.Model):
+    """Позиція тендера на закупівлю (номенклатура + кількість, опис)."""
+
+    tender = models.ForeignKey(
+        ProcurementTender,
+        on_delete=models.CASCADE,
+        related_name="positions",
+    )
+    nomenclature = models.ForeignKey(
+        Nomenclature,
+        on_delete=models.PROTECT,
+        related_name="procurement_tender_positions",
+    )
+    quantity = models.DecimalField(
+        max_digits=18, decimal_places=4, default=1,
+    )
+    description = models.TextField(blank=True, default="")
+
+    class Meta:
+        verbose_name = "Позиція тендера на закупівлю"
+        verbose_name_plural = "Позиції тендера на закупівлю"
+        ordering = ["id"]
+        unique_together = (("tender", "nomenclature"),)
+
+    def __str__(self) -> str:
+        return f"{self.tender} — {self.nomenclature.name}"
+
+
+class TenderProposal(models.Model):
+    """Пропозиція контрагента в тендері (реєстрація: організатор заповнює від імені контрагента)."""
+
+    tender = models.ForeignKey(
+        ProcurementTender,
+        on_delete=models.CASCADE,
+        related_name="proposals",
+    )
+    supplier_company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="tender_proposals_as_supplier",
+    )
+
+    class Meta:
+        verbose_name = "Пропозиція в тендері"
+        verbose_name_plural = "Пропозиції в тендері"
+        ordering = ["id"]
+        unique_together = (("tender", "supplier_company"),)
+
+    def __str__(self) -> str:
+        return f"{self.tender} — {self.supplier_company.name}"
+
+
+class TenderProposalPosition(models.Model):
+    """Значення по одній позиції в пропозиції (ціна + інші критерії)."""
+
+    proposal = models.ForeignKey(
+        TenderProposal,
+        on_delete=models.CASCADE,
+        related_name="position_values",
+    )
+    tender_position = models.ForeignKey(
+        ProcurementTenderPosition,
+        on_delete=models.CASCADE,
+        related_name="proposal_values",
+    )
+    price = models.DecimalField(
+        max_digits=18, decimal_places=4, null=True, blank=True,
+    )
+    # Значення інших критеріїв: { "criterion_id": value (str/number/bool) }
+    criterion_values = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        verbose_name = "Позиція пропозиції"
+        verbose_name_plural = "Позиції пропозицій"
+        ordering = ["tender_position_id"]
+        unique_together = (("proposal", "tender_position"),)
+
+    def __str__(self) -> str:
+        return f"{self.proposal} — pos {self.tender_position_id}"
+
+
+class ProcurementTenderFile(models.Model):
+    """Файл, прикріплений до тендера на закупівлю."""
+
+    tender = models.ForeignKey(
+        ProcurementTender,
+        on_delete=models.CASCADE,
+        related_name="attached_files",
+    )
+    file = models.FileField(upload_to="tender_files/%Y/%m/")
+    name = models.CharField(max_length=255, blank=True, default="")
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Файл тендера"
+        verbose_name_plural = "Файли тендера"
+        ordering = ["-uploaded_at"]
+
+    def __str__(self) -> str:
+        return self.name or self.file.name
 
 
 class SalesTender(models.Model):
@@ -753,6 +886,21 @@ class SalesTender(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    price_criterion_vat = models.CharField(
+        max_length=32, blank=True, default="",
+        help_text="Наприклад: with_vat, without_vat",
+    )
+    price_criterion_delivery = models.CharField(
+        max_length=32, blank=True, default="",
+        help_text="Наприклад: with_delivery, without_delivery",
+    )
+    tender_criteria = models.ManyToManyField(
+        TenderCriterion,
+        related_name="sales_tenders",
+        blank=True,
+        help_text="Критерії тендера (крім ціни)",
+    )
+
     class Meta:
         verbose_name = "Тендер на продаж"
         verbose_name_plural = "Тендери на продаж"
@@ -772,3 +920,104 @@ class SalesTender(models.Model):
 
     def __str__(self) -> str:
         return f"#{self.number or '?'} {self.name}"
+
+
+class SalesTenderPosition(models.Model):
+    """Позиція тендера на продаж (номенклатура + кількість, опис)."""
+
+    tender = models.ForeignKey(
+        SalesTender,
+        on_delete=models.CASCADE,
+        related_name="positions",
+    )
+    nomenclature = models.ForeignKey(
+        Nomenclature,
+        on_delete=models.PROTECT,
+        related_name="sales_tender_positions",
+    )
+    quantity = models.DecimalField(
+        max_digits=18, decimal_places=4, default=1,
+    )
+    description = models.TextField(blank=True, default="")
+
+    class Meta:
+        verbose_name = "Позиція тендера на продаж"
+        verbose_name_plural = "Позиції тендера на продаж"
+        ordering = ["id"]
+        unique_together = (("tender", "nomenclature"),)
+
+    def __str__(self) -> str:
+        return f"{self.tender} — {self.nomenclature.name}"
+
+
+class SalesTenderProposal(models.Model):
+    """Пропозиція контрагента в тендері на продаж."""
+
+    tender = models.ForeignKey(
+        SalesTender,
+        on_delete=models.CASCADE,
+        related_name="proposals",
+    )
+    supplier_company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="sales_tender_proposals_as_supplier",
+    )
+
+    class Meta:
+        verbose_name = "Пропозиція в тендері на продаж"
+        verbose_name_plural = "Пропозиції в тендері на продаж"
+        ordering = ["id"]
+        unique_together = (("tender", "supplier_company"),)
+
+    def __str__(self) -> str:
+        return f"{self.tender} — {self.supplier_company.name}"
+
+
+class SalesTenderProposalPosition(models.Model):
+    """Значення по одній позиції в пропозиції тендера на продаж."""
+
+    proposal = models.ForeignKey(
+        SalesTenderProposal,
+        on_delete=models.CASCADE,
+        related_name="position_values",
+    )
+    tender_position = models.ForeignKey(
+        SalesTenderPosition,
+        on_delete=models.CASCADE,
+        related_name="proposal_values",
+    )
+    price = models.DecimalField(
+        max_digits=18, decimal_places=4, null=True, blank=True,
+    )
+    criterion_values = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        verbose_name = "Позиція пропозиції (продаж)"
+        verbose_name_plural = "Позиції пропозицій (продаж)"
+        ordering = ["tender_position_id"]
+        unique_together = (("proposal", "tender_position"),)
+
+    def __str__(self) -> str:
+        return f"{self.proposal} — pos {self.tender_position_id}"
+
+
+class SalesTenderFile(models.Model):
+    """Файл, прикріплений до тендера на продаж."""
+
+    tender = models.ForeignKey(
+        SalesTender,
+        on_delete=models.CASCADE,
+        related_name="attached_files",
+    )
+    file = models.FileField(upload_to="sales_tender_files/%Y/%m/")
+    name = models.CharField(max_length=255, blank=True, default="")
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Файл тендера на продаж"
+        verbose_name_plural = "Файли тендера на продаж"
+        ordering = ["-uploaded_at"]
+
+    def __str__(self) -> str:
+        return self.name or self.file.name

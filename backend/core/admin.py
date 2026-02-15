@@ -139,17 +139,101 @@ class TenderCriterionAdmin(admin.ModelAdmin):
     search_fields = ("name", "company__name")
 
 
+def make_set_stage_action(stage_value: str, stage_label: str):
+    """Повертає admin action для встановлення етапу тендера на закупівлю."""
+
+    def set_stage_procurement(modeladmin, request, queryset):
+        updated = queryset.update(stage=stage_value)
+        modeladmin.message_user(request, f"Етап змінено на «{stage_label}» для {updated} тендер(ів).")
+
+    set_stage_procurement.short_description = f"Перевести на етап: {stage_label}"
+    set_stage_procurement.__name__ = f"set_stage_procurement_{stage_value}"
+    return set_stage_procurement
+
+
+def make_set_stage_action_sales(stage_value: str, stage_label: str):
+    """Повертає admin action для встановлення етапу тендера на продаж."""
+
+    def set_stage_sales(modeladmin, request, queryset):
+        updated = queryset.update(stage=stage_value)
+        modeladmin.message_user(request, f"Етап змінено на «{stage_label}» для {updated} тендер(ів).")
+
+    set_stage_sales.short_description = f"Перевести на етап: {stage_label}"
+    set_stage_sales.__name__ = f"set_stage_sales_{stage_value}"
+    return set_stage_sales
+
+
 @admin.register(ProcurementTender)
 class ProcurementTenderAdmin(admin.ModelAdmin):
-    list_display = ("number", "tour_number", "name", "company", "stage", "conduct_type", "created_at")
+    list_display = (
+        "number",
+        "tour_number",
+        "name",
+        "company",
+        "stage_display",
+        "conduct_type",
+        "created_at",
+    )
     list_filter = ("company", "stage", "conduct_type", "publication_type")
     search_fields = ("name", "company__name")
-    raw_id_fields = ("company", "category", "cpv_category", "expense_article", "branch", "department", "currency", "created_by", "parent")
+    raw_id_fields = (
+        "company",
+        "category",
+        "cpv_category",
+        "expense_article",
+        "branch",
+        "department",
+        "currency",
+        "created_by",
+        "parent",
+    )
+    actions = [
+        make_set_stage_action("passport", "Паспорт тендера"),
+        make_set_stage_action("preparation", "Підготовка процедури"),
+        make_set_stage_action("acceptance", "Прийом пропозицій"),
+        make_set_stage_action("decision", "Вибір рішення"),
+        make_set_stage_action("approval", "Затвердження"),
+        make_set_stage_action("completed", "Завершений"),
+    ]
+
+    @admin.display(description="Етап")
+    def stage_display(self, obj):
+        return obj.get_stage_display() if obj else ""
 
 
 @admin.register(SalesTender)
 class SalesTenderAdmin(admin.ModelAdmin):
-    list_display = ("number", "tour_number", "name", "company", "stage", "conduct_type", "created_at")
+    list_display = (
+        "number",
+        "tour_number",
+        "name",
+        "company",
+        "stage_display",
+        "conduct_type",
+        "created_at",
+    )
     list_filter = ("company", "stage", "conduct_type", "publication_type")
     search_fields = ("name", "company__name")
-    raw_id_fields = ("company", "category", "cpv_category", "expense_article", "branch", "department", "currency", "created_by", "parent")
+    raw_id_fields = (
+        "company",
+        "category",
+        "cpv_category",
+        "expense_article",
+        "branch",
+        "department",
+        "currency",
+        "created_by",
+        "parent",
+    )
+    actions = [
+        make_set_stage_action_sales("passport", "Паспорт тендера"),
+        make_set_stage_action_sales("preparation", "Підготовка процедури"),
+        make_set_stage_action_sales("acceptance", "Прийом пропозицій"),
+        make_set_stage_action_sales("decision", "Вибір рішення"),
+        make_set_stage_action_sales("approval", "Затвердження"),
+        make_set_stage_action_sales("completed", "Завершений"),
+    ]
+
+    @admin.display(description="Етап")
+    def stage_display(self, obj):
+        return obj.get_stage_display() if obj else ""

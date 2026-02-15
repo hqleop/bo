@@ -47,16 +47,13 @@
             />
           </UFormField>
 
-          <!-- Existing Company -->
+          <!-- Existing Company: приєднання за кодом (ЄДРПОУ) -->
           <div v-if="step2Form.type === 'existing'">
-            <UFormField label="Компанія" name="company_id" required>
-              <USelect
-                v-model="step2Form.company_id"
-                :items="companyItems"
-                value-key="id"
-                label-key="name"
-                placeholder="Оберіть компанію"
-              />
+            <UFormField label="Код компанії (ЄДРПОУ)" name="edrpou_existing" required>
+              <UInput v-model="step2Form.edrpou_existing" placeholder="Введіть код компанії" />
+            </UFormField>
+            <UFormField label="Назва компанії (опційно)" name="name_existing">
+              <UInput v-model="step2Form.name_existing" placeholder="При першій реєстрації — буде збережена як назва компанії" />
             </UFormField>
           </div>
 
@@ -125,7 +122,8 @@ const step1Form = reactive({
 
 const step2Form = reactive({
   type: "new" as "new" | "existing",
-  company_id: null as number | null,
+  edrpou_existing: "",
+  name_existing: "",
   edrpou: "",
   name: "",
   goal_tenders: false,
@@ -136,19 +134,6 @@ const companyTypeOptions = [
   { label: "Нова компанія", value: "new" },
   { label: "Існуюча компанія", value: "existing" },
 ];
-
-// Load companies for step 2
-const config = useRuntimeConfig();
-const { data: companiesData } = await useFetch(
-  `${config.public.apiBase}/companies/`,
-);
-const companies = computed(() => companiesData.value || []);
-const companyItems = computed(() =>
-  (companies.value as any[]).map((c) => ({
-    id: c.id,
-    name: c.name ?? c.label ?? String(c.id),
-  }))
-);
 
 const onStep1Submit = async () => {
   loading.value = true;
@@ -168,8 +153,8 @@ const onStep1Submit = async () => {
 };
 
 const onStep2Submit = async () => {
-  if (step2Form.type === "existing" && !step2Form.company_id) {
-    alert("Оберіть компанію");
+  if (step2Form.type === "existing" && !step2Form.edrpou_existing?.trim()) {
+    alert("Введіть код компанії (ЄДРПОУ)");
     return;
   }
 
@@ -197,7 +182,8 @@ const onStep2Submit = async () => {
         }
       : {
           user_id: userId.value,
-          company_id: step2Form.company_id,
+          edrpou: step2Form.edrpou_existing.trim(),
+          name: step2Form.name_existing?.trim() || undefined,
         };
 
   const { data, error } = await fetch(endpoint, {

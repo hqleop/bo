@@ -1,21 +1,37 @@
 <template>
   <div v-if="loading" class="flex items-center justify-center py-12">
-    <UIcon name="i-heroicons-arrow-path" class="animate-spin size-8 text-gray-400" />
+    <UIcon
+      name="i-heroicons-arrow-path"
+      class="animate-spin size-8 text-gray-400"
+    />
   </div>
   <div v-else-if="!tender" class="text-center py-12 text-gray-500">
     Тендер не знайдено.
   </div>
   <div v-else class="h-full flex flex-col">
-    <div class="tender-stepper mb-6">
+    <div class="mb-4">
+      <h1
+        v-if="tender.number"
+        class="text-xl font-semibold text-gray-900 truncate"
+      >
+        № {{ tender.number }}
+        <span class="font-normal text-gray-700">{{ tender.name }}</span>
+      </h1>
+    </div>
+    <div class="tender-stepper tender-stepper--compact mb-6">
       <UStepper
         v-model="currentStepValue"
         :items="stepperItems"
         value-key="value"
+        size="sm"
       />
     </div>
 
     <div class="flex flex-1 min-h-0 gap-6">
-      <div class="flex-1 min-w-0 min-h-0" :class="displayStage === 'preparation' ? '' : 'overflow-y-auto'">
+      <div
+        class="flex-1 min-w-0 min-h-0"
+        :class="displayStage === 'preparation' ? '' : 'overflow-y-auto'"
+      >
         <template v-if="displayStage === 'passport'">
           <UCard>
             <template #header>
@@ -46,35 +62,77 @@
                 @update:selected-labels="tenderCpvLabels = $event"
               />
               <UFormField label="Стаття бюджету">
-                <USelectMenu v-model="form.expense_article" :items="expenseOptions" value-key="value" placeholder="Оберіть статтю" />
+                <USelectMenu
+                  v-model="form.expense_article"
+                  :items="expenseOptions"
+                  value-key="value"
+                  placeholder="Оберіть статтю"
+                />
               </UFormField>
               <UFormField label="Орієнтовний бюджет">
-                <UInput v-model.number="form.estimated_budget" type="number" step="0.01" placeholder="0" />
+                <UInput
+                  v-model.number="form.estimated_budget"
+                  type="number"
+                  step="0.01"
+                  placeholder="0"
+                />
               </UFormField>
               <UFormField label="Філіал">
-                <USelectMenu v-model="form.branch" :items="branchOptions" value-key="value" placeholder="Оберіть філіал" @update:model-value="onBranchChange" />
+                <USelectMenu
+                  v-model="form.branch"
+                  :items="branchOptions"
+                  value-key="value"
+                  placeholder="Оберіть філіал"
+                  @update:model-value="onBranchChange"
+                />
               </UFormField>
               <UFormField label="Підрозділ">
-                <USelectMenu v-model="form.department" :items="departmentOptions" value-key="value" placeholder="Оберіть підрозділ" />
+                <USelectMenu
+                  v-model="form.department"
+                  :items="departmentOptions"
+                  value-key="value"
+                  placeholder="Оберіть підрозділ"
+                />
               </UFormField>
               <UFormField label="Тип проведення" required>
-                <USelectMenu v-model="form.conduct_type" :items="conductTypeOptions" value-key="value" placeholder="Оберіть тип" />
+                <USelectMenu
+                  v-model="form.conduct_type"
+                  :items="conductTypeOptions"
+                  value-key="value"
+                  placeholder="Оберіть тип"
+                />
               </UFormField>
               <UFormField label="Тип публікації" required>
-                <USelectMenu v-model="form.publication_type" :items="publicationTypeOptions" value-key="value" placeholder="Оберіть тип" />
+                <USelectMenu
+                  v-model="form.publication_type"
+                  :items="publicationTypeOptions"
+                  value-key="value"
+                  placeholder="Оберіть тип"
+                />
               </UFormField>
               <UFormField label="Валюта тендера" required>
-                <USelectMenu v-model="form.currency" :items="currencyOptions" value-key="value" placeholder="Оберіть валюту" />
+                <USelectMenu
+                  v-model="form.currency"
+                  :items="currencyOptions"
+                  value-key="value"
+                  placeholder="Оберіть валюту"
+                />
               </UFormField>
               <UFormField label="Загальні умови">
-                <UTextarea v-model="form.general_terms" :rows="6" placeholder="Опис загальних умов" />
+                <UTextarea
+                  v-model="form.general_terms"
+                  :rows="6"
+                  placeholder="Опис загальних умов"
+                />
               </UFormField>
             </UForm>
           </UCard>
         </template>
 
         <template v-else-if="displayStage === 'preparation'">
-          <div class="h-full min-h-0 flex flex-col border rounded-lg p-4 bg-white">
+          <div
+            class="h-full min-h-0 flex flex-col border rounded-lg p-4 bg-white"
+          >
             <h3 class="text-lg font-semibold mb-3">Підготовка процедури</h3>
             <UTabs
               v-model="prepTab"
@@ -84,7 +142,10 @@
               content
             >
               <template #content="{ item }">
-                <div v-if="item.value === 'positions'" class="h-full min-h-0 flex flex-col gap-3">
+                <div
+                  v-if="item.value === 'positions'"
+                  class="h-full min-h-0 flex flex-col gap-3"
+                >
                   <div class="flex items-end gap-3">
                     <div class="w-full max-w-xl">
                       <ContentSearch
@@ -100,15 +161,25 @@
                     </div>
                   </div>
 
-                  <div v-if="loadingNomenclatures" class="text-sm text-gray-500 py-2">
+                  <div
+                    v-if="loadingNomenclatures"
+                    class="text-sm text-gray-500 py-2"
+                  >
                     Завантаження номенклатур...
                   </div>
-                  <div v-else-if="!nomenclatureSearchTree.length" class="text-sm text-gray-500 py-2">
+                  <div
+                    v-else-if="!nomenclatureSearchTree.length"
+                    class="text-sm text-gray-500 py-2"
+                  >
                     Немає доступних номенклатур для обраної категорії/CPV.
                   </div>
 
                   <div class="flex-1 min-h-0 overflow-auto">
-                    <UTable :data="tenderPositions" :columns="positionsColumns" class="w-full">
+                    <UTable
+                      :data="tenderPositions"
+                      :columns="positionsColumns"
+                      class="w-full"
+                    >
                       <template #quantity-cell="{ row }">
                         <UInput
                           type="number"
@@ -160,7 +231,8 @@
                       Інші критерії тендера
                     </h4>
                     <p class="text-sm text-gray-600 mb-3">
-                      Додайте критерії з довідника. Учасники заповнюватимуть їх у пропозиціях.
+                      Додайте критерії з довідника. Учасники заповнюватимуть їх
+                      у пропозиціях.
                     </p>
                     <div class="flex items-end gap-3 mb-3">
                       <div class="w-full max-w-xl">
@@ -186,7 +258,9 @@
                         class="flex items-center justify-between gap-2 py-2 px-3 rounded-md bg-gray-50 border border-gray-200"
                       >
                         <span class="font-medium">{{ c.name }}</span>
-                        <span class="text-gray-500 text-xs">{{ criterionTypeLabel(c.type) }}</span>
+                        <span class="text-gray-500 text-xs">{{
+                          criterionTypeLabel(c.type)
+                        }}</span>
                         <UButton
                           icon="i-heroicons-trash"
                           size="xs"
@@ -197,10 +271,7 @@
                         />
                       </li>
                     </ul>
-                    <p
-                      v-else
-                      class="text-sm text-gray-500 py-2"
-                    >
+                    <p v-else class="text-sm text-gray-500 py-2">
                       Критерії не додано. Оберіть критерії з довідника вище.
                     </p>
                   </div>
@@ -219,7 +290,8 @@
               На цьому етапі відображаються пропозиції учасників по позиціях.
             </p>
             <p class="text-xs text-gray-500 mt-2">
-              Якщо час завершення минув, етап автоматично переведеться на «Вибір рішення».
+              Якщо час завершення минув, етап автоматично переведеться на «Вибір
+              рішення».
             </p>
           </UCard>
         </template>
@@ -230,7 +302,8 @@
               <h3 class="text-lg font-semibold">Вибір рішення</h3>
             </template>
             <p class="text-sm text-gray-600">
-              Рекомендація системи для продажу: обрати учасника з найбільшою ціною.
+              Рекомендація системи для продажу: обрати учасника з найбільшою
+              ціною.
             </p>
           </UCard>
         </template>
@@ -257,31 +330,55 @@
       </div>
 
       <aside class="w-56 flex-shrink-0 space-y-3">
-        <template v-if="tender.stage === 'passport'">
-          <UButton class="w-full" :loading="saving" @click="savePassport">Зберегти</UButton>
+        <template v-if="displayStage === 'passport'">
+          <UButton class="w-full" :loading="saving" @click="savePassport"
+            >Зберегти</UButton
+          >
         </template>
 
-        <template v-else-if="tender.stage === 'preparation'">
+        <template v-else-if="displayStage === 'preparation'">
           <template v-if="form.conduct_type === 'registration'">
-            <UButton class="w-full" variant="outline" @click="alert('Фіксація процедури буде деталізована наступним кроком.')">Фіксація процедури</UButton>
-            <UButton class="w-full" @click="goToDecision">Подача пропозицій</UButton>
+            <UButton
+              class="w-full"
+              @click="openSubmitProposal"
+              :loading="saving"
+            >
+              Подати пропозицію
+            </UButton>
           </template>
           <template v-else>
-            <UButton class="w-full" @click="openPublishModal">Опублікувати</UButton>
-            <UButton class="w-full" variant="outline" @click="alert('Модальне вікно запрошення учасників буде додано наступним кроком.')">Запросити учасників</UButton>
+            <UButton class="w-full" @click="openPublishModal"
+              >Опублікувати</UButton
+            >
+            <UButton
+              class="w-full"
+              variant="outline"
+              @click="
+                alert(
+                  'Модальне вікно запрошення учасників буде додано наступним кроком.',
+                )
+              "
+              >Запросити учасників</UButton
+            >
           </template>
-          <UButton class="w-full" variant="outline" disabled>Прикріплені файли</UButton>
+          <UButton class="w-full" variant="outline" @click="goToProposalsPage">
+            Прикріплені файли
+          </UButton>
         </template>
 
-        <template v-else-if="tender.stage === 'acceptance'">
-          <UButton class="w-full" @click="openTimingModal">Змінити час проведення</UButton>
+        <template v-else-if="displayStage === 'acceptance'">
+          <UButton class="w-full" @click="openTimingModal"
+            >Змінити час проведення</UButton
+          >
         </template>
 
-        <template v-else-if="tender.stage === 'decision'">
-          <UButton class="w-full" @click="showDecisionModal = true">Зафіксувати рішення</UButton>
+        <template v-else-if="displayStage === 'decision'">
+          <UButton class="w-full" @click="showDecisionModal = true"
+            >Зафіксувати рішення</UButton
+          >
         </template>
 
-        <template v-else-if="tender.stage === 'approval'">
+        <template v-else-if="displayStage === 'approval'">
           <UButton class="w-full" @click="approveTender">Затвердити</UButton>
         </template>
       </aside>
@@ -299,8 +396,15 @@
               <UInput v-model="timingForm.end_at" type="datetime-local" />
             </UFormField>
             <div class="flex gap-2">
-              <UButton class="flex-1" @click="publishTender">Підтвердити</UButton>
-              <UButton class="flex-1" variant="outline" @click="showPublishModal = false">Скасувати</UButton>
+              <UButton class="flex-1" @click="publishTender"
+                >Підтвердити</UButton
+              >
+              <UButton
+                class="flex-1"
+                variant="outline"
+                @click="showPublishModal = false"
+                >Скасувати</UButton
+              >
             </div>
           </div>
         </UCard>
@@ -312,15 +416,31 @@
         <UCard>
           <template #header><h3>Змінити час проведення</h3></template>
           <div class="space-y-4">
-            <UFormField label="Початок" :help="canEditStart ? '' : 'Після старту час початку змінювати не можна'">
-              <UInput v-model="timingForm.start_at" type="datetime-local" :disabled="!canEditStart" />
+            <UFormField
+              label="Початок"
+              :help="
+                canEditStart
+                  ? ''
+                  : 'Після старту час початку змінювати не можна'
+              "
+            >
+              <UInput
+                v-model="timingForm.start_at"
+                type="datetime-local"
+                :disabled="!canEditStart"
+              />
             </UFormField>
             <UFormField label="Завершення">
               <UInput v-model="timingForm.end_at" type="datetime-local" />
             </UFormField>
             <div class="flex gap-2">
               <UButton class="flex-1" @click="saveTiming">Зберегти</UButton>
-              <UButton class="flex-1" variant="outline" @click="showTimingModal = false">Скасувати</UButton>
+              <UButton
+                class="flex-1"
+                variant="outline"
+                @click="showTimingModal = false"
+                >Скасувати</UButton
+              >
             </div>
           </div>
         </UCard>
@@ -332,9 +452,22 @@
         <UCard>
           <template #header><h3>Зафіксувати рішення</h3></template>
           <div class="space-y-2">
-            <UButton class="w-full" @click="fixDecision('winner')">Завершити з переможцем</UButton>
-            <UButton class="w-full" variant="outline" @click="fixDecision('next_round')">Перевести на наступний тур</UButton>
-            <UButton class="w-full" color="red" variant="outline" @click="fixDecision('cancel')">Скасувати</UButton>
+            <UButton class="w-full" @click="fixDecision('winner')"
+              >Завершити з переможцем</UButton
+            >
+            <UButton
+              class="w-full"
+              variant="outline"
+              @click="fixDecision('next_round')"
+              >Перевести на наступний тур</UButton
+            >
+            <UButton
+              class="w-full"
+              color="red"
+              variant="outline"
+              @click="fixDecision('cancel')"
+              >Скасувати</UButton
+            >
           </div>
         </UCard>
       </template>
@@ -343,7 +476,11 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({ layout: "cabinet", middleware: "auth", meta: { title: "Тендер на продаж" } });
+definePageMeta({
+  layout: "cabinet",
+  middleware: "auth",
+  meta: { title: "Тендер на продаж" },
+});
 
 const route = useRoute();
 const tenderId = computed(() => Number(route.params.id));
@@ -388,34 +525,67 @@ const showDecisionModal = ref(false);
 const timingForm = reactive({ start_at: "", end_at: "" });
 
 const stageItems = [
-  { value: "passport", title: "Паспорт тендера" },
-  { value: "preparation", title: "Підготовка процедури" },
-  { value: "acceptance", title: "Прийом пропозицій" },
-  { value: "decision", title: "Вибір рішення" },
-  { value: "approval", title: "Затвердження" },
-  { value: "completed", title: "Завершений" },
+  {
+    value: "passport",
+    title: "Паспорт тендера",
+    icon: "i-heroicons-document-text",
+  },
+  {
+    value: "preparation",
+    title: "Підготовка процедури",
+    icon: "i-heroicons-clipboard-document-list",
+  },
+  {
+    value: "acceptance",
+    title: "Прийом пропозицій",
+    icon: "i-heroicons-envelope",
+  },
+  { value: "decision", title: "Вибір рішення", icon: "i-heroicons-scale" },
+  {
+    value: "approval",
+    title: "Затвердження",
+    icon: "i-heroicons-check-circle",
+  },
+  { value: "completed", title: "Завершений", icon: "i-heroicons-flag" },
 ];
-const STAGE_ORDER = stageItems.map((s) => s.value);
+
+const isRegistration = computed(
+  () => (tender.value?.conduct_type ?? form.conduct_type) === "registration",
+);
+
+const visibleStageItems = computed(() => {
+  if (isRegistration.value) {
+    return stageItems.filter((s) => s.value !== "acceptance");
+  }
+  return stageItems;
+});
+
+const STAGE_ORDER = computed(() => visibleStageItems.value.map((s) => s.value));
+
 const displayStage = ref<string>("passport");
 
 const stepperItems = computed(() => {
-  const progressIndex = STAGE_ORDER.indexOf(tender.value?.stage ?? "passport");
-  return stageItems.map((s, index) => ({
+  const currentStage = tender.value?.stage ?? "passport";
+  const progressIndex = STAGE_ORDER.value.indexOf(currentStage);
+  return visibleStageItems.value.map((s, index) => ({
     ...s,
     description: "",
     class: [
       index < progressIndex ? "tender-step-done" : "",
       index === progressIndex ? "tender-step-progress-current" : "",
       s.value === displayStage.value ? "tender-step-viewing" : "",
-    ].filter(Boolean).join(" "),
+    ]
+      .filter(Boolean)
+      .join(" "),
   }));
 });
 
 const currentStepValue = computed({
   get: () => displayStage.value,
   set: (value: string) => {
-    const currentIndex = STAGE_ORDER.indexOf(tender.value?.stage ?? "passport");
-    const targetIndex = STAGE_ORDER.indexOf(value);
+    const currentStage = tender.value?.stage ?? "passport";
+    const currentIndex = STAGE_ORDER.value.indexOf(currentStage);
+    const targetIndex = STAGE_ORDER.value.indexOf(value);
     if (targetIndex !== -1 && targetIndex <= currentIndex) {
       displayStage.value = value;
     }
@@ -436,7 +606,9 @@ const form = reactive({
   currency: null as number | null,
   general_terms: "",
 });
-const selectedCategoryIds = computed(() => (form.category ? [form.category] : []));
+const selectedCategoryIds = computed(() =>
+  form.category ? [form.category] : [],
+);
 
 const conductTypeOptions = [
   { value: "registration", label: "Реєстрація продажу" },
@@ -462,20 +634,68 @@ const positionsColumns = [
 ];
 
 const selectedNomenclatureIds = computed(() =>
-  tenderPositions.value.map((p) => p.nomenclature_id)
+  tenderPositions.value.map((p) => p.nomenclature_id),
 );
 const nomenclatureSearchTree = computed(() =>
   availableNomenclatures.value.map((n: any) => ({
     id: n.id,
     name: `${n.name}${n.unit_name ? ` (${n.unit_name})` : ""}`,
     children: [],
-  }))
+  })),
 );
 
 const canEditStart = computed(() => {
   if (!tender.value?.start_at) return true;
   return new Date() < new Date(tender.value.start_at);
 });
+
+const canSubmitProposal = computed(() => {
+  if (!tender.value || tender.value.conduct_type !== "registration")
+    return false;
+  const hasPositions = tenderPositions.value.length >= 1;
+  const hasPriceParams =
+    !!priceCriterionVat.value && !!priceCriterionDelivery.value;
+  return hasPositions && hasPriceParams;
+});
+
+async function savePreparation() {
+  if (!tender.value?.id) return false;
+  const payload: Record<string, unknown> = {
+    positions: tenderPositions.value.map((p) => ({
+      nomenclature_id: p.nomenclature_id,
+      quantity: p.quantity,
+      description: p.description ?? "",
+    })),
+    criterion_ids: tenderCriteria.value.map((c) => c.id),
+    price_criterion_vat: priceCriterionVat.value ?? "",
+    price_criterion_delivery: priceCriterionDelivery.value ?? "",
+  };
+  return patchTender(payload);
+}
+
+async function openSubmitProposal() {
+  saving.value = true;
+  try {
+    await savePreparation();
+    if (!canSubmitProposal.value) {
+      const msg =
+        tenderPositions.value.length < 1
+          ? "Додайте хоча б одну позицію номенклатури в тендер."
+          : !priceCriterionVat.value || !priceCriterionDelivery.value
+            ? "Налаштуйте параметри цінового критерія (ПДВ та Доставка)."
+            : "";
+      alert(msg || "Неможливо відкрити подачу пропозицій.");
+      return;
+    }
+    await navigateTo(`/cabinet/tenders/sales/${tenderId.value}/proposals`);
+  } finally {
+    saving.value = false;
+  }
+}
+
+function goToProposalsPage() {
+  navigateTo(`/cabinet/tenders/sales/${tenderId.value}/proposals`);
+}
 
 // Дерево критеріїв для ContentSearch
 function criterionTypeLabel(type: string) {
@@ -492,19 +712,25 @@ const criteriaSearchTree = computed(() =>
     id: c.id,
     name: `${c.name} (${criterionTypeLabel(c.type)})`,
     children: [],
-  }))
+  })),
 );
-const selectedCriteriaIds = computed(() => tenderCriteria.value.map((c) => c.id));
+const selectedCriteriaIds = computed(() =>
+  tenderCriteria.value.map((c) => c.id),
+);
 
 async function loadReferenceCriteria() {
-  const { data } = await fetch("/tender-criteria/", { headers: getAuthHeaders() });
+  const { data } = await fetch("/tender-criteria/", {
+    headers: getAuthHeaders(),
+  });
   referenceCriteria.value = Array.isArray(data) ? data : [];
 }
 
 function toggleTenderCriterion(criterionId: number) {
   const existing = tenderCriteria.value.find((c) => c.id === criterionId);
   if (existing) {
-    tenderCriteria.value = tenderCriteria.value.filter((x) => x.id !== criterionId);
+    tenderCriteria.value = tenderCriteria.value.filter(
+      (x) => x.id !== criterionId,
+    );
     return;
   }
   const c = referenceCriteria.value.find((x) => x.id === criterionId);
@@ -515,11 +741,18 @@ function removeCriterionFromTender(c: any) {
   tenderCriteria.value = tenderCriteria.value.filter((x) => x.id !== c.id);
 }
 
-function flattenTree(items: any[], level = 0): { value: number; label: string }[] {
+function flattenTree(
+  items: any[],
+  level = 0,
+): { value: number; label: string }[] {
   const out: { value: number; label: string }[] = [];
   for (const item of items || []) {
-    out.push({ value: item.id, label: `${"  ".repeat(level)}${item.name || item.label}` });
-    if (item.children?.length) out.push(...flattenTree(item.children, level + 1));
+    out.push({
+      value: item.id,
+      label: `${"  ".repeat(level)}${item.name || item.label}`,
+    });
+    if (item.children?.length)
+      out.push(...flattenTree(item.children, level + 1));
   }
   return out;
 }
@@ -545,16 +778,48 @@ function inputToIso(value: string) {
 async function loadTender() {
   loading.value = true;
   try {
-    const { data, error } = await fetch(`/sales-tenders/${tenderId.value}/`, { headers: getAuthHeaders() });
+    const { data, error } = await fetch(`/sales-tenders/${tenderId.value}/`, {
+      headers: getAuthHeaders(),
+    });
     if (error || !data) {
       tender.value = null;
       return;
     }
     tender.value = data;
-    displayStage.value = data.stage ?? "passport";
+    const stage = data.stage ?? "passport";
+    displayStage.value =
+      data.conduct_type === "registration" && stage === "acceptance"
+        ? "decision"
+        : stage;
+    if (Array.isArray(data.positions)) {
+      tenderPositions.value = data.positions.map((p: any) => ({
+        id: p.id,
+        nomenclature_id: p.nomenclature,
+        name: p.name,
+        unit_name: p.unit_name ?? "",
+        quantity: p.quantity ?? 1,
+        description: p.description ?? "",
+      }));
+    }
+    priceCriterionVat.value = data.price_criterion_vat ?? undefined;
+    priceCriterionDelivery.value = data.price_criterion_delivery ?? undefined;
+    if (Array.isArray(data.criteria)) {
+      tenderCriteria.value = data.criteria;
+    }
     const cpvList = data.cpv_categories || [];
-    form.cpv_ids = cpvList.length ? cpvList.map((c: any) => c.id) : (data.cpv_category != null ? [data.cpv_category] : []);
-    tenderCpvLabels.value = cpvList.length ? cpvList.map((c: any) => c.label || `${c.cpv_code || ""} - ${c.name_ua || ""}`.trim()) : (data.cpv_label ? [data.cpv_label] : []);
+    form.cpv_ids = cpvList.length
+      ? cpvList.map((c: any) => c.id)
+      : data.cpv_category != null
+        ? [data.cpv_category]
+        : [];
+    tenderCpvLabels.value = cpvList.length
+      ? cpvList.map(
+          (c: any) =>
+            c.label || `${c.cpv_code || ""} - ${c.name_ua || ""}`.trim(),
+        )
+      : data.cpv_label
+        ? [data.cpv_label]
+        : [];
     Object.assign(form, {
       name: data.name ?? "",
       category: data.category ?? null,
@@ -586,7 +851,10 @@ async function loadOptions() {
   categoryTree.value = (cats.data as any[]) || [];
   expenseOptions.value = flattenTree((expenses.data as any[]) || []);
   branchOptions.value = flattenTree((branches.data as any[]) || []);
-  currencyOptions.value = ((currencies.data as any[]) || []).map((c: any) => ({ value: c.id, label: `${c.code} - ${c.name}` }));
+  currencyOptions.value = ((currencies.data as any[]) || []).map((c: any) => ({
+    value: c.id,
+    label: `${c.code} - ${c.name}`,
+  }));
 }
 
 async function loadNomenclaturesForPreparation() {
@@ -598,22 +866,29 @@ async function loadNomenclaturesForPreparation() {
     if ((form.cpv_ids?.length ?? 0) > 0) {
       const merged = new Map<number, any>();
       for (const cpvId of form.cpv_ids) {
-        const { data: byCpv } = await fetch(`/nomenclatures/?cpv_id=${cpvId}`, { headers });
+        const { data: byCpv } = await fetch(`/nomenclatures/?cpv_id=${cpvId}`, {
+          headers,
+        });
         for (const n of (byCpv as any[]) || []) merged.set(n.id, n);
       }
       items = Array.from(merged.values());
     } else if (form.category) {
       const { data: byCategory } = await fetch(
         `/nomenclatures/?category_id=${form.category}`,
-        { headers }
+        { headers },
       );
       const merged = new Map<number, any>();
       for (const n of (byCategory as any[]) || []) merged.set(n.id, n);
 
-      const { data: categoryData } = await fetch(`/categories/${form.category}/`, {
-        headers,
-      });
-      const cpvIds: number[] = ((categoryData as any)?.cpvs || []).map((c: any) => c.id);
+      const { data: categoryData } = await fetch(
+        `/categories/${form.category}/`,
+        {
+          headers,
+        },
+      );
+      const cpvIds: number[] = ((categoryData as any)?.cpvs || []).map(
+        (c: any) => c.id,
+      );
       for (const cpvId of cpvIds) {
         const { data: byCpv } = await fetch(`/nomenclatures/?cpv_id=${cpvId}`, {
           headers,
@@ -626,7 +901,9 @@ async function loadNomenclaturesForPreparation() {
     availableNomenclatures.value = items;
 
     const availableIds = new Set(items.map((n: any) => n.id));
-    tenderPositions.value = tenderPositions.value.filter((p) => availableIds.has(p.nomenclature_id));
+    tenderPositions.value = tenderPositions.value.filter((p) =>
+      availableIds.has(p.nomenclature_id),
+    );
   } finally {
     loadingNomenclatures.value = false;
   }
@@ -634,7 +911,7 @@ async function loadNomenclaturesForPreparation() {
 
 function toggleTenderPosition(nomenclatureId: number) {
   const existingIndex = tenderPositions.value.findIndex(
-    (p) => p.nomenclature_id === nomenclatureId
+    (p) => p.nomenclature_id === nomenclatureId,
   );
 
   if (existingIndex >= 0) {
@@ -642,7 +919,9 @@ function toggleTenderPosition(nomenclatureId: number) {
     return;
   }
 
-  const n = availableNomenclatures.value.find((x: any) => x.id === nomenclatureId);
+  const n = availableNomenclatures.value.find(
+    (x: any) => x.id === nomenclatureId,
+  );
   if (!n) return;
 
   tenderPositions.value.push({
@@ -660,7 +939,9 @@ async function loadDepartments() {
     departmentOptions.value = [];
     return;
   }
-  const { data } = await fetch(`/departments/?branch_id=${form.branch}`, { headers: getAuthHeaders() });
+  const { data } = await fetch(`/departments/?branch_id=${form.branch}`, {
+    headers: getAuthHeaders(),
+  });
   departmentOptions.value = flattenTree((data as any[]) || []);
 }
 
@@ -678,7 +959,13 @@ async function patchTender(payload: Record<string, unknown>) {
   });
   if (error || !data) return false;
   tender.value = { ...tender.value, ...data };
-  if (data.stage != null) displayStage.value = data.stage;
+  if (data.stage != null) {
+    const stage = data.stage;
+    displayStage.value =
+      tender.value?.conduct_type === "registration" && stage === "acceptance"
+        ? "decision"
+        : stage;
+  }
   return true;
 }
 
@@ -727,7 +1014,9 @@ async function publishTender() {
 }
 
 async function saveTiming() {
-  const payload: Record<string, unknown> = { end_at: inputToIso(timingForm.end_at) };
+  const payload: Record<string, unknown> = {
+    end_at: inputToIso(timingForm.end_at),
+  };
   if (canEditStart.value) payload.start_at = inputToIso(timingForm.start_at);
   const ok = await patchTender(payload);
   if (ok) showTimingModal.value = false;
@@ -786,13 +1075,18 @@ onMounted(async () => {
 });
 
 watch(tenderId, () => loadTender());
+watch([isRegistration, () => displayStage.value], () => {
+  if (isRegistration.value && displayStage.value === "acceptance") {
+    displayStage.value = "decision";
+  }
+});
 watch(
   () => [form.category, form.cpv_ids, tender.value?.stage],
   async () => {
     if (tender.value?.stage === "preparation") {
       await loadNomenclaturesForPreparation();
     }
-  }
+  },
 );
 watch(prepTab, (tab) => {
   if (tab === "criteria") loadReferenceCriteria();
@@ -800,6 +1094,21 @@ watch(prepTab, (tab) => {
 </script>
 
 <style scoped>
+/* Компактний степер */
+.tender-stepper--compact :deep([data-slot="header"]) {
+  gap: 0.25rem;
+}
+.tender-stepper--compact :deep([data-slot="indicator"]) {
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.75rem;
+}
+.tender-stepper--compact :deep([data-slot="title"]) {
+  font-size: 0.8125rem;
+}
+.tender-stepper--compact :deep([data-slot="wrapper"]) {
+  min-height: auto;
+}
 /* Прогрес: пройдені кроки та поточний етап тендера — акцентний колір */
 .tender-stepper :deep(.tender-step-done [data-slot="trigger"]),
 .tender-stepper :deep(.tender-step-progress-current [data-slot="trigger"]) {

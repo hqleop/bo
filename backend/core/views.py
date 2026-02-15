@@ -33,7 +33,15 @@ from .models import (
     Currency,
     TenderCriterion,
     ProcurementTender,
+    ProcurementTenderPosition,
+    TenderProposal,
+    TenderProposalPosition,
+    ProcurementTenderFile,
     SalesTender,
+    SalesTenderPosition,
+    SalesTenderProposal,
+    SalesTenderProposalPosition,
+    SalesTenderFile,
     UnitOfMeasure,
     Nomenclature,
 )
@@ -44,6 +52,7 @@ from .serializers import (
     CompanyListSerializer,
     CompanyCreateSerializer,
     CompanySupplierSerializer,
+    AddCompanySupplierSerializer,
     CompanyRegistrationStep2Serializer,
     ExistingCompanyStep2Serializer,
     PermissionSerializer,
@@ -51,6 +60,7 @@ from .serializers import (
     CompanyUserSerializer,
     NotificationSerializer,
     MeSerializer,
+    ProfileUpdateSerializer,
     PasswordResetRequestSerializer,
     PasswordResetConfirmSerializer,
     PasswordChangeSerializer,
@@ -67,7 +77,12 @@ from .serializers import (
     CurrencySerializer,
     TenderCriterionSerializer,
     ProcurementTenderSerializer,
+    TenderProposalSerializer,
+    TenderProposalPositionUpdateSerializer,
+    ProcurementTenderFileSerializer,
     SalesTenderSerializer,
+    SalesTenderProposalSerializer,
+    SalesTenderFileSerializer,
 )
 
 User = get_user_model()
@@ -166,50 +181,62 @@ def registration_step2_new_company(request):
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def registration_step2_existing_company(request):
-    """Step 2: Request to join existing company."""
+    """Step 2: Join existing company by code (ЄДРПОУ). Якщо це перший користувач компанії — оновлюємо назву та одразу схвалюємо."""
     serializer = ExistingCompanyStep2Serializer(data=request.data)
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     user_id = serializer.validated_data["user_id"]
-    company_id = serializer.validated_data["company_id"]
+    edrpou = serializer.validated_data["edrpou"]
+    new_name = (serializer.validated_data.get("name") or "").strip()
 
     try:
         user = User.objects.get(id=user_id)
-        company = Company.objects.get(id=company_id, status=Company.Status.ACTIVE)
     except User.DoesNotExist:
         return Response({"user_id": "Користувач не знайдений."}, status=status.HTTP_400_BAD_REQUEST)
-    except Company.DoesNotExist:
-        return Response({"company_id": "Компанія не знайдена."}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Check if membership already exists
+    company = Company.objects.filter(edrpou=edrpou, status=Company.Status.ACTIVE).first()
+    if not company:
+        return Response({"edrpou": "Компанію з таким кодом не знайдено."}, status=status.HTTP_400_BAD_REQUEST)
+
     if CompanyUser.objects.filter(user=user, company=company).exists():
         return Response(
             {"non_field_errors": "Користувач вже має зв'язок з цією компанією."}, status=status.HTTP_400_BAD_REQUEST
         )
 
+    has_approved = CompanyUser.objects.filter(company=company, status=CompanyUser.Status.APPROVED).exists()
+
     with transaction.atomic():
-        # Get default user role (or create if not exists)
+        if new_name and not has_approved:
+            company.name = new_name
+            company.save(update_fields=["name", "updated_at"])
+
         default_role, _ = Role.objects.get_or_create(
             company=company, name="Користувач", defaults={"is_system": True}
         )
-
-        membership = CompanyUser.objects.create(
-            user=user, company=company, role=default_role, status=CompanyUser.Status.PENDING
+        admin_role, _ = Role.objects.get_or_create(
+            company=company, name="Адміністратор", defaults={"is_system": True}
         )
 
-        # Find company admins and send notifications
-        admin_memberships = CompanyUser.objects.filter(
-            company=company, status=CompanyUser.Status.APPROVED, role__name="Адміністратор"
-        )
-        for admin_membership in admin_memberships:
-            Notification.objects.create(
-                user=admin_membership.user,
-                type=Notification.Type.MEMBERSHIP_REQUEST,
-                title=f"Запит на приєднання від {user.get_full_name() or user.email}",
-                body=f"Користувач {user.get_full_name() or user.email} ({user.email}) хоче приєднатися до компанії {company.name}.",
-                meta={"membership_id": membership.id, "user_id": user.id, "company_id": company.id},
+        if not has_approved:
+            membership = CompanyUser.objects.create(
+                user=user, company=company, role=admin_role, status=CompanyUser.Status.APPROVED
             )
+        else:
+            membership = CompanyUser.objects.create(
+                user=user, company=company, role=default_role, status=CompanyUser.Status.PENDING
+            )
+            admin_memberships = CompanyUser.objects.filter(
+                company=company, status=CompanyUser.Status.APPROVED, role__name="Адміністратор"
+            )
+            for admin_membership in admin_memberships:
+                Notification.objects.create(
+                    user=admin_membership.user,
+                    type=Notification.Type.MEMBERSHIP_REQUEST,
+                    title=f"Запит на приєднання від {user.get_full_name() or user.email}",
+                    body=f"Користувач {user.get_full_name() or user.email} ({user.email}) хоче приєднатися до компанії {company.name}.",
+                    meta={"membership_id": membership.id, "user_id": user.id, "company_id": company.id},
+                )
 
     return Response(CompanyUserSerializer(membership).data, status=status.HTTP_201_CREATED)
 
@@ -228,6 +255,13 @@ class CompanyViewSet(viewsets.ModelViewSet):
         if self.action == "create":
             return [permissions.IsAuthenticated()]
         return [permissions.AllowAny()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        edrpou = self.request.query_params.get("edrpou")
+        if edrpou is not None and str(edrpou).strip():
+            return qs.filter(edrpou=edrpou.strip())
+        return qs
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -291,6 +325,7 @@ def _user_owner_company_ids(request):
 class CompanySupplierViewSet(viewsets.ModelViewSet):
     """
     Список контрагентів компанії: додані вручну та (згодом) ті, хто підтвердив участь у тендерах.
+    Додавання: або supplier_company_id, або edrpou (якщо компанія є — лише зв'язок; якщо немає — name обов'язкова, створюється компанія).
     """
 
     serializer_class = CompanySupplierSerializer
@@ -305,30 +340,149 @@ class CompanySupplierViewSet(viewsets.ModelViewSet):
             .order_by("-created_at")
         )
 
-    def perform_create(self, serializer):
-        owner_ids = list(_user_owner_company_ids(self.request))
+    def get_serializer_class(self):
+        if self.action == "create":
+            return AddCompanySupplierSerializer
+        return CompanySupplierSerializer
+
+    def create(self, request, *args, **kwargs):
+        owner_ids = list(_user_owner_company_ids(request))
         if not owner_ids:
             raise permissions.exceptions.PermissionDenied("Немає доступу до жодної компанії.")
         owner_id = owner_ids[0]
-        supplier_id = serializer.validated_data.get("supplier_company_id")
-        if supplier_id == owner_id:
-            raise DRFValidationError({"supplier_company_id": "Не можна додати власну компанію як контрагента."})
-        if not Company.objects.filter(id=supplier_id, status=Company.Status.ACTIVE).exists():
-            raise DRFValidationError({"supplier_company_id": "Компанію не знайдено або вона неактивна."})
-        if CompanySupplier.objects.filter(owner_company_id=owner_id, supplier_company_id=supplier_id).exists():
-            raise DRFValidationError({"supplier_company_id": "Ця компанія вже є у списку контрагентів."})
-        serializer.save(
-            owner_company_id=owner_id,
-            source=CompanySupplier.Source.MANUAL,
+
+        serializer = AddCompanySupplierSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        supplier_id = data.get("supplier_company_id")
+        if supplier_id is not None:
+            if supplier_id == owner_id:
+                raise DRFValidationError({"supplier_company_id": "Не можна додати власну компанію як контрагента."})
+            if not Company.objects.filter(id=supplier_id, status=Company.Status.ACTIVE).exists():
+                raise DRFValidationError({"supplier_company_id": "Компанію не знайдено або вона неактивна."})
+            if CompanySupplier.objects.filter(owner_company_id=owner_id, supplier_company_id=supplier_id).exists():
+                raise DRFValidationError({"supplier_company_id": "Ця компанія вже є у списку контрагентів."})
+            obj = CompanySupplier.objects.create(
+                owner_company_id=owner_id,
+                supplier_company_id=supplier_id,
+                source=CompanySupplier.Source.MANUAL,
+            )
+            return Response(
+                CompanySupplierSerializer(obj).data,
+                status=status.HTTP_201_CREATED,
+            )
+
+        edrpou = data["edrpou"]
+        name = data.get("name") or ""
+
+        company = Company.objects.filter(edrpou=edrpou, status=Company.Status.ACTIVE).first()
+        if company:
+            if CompanySupplier.objects.filter(owner_company_id=owner_id, supplier_company_id=company.id).exists():
+                raise DRFValidationError({"edrpou": "Ця компанія вже є у списку контрагентів."})
+            if company.id == owner_id:
+                raise DRFValidationError({"edrpou": "Не можна додати власну компанію як контрагента."})
+            obj = CompanySupplier.objects.create(
+                owner_company_id=owner_id,
+                supplier_company_id=company.id,
+                source=CompanySupplier.Source.MANUAL,
+            )
+            return Response(
+                CompanySupplierSerializer(obj).data,
+                status=status.HTTP_201_CREATED,
+            )
+
+        if not name:
+            raise DRFValidationError({"name": "Компанії з таким кодом немає. Введіть назву для створення контрагента (попередня назва)."})
+        with transaction.atomic():
+            new_company = Company.objects.create(
+                edrpou=edrpou,
+                name=name,
+                goal_tenders=False,
+                goal_participation=True,
+                status=Company.Status.ACTIVE,
+            )
+            obj = CompanySupplier.objects.create(
+                owner_company_id=owner_id,
+                supplier_company_id=new_company.id,
+                source=CompanySupplier.Source.MANUAL,
+            )
+        return Response(
+            CompanySupplierSerializer(obj).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(summary="Додати контрагента", request=AddCompanySupplierSerializer)
+    def create(self, request, *args, **kwargs):
+        owner_ids = list(_user_owner_company_ids(request))
+        if not owner_ids:
+            raise permissions.exceptions.PermissionDenied("Немає доступу до жодної компанії.")
+        owner_id = owner_ids[0]
+
+        serializer = AddCompanySupplierSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        supplier_id = data.get("supplier_company_id")
+        if supplier_id is not None:
+            if supplier_id == owner_id:
+                raise DRFValidationError({"supplier_company_id": "Не можна додати власну компанію як контрагента."})
+            if not Company.objects.filter(id=supplier_id, status=Company.Status.ACTIVE).exists():
+                raise DRFValidationError({"supplier_company_id": "Компанію не знайдено або вона неактивна."})
+            if CompanySupplier.objects.filter(owner_company_id=owner_id, supplier_company_id=supplier_id).exists():
+                raise DRFValidationError({"supplier_company_id": "Ця компанія вже є у списку контрагентів."})
+            obj = CompanySupplier.objects.create(
+                owner_company_id=owner_id,
+                supplier_company_id=supplier_id,
+                source=CompanySupplier.Source.MANUAL,
+            )
+            return Response(
+                CompanySupplierSerializer(obj).data,
+                status=status.HTTP_201_CREATED,
+            )
+
+        edrpou = data["edrpou"]
+        name = data.get("name") or ""
+
+        company = Company.objects.filter(edrpou=edrpou, status=Company.Status.ACTIVE).first()
+        if company:
+            if CompanySupplier.objects.filter(owner_company_id=owner_id, supplier_company_id=company.id).exists():
+                raise DRFValidationError({"edrpou": "Ця компанія вже є у списку контрагентів."})
+            if company.id == owner_id:
+                raise DRFValidationError({"edrpou": "Не можна додати власну компанію як контрагента."})
+            obj = CompanySupplier.objects.create(
+                owner_company_id=owner_id,
+                supplier_company_id=company.id,
+                source=CompanySupplier.Source.MANUAL,
+            )
+            return Response(
+                CompanySupplierSerializer(obj).data,
+                status=status.HTTP_201_CREATED,
+            )
+
+        if not name:
+            raise DRFValidationError({"name": "Компанії з таким кодом немає. Введіть назву для створення контрагента (попередня назва)."})
+        with transaction.atomic():
+            new_company = Company.objects.create(
+                edrpou=edrpou,
+                name=name,
+                goal_tenders=False,
+                goal_participation=True,
+                status=Company.Status.ACTIVE,
+            )
+            obj = CompanySupplier.objects.create(
+                owner_company_id=owner_id,
+                supplier_company_id=new_company.id,
+                source=CompanySupplier.Source.MANUAL,
+            )
+        return Response(
+            CompanySupplierSerializer(obj).data,
+            status=status.HTTP_201_CREATED,
         )
 
     @extend_schema(summary="Список контрагентів", description="Контрагенти: додані вручну та з участі в тендерах.")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
-
-    @extend_schema(summary="Додати контрагента вручну", request=CompanySupplierSerializer)
-    def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
 
 
 class CompanyUserViewSet(viewsets.ModelViewSet):
@@ -671,16 +825,77 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
 
 @extend_schema(
     summary="Поточний користувач",
-    description="Отримати інформацію про поточного користувача, його членства та права доступу.",
+    description="Отримати або оновити профіль поточного користувача.",
     responses={200: MeSerializer},
 )
-@api_view(["GET"])
+@api_view(["GET", "PATCH"])
 @permission_classes([permissions.IsAuthenticated])
 def me(request):
-    """Get current user info with memberships and permissions (з ролей; у MVP не блокують доступ)."""
-    serializer = MeSerializer({"user": request.user, "memberships": request.user.memberships.all(), "permissions": []})
+    """GET: поточний користувач, членства, права. PATCH: оновлення профілю (first_name, last_name, middle_name, phone)."""
+    if request.method == "PATCH":
+        serializer = ProfileUpdateSerializer(data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        user = request.user
+        for key, value in serializer.validated_data.items():
+            setattr(user, key, value)
+        user.save(update_fields=list(serializer.validated_data.keys()))
+        response_serializer = MeSerializer(
+            {"user": user, "memberships": user.memberships.all(), "permissions": []},
+            context={"request": request},
+        )
+        response_serializer.instance = user
+        return Response(response_serializer.data)
+    serializer = MeSerializer(
+        {"user": request.user, "memberships": request.user.memberships.all(), "permissions": []},
+        context={"request": request},
+    )
     serializer.instance = request.user
     return Response(serializer.data)
+
+
+AVATAR_MAX_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
+
+
+def _is_allowed_avatar_content_type(content_type):
+    if not content_type:
+        return False
+    ct = content_type.split(";")[0].strip().lower()
+    return ct in ("image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp") or ct.startswith("image/")
+
+
+@extend_schema(
+    summary="Завантажити аватар",
+    description="Завантажити фото для аватара поточного користувача (JPEG, PNG, GIF, WebP; макс. 5 МБ).",
+    request={"multipart/form-data": {"type": "object", "properties": {"avatar": {"type": "string", "format": "binary"}}}},
+    responses={200: {"description": "URL нового аватара"}},
+)
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def me_avatar_upload(request):
+    """Upload avatar for current user."""
+    file = request.FILES.get("avatar") or request.FILES.get("file")
+    if not file:
+        return Response({"detail": "Файл не надіслано. Використовуйте поле avatar або file."}, status=status.HTTP_400_BAD_REQUEST)
+    if not _is_allowed_avatar_content_type(getattr(file, "content_type", "")):
+        return Response(
+            {"detail": "Дозволені формати: JPEG, PNG, GIF, WebP."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if file.size > AVATAR_MAX_SIZE_BYTES:
+        return Response({"detail": "Розмір файлу не повинен перевищувати 5 МБ."}, status=status.HTTP_400_BAD_REQUEST)
+    user = request.user
+    if user.avatar:
+        try:
+            user.avatar.delete(save=False)
+        except Exception:
+            pass
+    user.avatar = file
+    user.save(update_fields=["avatar"])
+    url = user.avatar.url
+    if request.get_host():
+        url = request.build_absolute_uri(url)
+    return Response({"avatar": url})
 
 
 @extend_schema(
@@ -1370,23 +1585,34 @@ class ExpenseArticleUserViewSet(viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
 
-class UnitOfMeasureViewSet(viewsets.ModelViewSet):
+class UnitOfMeasureViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    Довідник одиниць виміру (company-scoped).
+    Довідник одиниць виміру — спільний для всіх компаній.
+    Список одиниць (спільні company=null + одиниці компаній користувача).
+    Наповнення — через БД; створення/редагування через API вимкнено.
     """
 
     serializer_class = UnitOfMeasureSerializer
     permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ["get", "head", "options"]
 
     def get_queryset(self):
-        """Повертає одиниці виміру компаній поточного користувача."""
+        """Спільні одиниці (company=null) + одиниці компаній користувача."""
         user = self.request.user
         if user.is_superuser:
-            return UnitOfMeasure.objects.all().select_related("company")
-        user_companies = CompanyUser.objects.filter(
-            user=user, status=CompanyUser.Status.APPROVED
-        ).values_list("company_id", flat=True)
-        return UnitOfMeasure.objects.filter(company_id__in=user_companies).select_related("company")
+            return UnitOfMeasure.objects.all().select_related("company").order_by("name")
+        user_companies = list(
+            CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+        )
+        return (
+            UnitOfMeasure.objects.filter(
+                Q(company__isnull=True) | Q(company_id__in=user_companies)
+            )
+            .select_related("company")
+            .order_by("name")
+        )
 
 
 class NomenclatureViewSet(viewsets.ModelViewSet):
@@ -1525,7 +1751,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             return ProcurementTender.objects.all().select_related(
                 "company", "category", "cpv_category", "expense_article",
                 "branch", "department", "currency", "created_by", "parent",
-            )
+            ).prefetch_related("positions__nomenclature__unit", "tender_criteria")
         user_companies = CompanyUser.objects.filter(
             user=user, status=CompanyUser.Status.APPROVED
         ).values_list("company_id", flat=True)
@@ -1534,15 +1760,141 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         ).select_related(
             "company", "category", "cpv_category", "expense_article",
             "branch", "department", "currency", "created_by", "parent",
-        )
+        ).prefetch_related("positions__nomenclature__unit", "tender_criteria")
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
+    @extend_schema(responses=TenderProposalSerializer(many=True))
+    @action(detail=True, methods=["get"], url_path="proposals")
+    def proposals_list(self, request, pk=None):
+        """Список пропозицій по тендеру."""
+        tender = self.get_object()
+        qs = TenderProposal.objects.filter(tender=tender).select_related(
+            "supplier_company"
+        ).prefetch_related(
+            "position_values__tender_position__nomenclature__unit",
+        )
+        serializer = TenderProposalSerializer(qs, many=True)
+        return Response(serializer.data)
+
+    @extend_schema(request=TenderProposalSerializer, responses=TenderProposalSerializer)
+    @action(detail=True, methods=["post"], url_path="proposals/add")
+    def proposal_add(self, request, pk=None):
+        """Додати пропозицію (обрати контрагента)."""
+        tender = self.get_object()
+        supplier_company_id = request.data.get("supplier_company_id") or request.data.get("supplier_company")
+        if not supplier_company_id:
+            return Response(
+                {"detail": "Потрібно вказати supplier_company_id."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        proposal, created = TenderProposal.objects.get_or_create(
+            tender=tender,
+            supplier_company_id=supplier_company_id,
+        )
+        serializer = TenderProposalSerializer(proposal)
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @extend_schema(request=TenderProposalPositionUpdateSerializer)
+    @action(detail=True, methods=["post", "patch"], url_path=r"proposals/(?P<proposal_id>[^/.]+)/position-values")
+    def proposal_position_values(self, request, pk=None, proposal_id=None):
+        """Оновити значення по позиціях пропозиції (ціна + критерії)."""
+        tender = self.get_object()
+        proposal = TenderProposal.objects.filter(
+            tender=tender, id=proposal_id
+        ).prefetch_related("position_values__tender_position").first()
+        if not proposal:
+            return Response({"detail": "Пропозицію не знайдено."}, status=status.HTTP_404_NOT_FOUND)
+        payload = TenderProposalPositionUpdateSerializer(data=request.data)
+        if not payload.is_valid():
+            return Response(payload.errors, status=status.HTTP_400_BAD_REQUEST)
+        position_values_data = payload.validated_data.get("position_values") or []
+        for item in position_values_data:
+            tp_id = item.get("tender_position_id")
+            if not tp_id:
+                continue
+            pos = ProcurementTenderPosition.objects.filter(
+                tender=tender, id=tp_id
+            ).first()
+            if not pos:
+                continue
+            pv, _ = TenderProposalPosition.objects.get_or_create(
+                proposal=proposal, tender_position=pos,
+                defaults={"price": None, "criterion_values": {}},
+            )
+            if "price" in item:
+                pv.price = item["price"]
+            if "criterion_values" in item:
+                pv.criterion_values = item["criterion_values"]
+            pv.save()
+        qs = TenderProposal.objects.filter(id=proposal.id).prefetch_related(
+            "position_values__tender_position__nomenclature__unit",
+        )
+        serializer = TenderProposalSerializer(qs.first())
+        return Response(serializer.data)
+
+    @extend_schema(responses=TenderProposalSerializer(many=True))
+    @action(detail=True, methods=["get"], url_path=r"proposals/(?P<proposal_id>[^/.]+)")
+    def proposal_detail(self, request, pk=None, proposal_id=None):
+        """Деталі пропозиції (з позиціями та значеннями)."""
+        tender = self.get_object()
+        proposal = TenderProposal.objects.filter(
+            tender=tender, id=proposal_id
+        ).prefetch_related(
+            "position_values__tender_position__nomenclature__unit",
+        ).first()
+        if not proposal:
+            return Response({"detail": "Пропозицію не знайдено."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = TenderProposalSerializer(proposal)
+        return Response(serializer.data)
+
+    @extend_schema(responses=ProcurementTenderFileSerializer(many=True))
+    @action(detail=True, methods=["get"], url_path="files")
+    def files_list(self, request, pk=None):
+        """Список прикріплених файлів."""
+        tender = self.get_object()
+        qs = ProcurementTenderFile.objects.filter(tender=tender)
+        serializer = ProcurementTenderFileSerializer(
+            qs, many=True, context={"request": request}
+        )
+        return Response(serializer.data)
+
+    @extend_schema(request=OpenApiTypes.BINARY, responses=ProcurementTenderFileSerializer)
+    @action(detail=True, methods=["post"], url_path="files/upload")
+    def file_upload(self, request, pk=None):
+        """Прикріпити файл до тендера."""
+        tender = self.get_object()
+        file_obj = request.FILES.get("file") or request.FILES.get("file_upload")
+        if not file_obj:
+            return Response(
+                {"detail": "Надішліть файл у полі file або file_upload."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        name = request.data.get("name", "") or file_obj.name
+        obj = ProcurementTenderFile.objects.create(
+            tender=tender, file=file_obj, name=name[:255],
+        )
+        serializer = ProcurementTenderFileSerializer(
+            obj, context={"request": request}
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["delete"], url_path=r"files/(?P<file_id>[^/.]+)")
+    def file_delete(self, request, pk=None, file_id=None):
+        """Видалити прикріплений файл."""
+        tender = self.get_object()
+        obj = ProcurementTenderFile.objects.filter(tender=tender, id=file_id).first()
+        if not obj:
+            return Response({"detail": "Файл не знайдено."}, status=status.HTTP_404_NOT_FOUND)
+        obj.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class SalesTenderViewSet(viewsets.ModelViewSet):
     """
-    Тендери на продаж (company-scoped).
+    Тендери на продаж (company-scoped). Та сама процедура що й закупівля;
+    переможець рекомендується за найбільшою ціною.
     """
 
     serializer_class = SalesTenderSerializer
@@ -1554,7 +1906,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             return SalesTender.objects.all().select_related(
                 "company", "category", "cpv_category", "expense_article",
                 "branch", "department", "currency", "created_by", "parent",
-            )
+            ).prefetch_related("positions__nomenclature__unit", "tender_criteria")
         user_companies = CompanyUser.objects.filter(
             user=user, status=CompanyUser.Status.APPROVED
         ).values_list("company_id", flat=True)
@@ -1563,7 +1915,130 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
         ).select_related(
             "company", "category", "cpv_category", "expense_article",
             "branch", "department", "currency", "created_by", "parent",
-        )
+        ).prefetch_related("positions__nomenclature__unit", "tender_criteria")
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+    @extend_schema(responses=SalesTenderProposalSerializer(many=True))
+    @action(detail=True, methods=["get"], url_path="proposals")
+    def proposals_list(self, request, pk=None):
+        """Список пропозицій по тендеру на продаж."""
+        tender = self.get_object()
+        qs = SalesTenderProposal.objects.filter(tender=tender).select_related(
+            "supplier_company"
+        ).prefetch_related(
+            "position_values__tender_position__nomenclature__unit",
+        )
+        serializer = SalesTenderProposalSerializer(qs, many=True)
+        return Response(serializer.data)
+
+    @extend_schema(request=SalesTenderProposalSerializer, responses=SalesTenderProposalSerializer)
+    @action(detail=True, methods=["post"], url_path="proposals/add")
+    def proposal_add(self, request, pk=None):
+        """Додати пропозицію (обрати контрагента)."""
+        tender = self.get_object()
+        supplier_company_id = request.data.get("supplier_company_id") or request.data.get("supplier_company")
+        if not supplier_company_id:
+            return Response(
+                {"detail": "Потрібно вказати supplier_company_id."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        proposal, created = SalesTenderProposal.objects.get_or_create(
+            tender=tender,
+            supplier_company_id=supplier_company_id,
+        )
+        serializer = SalesTenderProposalSerializer(proposal)
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @extend_schema(request=TenderProposalPositionUpdateSerializer)
+    @action(detail=True, methods=["post", "patch"], url_path=r"proposals/(?P<proposal_id>[^/.]+)/position-values")
+    def proposal_position_values(self, request, pk=None, proposal_id=None):
+        """Оновити значення по позиціях пропозиції."""
+        tender = self.get_object()
+        proposal = SalesTenderProposal.objects.filter(
+            tender=tender, id=proposal_id
+        ).prefetch_related("position_values__tender_position").first()
+        if not proposal:
+            return Response({"detail": "Пропозицію не знайдено."}, status=status.HTTP_404_NOT_FOUND)
+        payload = TenderProposalPositionUpdateSerializer(data=request.data)
+        if not payload.is_valid():
+            return Response(payload.errors, status=status.HTTP_400_BAD_REQUEST)
+        position_values_data = payload.validated_data.get("position_values") or []
+        for item in position_values_data:
+            tp_id = item.get("tender_position_id")
+            if not tp_id:
+                continue
+            pos = SalesTenderPosition.objects.filter(tender=tender, id=tp_id).first()
+            if not pos:
+                continue
+            pv, _ = SalesTenderProposalPosition.objects.get_or_create(
+                proposal=proposal, tender_position=pos,
+                defaults={"price": None, "criterion_values": {}},
+            )
+            if "price" in item:
+                pv.price = item["price"]
+            if "criterion_values" in item:
+                pv.criterion_values = item["criterion_values"]
+            pv.save()
+        qs = SalesTenderProposal.objects.filter(id=proposal.id).prefetch_related(
+            "position_values__tender_position__nomenclature__unit",
+        )
+        serializer = SalesTenderProposalSerializer(qs.first())
+        return Response(serializer.data)
+
+    @extend_schema(responses=SalesTenderProposalSerializer(many=True))
+    @action(detail=True, methods=["get"], url_path=r"proposals/(?P<proposal_id>[^/.]+)")
+    def proposal_detail(self, request, pk=None, proposal_id=None):
+        """Деталі пропозиції."""
+        tender = self.get_object()
+        proposal = SalesTenderProposal.objects.filter(
+            tender=tender, id=proposal_id
+        ).prefetch_related(
+            "position_values__tender_position__nomenclature__unit",
+        ).first()
+        if not proposal:
+            return Response({"detail": "Пропозицію не знайдено."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = SalesTenderProposalSerializer(proposal)
+        return Response(serializer.data)
+
+    @extend_schema(responses=SalesTenderFileSerializer(many=True))
+    @action(detail=True, methods=["get"], url_path="files")
+    def files_list(self, request, pk=None):
+        """Список прикріплених файлів."""
+        tender = self.get_object()
+        qs = SalesTenderFile.objects.filter(tender=tender)
+        serializer = SalesTenderFileSerializer(
+            qs, many=True, context={"request": request}
+        )
+        return Response(serializer.data)
+
+    @extend_schema(request=OpenApiTypes.BINARY, responses=SalesTenderFileSerializer)
+    @action(detail=True, methods=["post"], url_path="files/upload")
+    def file_upload(self, request, pk=None):
+        """Прикріпити файл до тендера на продаж."""
+        tender = self.get_object()
+        file_obj = request.FILES.get("file") or request.FILES.get("file_upload")
+        if not file_obj:
+            return Response(
+                {"detail": "Надішліть файл у полі file або file_upload."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        name = request.data.get("name", "") or file_obj.name
+        obj = SalesTenderFile.objects.create(
+            tender=tender, file=file_obj, name=name[:255],
+        )
+        serializer = SalesTenderFileSerializer(
+            obj, context={"request": request}
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["delete"], url_path=r"files/(?P<file_id>[^/.]+)")
+    def file_delete(self, request, pk=None, file_id=None):
+        """Видалити прикріплений файл."""
+        tender = self.get_object()
+        obj = SalesTenderFile.objects.filter(tender=tender, id=file_id).first()
+        if not obj:
+            return Response({"detail": "Файл не знайдено."}, status=status.HTTP_404_NOT_FOUND)
+        obj.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

@@ -20,7 +20,15 @@ from .models import (
     Currency,
     TenderCriterion,
     ProcurementTender,
+    ProcurementTenderPosition,
+    TenderProposal,
+    TenderProposalPosition,
+    ProcurementTenderFile,
     SalesTender,
+    SalesTenderPosition,
+    SalesTenderProposal,
+    SalesTenderProposalPosition,
+    SalesTenderFile,
     UnitOfMeasure,
     Nomenclature,
 )
@@ -31,10 +39,20 @@ User = get_user_model()
 class UserSerializer(serializers.ModelSerializer):
     """User serializer for read operations."""
 
+    avatar = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ("id", "email", "first_name", "last_name", "middle_name", "phone", "is_active")
+        fields = ("id", "email", "first_name", "last_name", "middle_name", "phone", "avatar", "is_active")
         read_only_fields = ("id", "email", "is_active")
+
+    def get_avatar(self, obj):
+        if not obj.avatar:
+            return None
+        request = self.context.get("request")
+        if request:
+            return request.build_absolute_uri(obj.avatar.url)
+        return obj.avatar.url
 
 
 class UserRegistrationStep1Serializer(serializers.Serializer):
@@ -103,12 +121,34 @@ class CompanySupplierSerializer(serializers.ModelSerializer):
     """Зв'язок компанія → контрагент. Для списку контрагентів."""
 
     supplier_company = CompanyListSerializer(read_only=True)
-    supplier_company_id = serializers.IntegerField(write_only=True, required=True)
+    supplier_company_id = serializers.IntegerField(write_only=True, required=False)
 
     class Meta:
         model = CompanySupplier
         fields = ("id", "owner_company", "supplier_company", "supplier_company_id", "source", "created_at")
         read_only_fields = ("id", "owner_company", "supplier_company", "source", "created_at")
+
+
+class AddCompanySupplierSerializer(serializers.Serializer):
+    """Додати контрагента: або supplier_company_id, або edrpou (+ name якщо компанії ще немає)."""
+
+    supplier_company_id = serializers.IntegerField(required=False)
+    edrpou = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        sid = attrs.get("supplier_company_id")
+        edrpou = (attrs.get("edrpou") or "").strip()
+        name = (attrs.get("name") or "").strip()
+        if sid is not None:
+            if edrpou:
+                raise serializers.ValidationError({"edrpou": "Укажіть або ID компанії, або код (ЄДРПОУ), але не обидва."})
+            return attrs
+        if not edrpou:
+            raise serializers.ValidationError({"edrpou": "Вкажіть код компанії (ЄДРПОУ) або ID існуючої компанії."})
+        attrs["edrpou"] = edrpou
+        attrs["name"] = name
+        return attrs
 
 
 class CompanyRegistrationStep2Serializer(serializers.Serializer):
@@ -121,9 +161,12 @@ class CompanyRegistrationStep2Serializer(serializers.Serializer):
     goal_participation = serializers.BooleanField(required=True)
 
     def validate_edrpou(self, value):
-        if Company.objects.filter(edrpou=value).exists():
+        code = (value or "").strip()
+        if not code:
+            raise serializers.ValidationError("Код компанії обов'язковий.")
+        if Company.objects.filter(edrpou=code).exists():
             raise serializers.ValidationError("Компанія з таким ЄДРПОУ вже існує.")
-        return value
+        return code
 
     def validate(self, attrs):
         if not attrs.get("goal_tenders") and not attrs.get("goal_participation"):
@@ -132,15 +175,19 @@ class CompanyRegistrationStep2Serializer(serializers.Serializer):
 
 
 class ExistingCompanyStep2Serializer(serializers.Serializer):
-    """Step 2: Join existing company."""
+    """Step 2: Join existing company by code (ЄДРПОУ). Optional name — оновлює назву при першій реєстрації."""
 
     user_id = serializers.IntegerField(required=True)
-    company_id = serializers.IntegerField(required=True)
+    edrpou = serializers.CharField(max_length=20, required=True)
+    name = serializers.CharField(max_length=255, required=False, allow_blank=True)
 
-    def validate_company_id(self, value):
-        if not Company.objects.filter(id=value, status=Company.Status.ACTIVE).exists():
-            raise serializers.ValidationError("Компанія не знайдена або неактивна.")
-        return value
+    def validate_edrpou(self, value):
+        code = (value or "").strip()
+        if not code:
+            raise serializers.ValidationError("Код компанії обов'язковий.")
+        if not Company.objects.filter(edrpou=code, status=Company.Status.ACTIVE).exists():
+            raise serializers.ValidationError("Компанію з таким кодом не знайдено.")
+        return code
 
 
 class PermissionSerializer(serializers.ModelSerializer):
@@ -216,6 +263,15 @@ class MeSerializer(serializers.Serializer):
         for membership in user.memberships.filter(status=CompanyUser.Status.APPROVED).select_related("role"):
             permissions.update(membership.role.permissions.values_list("code", flat=True))
         return list(permissions)
+
+
+class ProfileUpdateSerializer(serializers.Serializer):
+    """Оновлення профілю поточного користувача (поля з кроку 1 реєстрації)."""
+
+    first_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    last_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    middle_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    phone = serializers.CharField(max_length=32, required=False, allow_blank=True)
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
@@ -513,6 +569,22 @@ class TenderCriterionSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "created_at", "updated_at")
 
 
+class ProcurementTenderPositionSerializer(serializers.ModelSerializer):
+    """Позиція тендера на закупівлю."""
+
+    nomenclature_id = serializers.PrimaryKeyRelatedField(
+        queryset=Nomenclature.objects.all(), source="nomenclature"
+    )
+    name = serializers.CharField(source="nomenclature.name", read_only=True)
+    unit_name = serializers.CharField(source="nomenclature.unit.name", read_only=True)
+
+    class Meta:
+        model = ProcurementTenderPosition
+        fields = ("id", "tender", "nomenclature", "nomenclature_id", "name", "unit_name", "quantity", "description")
+        read_only_fields = ("id", "tender", "name", "unit_name")
+        extra_kwargs = {"nomenclature": {"required": False}}
+
+
 class ProcurementTenderSerializer(serializers.ModelSerializer):
     """Тендер на закупівлю (паспорт та етапи)."""
 
@@ -533,6 +605,11 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
     expense_article_name = serializers.SerializerMethodField()
     branch_name = serializers.SerializerMethodField()
     department_name = serializers.SerializerMethodField()
+    positions = ProcurementTenderPositionSerializer(many=True, required=False)
+    criterion_ids = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=TenderCriterion.objects.all(), required=False, source="tender_criteria"
+    )
+    criteria = serializers.SerializerMethodField()
 
     class Meta:
         model = ProcurementTender
@@ -570,6 +647,12 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             "end_at",
             "created_at",
             "updated_at",
+            "price_criterion_vat",
+            "price_criterion_delivery",
+            "tender_criteria",
+            "criterion_ids",
+            "criteria",
+            "positions",
         )
         read_only_fields = (
             "id",
@@ -615,6 +698,142 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
     def get_department_name(self, obj):
         return obj.department.name if obj.department else ""
 
+    def get_criteria(self, obj):
+        return [
+            {"id": c.id, "name": c.name, "type": c.type}
+            for c in obj.tender_criteria.all()
+        ]
+
+    def _update_positions(self, instance, positions_data):
+        if positions_data is None:
+            return
+        nom_id_key = lambda x: x if isinstance(x, int) else getattr(x, "id", None)
+        current = {p.nomenclature_id: p for p in instance.positions.all()}
+        seen_ids = set()
+        for item in positions_data:
+            nom = item.get("nomenclature") or item.get("nomenclature_id")
+            nom_id = nom_id_key(nom) if nom is not None else None
+            if not nom_id:
+                continue
+            existing = current.get(nom_id)
+            quantity = item.get("quantity", 1)
+            description = item.get("description", "")
+            if existing:
+                existing.quantity = quantity
+                existing.description = description
+                existing.save()
+                seen_ids.add(existing.id)
+            else:
+                new_pos = instance.positions.create(
+                    nomenclature_id=nom_id, quantity=quantity, description=description
+                )
+                seen_ids.add(new_pos.id)
+        for pos in list(instance.positions.all()):
+            if pos.id not in seen_ids:
+                pos.delete()
+
+    def update(self, instance, validated_data):
+        positions_data = validated_data.pop("positions", None)
+        criterion_ids = validated_data.pop("tender_criteria", None)
+        if criterion_ids is not None:
+            instance.tender_criteria.set(criterion_ids)
+        super().update(instance, validated_data)
+        if positions_data is not None:
+            self._update_positions(instance, positions_data)
+        return instance
+
+
+class TenderProposalPositionSerializer(serializers.ModelSerializer):
+    """Значення по позиції в пропозиції."""
+
+    tender_position_id = serializers.PrimaryKeyRelatedField(
+        queryset=ProcurementTenderPosition.objects.none(), source="tender_position"
+    )
+    position_name = serializers.CharField(source="tender_position.nomenclature.name", read_only=True)
+    position_quantity = serializers.DecimalField(
+        source="tender_position.quantity", max_digits=18, decimal_places=4, read_only=True
+    )
+    position_unit = serializers.CharField(
+        source="tender_position.nomenclature.unit.name", read_only=True
+    )
+
+    class Meta:
+        model = TenderProposalPosition
+        fields = (
+            "id",
+            "tender_position",
+            "tender_position_id",
+            "position_name",
+            "position_quantity",
+            "position_unit",
+            "price",
+            "criterion_values",
+        )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "context" in kwargs and "tender" in kwargs["context"]:
+            self.fields["tender_position"].queryset = (
+                ProcurementTenderPosition.objects.filter(tender=kwargs["context"]["tender"])
+            )
+
+
+class TenderProposalSerializer(serializers.ModelSerializer):
+    """Пропозиція контрагента в тендері."""
+
+    supplier_company_id = serializers.PrimaryKeyRelatedField(
+        queryset=Company.objects.all(), source="supplier_company"
+    )
+    supplier_name = serializers.CharField(source="supplier_company.name", read_only=True)
+    position_values = TenderProposalPositionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = TenderProposal
+        fields = ("id", "tender", "supplier_company", "supplier_company_id", "supplier_name", "position_values")
+        read_only_fields = ("id", "tender")
+
+
+class TenderProposalPositionUpdateSerializer(serializers.Serializer):
+    """Оновлення значень по позиціях пропозиції (bulk)."""
+
+    position_values = serializers.ListField(
+        child=serializers.DictField(),
+        help_text="List of { tender_position_id, price?, criterion_values? }",
+    )
+
+
+class ProcurementTenderFileSerializer(serializers.ModelSerializer):
+    """Файл, прикріплений до тендера."""
+
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProcurementTenderFile
+        fields = ("id", "tender", "file", "file_url", "name", "uploaded_at")
+        read_only_fields = ("id", "tender", "uploaded_at")
+
+    def get_file_url(self, obj):
+        request = self.context.get("request")
+        if request and obj.file:
+            return request.build_absolute_uri(obj.file.url)
+        return obj.file.url if obj.file else ""
+
+
+class SalesTenderPositionSerializer(serializers.ModelSerializer):
+    """Позиція тендера на продаж."""
+
+    nomenclature_id = serializers.PrimaryKeyRelatedField(
+        queryset=Nomenclature.objects.all(), source="nomenclature"
+    )
+    name = serializers.CharField(source="nomenclature.name", read_only=True)
+    unit_name = serializers.CharField(source="nomenclature.unit.name", read_only=True)
+
+    class Meta:
+        model = SalesTenderPosition
+        fields = ("id", "tender", "nomenclature", "nomenclature_id", "name", "unit_name", "quantity", "description")
+        read_only_fields = ("id", "tender", "name", "unit_name")
+        extra_kwargs = {"nomenclature": {"required": False}}
+
 
 class SalesTenderSerializer(serializers.ModelSerializer):
     """Тендер на продаж (паспорт та етапи)."""
@@ -636,6 +855,11 @@ class SalesTenderSerializer(serializers.ModelSerializer):
     expense_article_name = serializers.SerializerMethodField()
     branch_name = serializers.SerializerMethodField()
     department_name = serializers.SerializerMethodField()
+    positions = SalesTenderPositionSerializer(many=True, required=False)
+    criterion_ids = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=TenderCriterion.objects.all(), required=False, source="tender_criteria"
+    )
+    criteria = serializers.SerializerMethodField()
 
     class Meta:
         model = SalesTender
@@ -673,6 +897,12 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             "end_at",
             "created_at",
             "updated_at",
+            "price_criterion_vat",
+            "price_criterion_delivery",
+            "tender_criteria",
+            "criterion_ids",
+            "criteria",
+            "positions",
         )
         read_only_fields = (
             "id",
@@ -717,3 +947,114 @@ class SalesTenderSerializer(serializers.ModelSerializer):
 
     def get_department_name(self, obj):
         return obj.department.name if obj.department else ""
+
+    def get_criteria(self, obj):
+        return [
+            {"id": c.id, "name": c.name, "type": c.type}
+            for c in obj.tender_criteria.all()
+        ]
+
+    def _update_positions(self, instance, positions_data):
+        if positions_data is None:
+            return
+        nom_id_key = lambda x: x if isinstance(x, int) else getattr(x, "id", None)
+        current = {p.nomenclature_id: p for p in instance.positions.all()}
+        seen_ids = set()
+        for item in positions_data:
+            nom = item.get("nomenclature") or item.get("nomenclature_id")
+            nom_id = nom_id_key(nom) if nom is not None else None
+            if not nom_id:
+                continue
+            existing = current.get(nom_id)
+            quantity = item.get("quantity", 1)
+            description = item.get("description", "")
+            if existing:
+                existing.quantity = quantity
+                existing.description = description
+                existing.save()
+                seen_ids.add(existing.id)
+            else:
+                new_pos = instance.positions.create(
+                    nomenclature_id=nom_id, quantity=quantity, description=description
+                )
+                seen_ids.add(new_pos.id)
+        for pos in list(instance.positions.all()):
+            if pos.id not in seen_ids:
+                pos.delete()
+
+    def update(self, instance, validated_data):
+        positions_data = validated_data.pop("positions", None)
+        criterion_ids = validated_data.pop("tender_criteria", None)
+        if criterion_ids is not None:
+            instance.tender_criteria.set(criterion_ids)
+        super().update(instance, validated_data)
+        if positions_data is not None:
+            self._update_positions(instance, positions_data)
+        return instance
+
+
+class SalesTenderProposalPositionSerializer(serializers.ModelSerializer):
+    """Значення по позиції в пропозиції тендера на продаж."""
+
+    tender_position_id = serializers.PrimaryKeyRelatedField(
+        queryset=SalesTenderPosition.objects.none(), source="tender_position"
+    )
+    position_name = serializers.CharField(source="tender_position.nomenclature.name", read_only=True)
+    position_quantity = serializers.DecimalField(
+        source="tender_position.quantity", max_digits=18, decimal_places=4, read_only=True
+    )
+    position_unit = serializers.CharField(
+        source="tender_position.nomenclature.unit.name", read_only=True
+    )
+
+    class Meta:
+        model = SalesTenderProposalPosition
+        fields = (
+            "id",
+            "tender_position",
+            "tender_position_id",
+            "position_name",
+            "position_quantity",
+            "position_unit",
+            "price",
+            "criterion_values",
+        )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "context" in kwargs and "tender" in kwargs["context"]:
+            self.fields["tender_position"].queryset = (
+                SalesTenderPosition.objects.filter(tender=kwargs["context"]["tender"])
+            )
+
+
+class SalesTenderProposalSerializer(serializers.ModelSerializer):
+    """Пропозиція контрагента в тендері на продаж."""
+
+    supplier_company_id = serializers.PrimaryKeyRelatedField(
+        queryset=Company.objects.all(), source="supplier_company"
+    )
+    supplier_name = serializers.CharField(source="supplier_company.name", read_only=True)
+    position_values = SalesTenderProposalPositionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = SalesTenderProposal
+        fields = ("id", "tender", "supplier_company", "supplier_company_id", "supplier_name", "position_values")
+        read_only_fields = ("id", "tender")
+
+
+class SalesTenderFileSerializer(serializers.ModelSerializer):
+    """Файл, прикріплений до тендера на продаж."""
+
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SalesTenderFile
+        fields = ("id", "tender", "file", "file_url", "name", "uploaded_at")
+        read_only_fields = ("id", "tender", "uploaded_at")
+
+    def get_file_url(self, obj):
+        request = self.context.get("request")
+        if request and obj.file:
+            return request.build_absolute_uri(obj.file.url)
+        return obj.file.url if obj.file else ""
