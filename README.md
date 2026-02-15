@@ -1,27 +1,58 @@
-# Bid Open - Система для проведення тендерів (MVP)
+# Bid Open — Система проведення тендерів (MVP)
 
-Повна система для організаторів та учасників тендерів, виконана у функціональності одного кабінету.
+Веб-додаток для організаторів та учасників тендерів: закупівлі та продажі в одному кабінеті з реєстрацією, правами доступу та повним циклом процедур.
+
+---
 
 ## Технологічний стек
 
-- **Backend**: Django 6.0 + Django REST Framework + SimpleJWT
-- **Frontend**: Nuxt 4 + Nuxt UI
-- **Database**: MySQL (з підтримкою SQLite для локальної розробки)
-- **API Documentation**: Swagger/OpenAPI (drf-spectacular)
+| Частина   | Технології |
+|----------|-------------|
+| **Backend** | Django 6.0, Django REST Framework, SimpleJWT, drf-spectacular |
+| **Frontend** | Nuxt 4, Vue 3, Nuxt UI, Tailwind CSS |
+| **БД** | MySQL (production) / SQLite (локальна розробка) |
+| **API docs** | Swagger/OpenAPI (drf-spectacular) |
+
+---
 
 ## Структура проекту
 
 ```
 bo/
-├── backend/          # Django REST API
-│   ├── config/      # Django settings
-│   ├── core/        # Основні моделі та API
-│   └── manage.py
-└── frontend/         # Nuxt 4 кабінет
-    ├── layouts/     # Шаблони (site/cabinet)
-    ├── pages/       # Сторінки
-    └── composables/ # Логіка (auth, API)
+├── backend/                 # Django REST API
+│   ├── config/              # Налаштування Django (settings, urls)
+│   ├── core/                # Моделі, API, адмінка
+│   │   ├── models.py        # User, Company, тендери, довідники
+│   │   ├── views.py, serializers.py, urls.py
+│   │   ├── admin.py
+│   │   ├── migrations/
+│   │   └── management/commands/
+│   │       └── init_permissions.py
+│   ├── manage.py
+│   └── requirements.txt
+│
+└── frontend/                # Nuxt 4 SPA-кабінет
+    ├── layouts/
+    │   ├── default.vue      # Публічні сторінки
+    │   └── cabinet.vue      # Кабінет (меню, сповіщення, профіль)
+    ├── pages/
+    │   ├── index.vue, login.vue, register.vue
+    │   └── cabinet/         # Сторінки під layout cabinet
+    │       ├── dashboard.vue, profile.vue
+    │       ├── tenders/     # Журнал, створення, картка тендера, пропозиції
+    │       ├── tenders/sales/
+    │       ├── suppliers/   # Контрагенти
+    │       ├── reference/   # Номенклатури, категорії, статті витрат, філіали, критерії
+    │       ├── participation.vue, templates.vue
+    │       ├── users.vue, roles.vue, permissions.vue, settings.vue
+    │       └── ...
+    ├── composables/         # useAuth, useApi, useMe
+    ├── assets/
+    ├── nuxt.config.ts
+    └── package.json
 ```
+
+---
 
 ## Швидкий старт
 
@@ -30,120 +61,117 @@ bo/
 ```bash
 cd backend
 
-# Створити venv та встановити залежності
+# Середовище та залежності
 python -m venv .venv
-.venv\Scripts\activate  # Windows
+.venv\Scripts\activate   # Windows
+# source .venv/bin/activate  # Linux/macOS
 pip install -r requirements.txt
 
-# Налаштувати .env (скопіювати з .env.example)
-# Встановити параметри БД
+# Налаштування: скопіювати .env.example → .env (БД тощо)
 
-# Міграції
+# Міграції та права
 python manage.py migrate
-
-# Ініціалізація permissions
 python manage.py init_permissions
 
-# Створити superuser (опціонально)
+# Опційно: суперкористувач для адмінки
 python manage.py createsuperuser
 
 # Запуск
 python manage.py runserver
 ```
 
-API: `http://localhost:8000/api/`
-Swagger: `http://localhost:8000/api/docs/`
+- API: **http://localhost:8000/api/**  
+- Swagger: **http://localhost:8000/api/docs/**  
+- Django Admin: **http://localhost:8000/admin/**
 
 ### Frontend
 
 ```bash
 cd frontend
-
-# Встановити залежності
 npm install
-
-# Запуск
 npm run dev
 ```
 
-Додаток: `http://localhost:3000`
+- Додаток: **http://localhost:3000**  
+- Змінна середовища для API: `NUXT_PUBLIC_API_BASE` (за замовчуванням `http://localhost:8000/api`)
 
-## Основні функції MVP
+---
 
-### Реєстрація (2 кроки)
+## Основні функції
 
-1. **Крок 1**: Створення користувача (ПІБ, телефон, email, пароль)
-2. **Крок 2**: 
-   - Нова компанія (ЄДРПОУ, назва, цілі) → користувач стає адміністратором
-   - Існуюча компанія → запит на приєднання → адміністратор підтверджує
+### Реєстрація та автентифікація
 
-### Автентифікація
-
-- JWT токени (access + refresh)
-- Відновлення пароля (endpoints готові, email поки не відправляється)
+- **Реєстрація (2 кроки):** створення користувача (ПІБ, телефон, email, пароль) → нова компанія (ЄДРПОУ, назва, цілі) або приєднання до існуючої (запит на підтвердження адміністратором).
+- **Вхід:** JWT (access + refresh).
+- **Профіль:** редагування даних, аватар, зміна пароля.
+- Відновлення пароля: endpoints є, відправка email не реалізована.
 
 ### Кабінет
 
-- **Адміністратор компанії**: повний доступ до всіх модулів
-- **Користувач**: права визначаються адміністратором
-- Меню формується на основі permissions користувача
-- Сповіщення в кабінеті (in-app)
+- Меню формується згідно з модулями: Аналітика, Участь в тендерах, Продажі, Закупівлі, Контрагенти, Довідники, Моделі погодження, Налаштування.
+- Доступ до розділів може керуватися правами (ролі та permissions).
+- Сповіщення в шапці кабінету; профіль та вихід.
 
-### Модулі (доступ керується permissions)
+### Тендери
 
-- Загальна аналітика
-- Тендери / Створення тендерів / Журнал тендерів
-- Участь в тендерах / Журнал участі
-- Контрагенти
-- Довідник (Номенклатури, Категорії, Статті витрат, Філіали)
-- Шаблони
-- Налаштування
-- Користувачі / Ролі / Права доступу
+- **Закупівлі:** створення процедури (паспорт → підготовка → прийом пропозицій → рішення → затвердження), позиції номенклатури, критерії, цінові параметри (ПДВ, доставка), пропозиції контрагентів, файли.
+- **Продажі:** аналогічна схема (тендери на продаж, переможець за найвищою ціною).
+- Режими проведення: реєстраційна процедура та інші (RFQ тощо).
+- Сторінки: журнал закупівель/продажів, створення, картка тендера `[id]`, подача пропозицій `[id]/proposals` (закупівлі та продажі).
 
-## API Endpoints
+### Довідники та налаштування
 
-Детальна документація доступна в Swagger UI: `http://localhost:8000/api/docs/`
+- **Довідники:** номенклатури, категорії (з CPV), статті витрат, філіали/підрозділи, критерії тендерів, атрибути.
+- **Контрагенти:** список контрагентів компанії (додавання вручну або з участі в тендерах).
+- **Налаштування:** користувачі, ролі, права доступу, системні налаштування.
 
-### Основні групи endpoints:
+---
 
-- `/api/auth/` - Автентифікація (login, refresh, me, password reset)
-- `/api/registration/` - Реєстрація (step1, step2/new, step2/existing)
-- `/api/companies/` - Компанії
-- `/api/memberships/` - Членства (approve/reject)
-- `/api/roles/` - Ролі
-- `/api/permissions/` - Права доступу
-- `/api/notifications/` - Сповіщення
+## API (основні групи)
 
-## Моделі даних
+| Група | Endpoints |
+|-------|-----------|
+| **Автентифікація** | `POST /api/auth/login/`, `POST /api/auth/refresh/`, `GET /api/auth/me/`, `POST /api/auth/me/avatar/`, password-reset, password-change |
+| **Реєстрація** | `POST /api/registration/step1/`, `step2/new/`, `step2/existing/` |
+| **Компанії** | `GET /api/companies/`, `GET /api/companies/{id}/` |
+| **Членства** | `GET|POST /api/memberships/`, `POST /api/memberships/{id}/approve|reject/` |
+| **Ролі та права** | `GET|POST|PUT|DELETE /api/roles/`, `GET /api/permissions/` |
+| **Сповіщення** | `GET /api/notifications/`, `POST .../mark_read/`, `mark_all_read/` |
+| **Довідники** | `categories`, `expenses`, `branches`, `departments`, `nomenclatures`, `units`, `currencies`, `tender-criteria` |
+| **CPV** | `GET /api/cpv/tree/`, `GET /api/cpv/children/` |
+| **Тендери** | `GET|POST|PATCH|... /api/procurement-tenders/`, `.../sales-tenders/` (включно з вкладками proposals, positions, files) |
 
-- **User** - Користувач (email як username)
-- **Company** - Компанія (ЄДРПОУ, назва, статус активності)
-- **CompanyUser** - Членство (роль, статус: pending/approved/rejected)
-- **Role** - Роль в компанії (з правами доступу)
-- **Permission** - Каталог прав доступу
-- **Notification** - Сповіщення в кабінеті
+Повний перелік та схеми — у Swagger: **http://localhost:8000/api/docs/**.
+
+---
+
+## Основні моделі даних
+
+- **User** — користувач (email як логін, ПІБ, телефон, аватар).
+- **Company** — компанія (ЄДРПОУ, назва, цілі, статус).
+- **CompanyUser** — членство (роль, статус: pending/approved/rejected).
+- **CompanySupplier** — зв’язок компанія ↔ контрагент.
+- **Role**, **Permission** — ролі та каталог прав.
+- **Notification** — сповіщення в кабінеті.
+- **Branch**, **Department**, **Category**, **ExpenseArticle**, **Nomenclature**, **UnitOfMeasure**, **Currency**, **TenderCriterion** — довідники.
+- **ProcurementTender**, позиції, пропозиції, файли — закупівлі.
+- **SalesTender**, позиції, пропозиції, файли — продажі.
+
+---
 
 ## Примітки MVP
 
-- Email-верифікація не реалізована
-- Відновлення пароля через email поки не працює (тільки endpoints)
-- Бізнес-логіка тендерів винесена за межі MVP
-- Audit logs не реалізовані
-- SSO/2FA не потрібні
+- Email-верифікація не реалізована.
+- Відновлення пароля через email не відправляється (лише API).
+- Audit logs та SSO/2FA не передбачені.
+- Меню кабінету тимчасово без фільтрації по permissions (усі пункти видимі після входу).
+
+---
 
 ## Розробка
 
-### Backend
+- **Міграції (backend):** `python manage.py makemigrations` → `python manage.py migrate`
+- **Нові сторінки (frontend):** додати `.vue` у `pages/cabinet/` або відповідну підтеку; маршрути генеруються автоматично.
+- Кабінет зібрано з `routeRules: { '/cabinet/**': { ssr: false } }` (SPA без SSR для уникнення розбіжностей стану авторизації).
 
-- Створення міграцій: `python manage.py makemigrations`
-- Застосування міграцій: `python manage.py migrate`
-- Django Admin: `http://localhost:8000/admin/`
-
-### Frontend
-
-- Додавання сторінок: створіть файл у `pages/cabinet/`
-- Меню автоматично формується на основі permissions
-
-## Ліцензія
-
-MVP версія для внутрішнього використання.
+Ліцензія: MVP для внутрішнього використання.

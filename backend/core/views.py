@@ -1765,6 +1765,99 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
+    @extend_schema(responses=[{"type": "array", "items": {"type": "object", "properties": {"id": {"type": "integer"}, "tour_number": {"type": "integer"}}}}])
+    @action(detail=True, methods=["get"], url_path="tours")
+    def tours_list(self, request, pk=None):
+        """Ланцюжок турів від кореня до поточного тендера (для випадаючого списку)."""
+        tender = self.get_object()
+        chain = []
+        t = tender
+        while t:
+            chain.append({"id": t.id, "tour_number": t.tour_number})
+            t = t.parent
+        chain.reverse()
+        return Response(chain)
+
+    @extend_schema(
+        request={
+            "application/json": {
+                "type": "object",
+                "properties": {
+                    "mode": {"type": "string", "enum": ["winner", "cancel", "next_round"]},
+                    "position_winners": {
+                        "type": "array",
+                        "items": {"type": "object", "properties": {"position_id": {"type": "integer"}, "proposal_id": {"type": "integer"}}},
+                    },
+                },
+                "required": ["mode"],
+            }
+        },
+    )
+    @action(detail=True, methods=["post"], url_path="fix-decision")
+    def fix_decision(self, request, pk=None):
+        """
+        Зафіксувати рішення: winner — з переможцями по позиціях, cancel — без переможців,
+        next_round — створити наступний тур на етапі підготовки.
+        """
+        tender = self.get_object()
+        mode = request.data.get("mode")
+        if mode not in ("winner", "cancel", "next_round"):
+            return Response(
+                {"detail": "mode має бути: winner, cancel або next_round."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if mode == "winner":
+            position_winners = request.data.get("position_winners") or []
+            # Скинути всі переможці по цьому тендеру, потім встановити тільки передані
+            ProcurementTenderPosition.objects.filter(tender=tender).update(winner_proposal=None)
+            for item in position_winners:
+                pos_id = item.get("position_id")
+                prop_id = item.get("proposal_id")
+                if pos_id is not None and prop_id is not None:
+                    pos = ProcurementTenderPosition.objects.filter(tender=tender, id=pos_id).first()
+                    if pos and TenderProposal.objects.filter(tender=tender, id=prop_id).exists():
+                        pos.winner_proposal_id = prop_id
+                        pos.save()
+            tender.stage = "approval"
+            tender.save(update_fields=["stage"])
+            return Response({"stage": "approval", "id": tender.id})
+        if mode == "cancel":
+            ProcurementTenderPosition.objects.filter(tender=tender).update(winner_proposal=None)
+            tender.stage = "approval"
+            tender.save(update_fields=["stage"])
+            return Response({"stage": "approval", "id": tender.id})
+        # next_round
+        parent = tender
+        new_tender = ProcurementTender.objects.create(
+            company=parent.company,
+            parent=parent,
+            tour_number=(parent.tour_number or 1) + 1,
+            name=parent.name,
+            stage="preparation",
+            category=parent.category,
+            expense_article=parent.expense_article,
+            estimated_budget=parent.estimated_budget,
+            branch=parent.branch,
+            department=parent.department,
+            conduct_type=parent.conduct_type,
+            publication_type=parent.publication_type,
+            currency=parent.currency,
+            general_terms=parent.general_terms or "",
+            price_criterion_vat=parent.price_criterion_vat or "",
+            price_criterion_delivery=parent.price_criterion_delivery or "",
+            created_by=request.user,
+        )
+        new_tender.cpv_categories.set(parent.cpv_categories.all())
+        new_tender.tender_criteria.set(parent.tender_criteria.all())
+        for pos in parent.positions.all():
+            ProcurementTenderPosition.objects.create(
+                tender=new_tender,
+                nomenclature=pos.nomenclature,
+                quantity=pos.quantity,
+                description=pos.description or "",
+            )
+        return Response({"stage": "preparation", "id": new_tender.id}, status=status.HTTP_201_CREATED)
+
     @extend_schema(responses=TenderProposalSerializer(many=True))
     @action(detail=True, methods=["get"], url_path="proposals")
     def proposals_list(self, request, pk=None):
@@ -1919,6 +2012,98 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+    @extend_schema(responses=[{"type": "array", "items": {"type": "object", "properties": {"id": {"type": "integer"}, "tour_number": {"type": "integer"}}}}])
+    @action(detail=True, methods=["get"], url_path="tours")
+    def tours_list(self, request, pk=None):
+        """Ланцюжок турів від кореня до поточного тендера (для випадаючого списку)."""
+        tender = self.get_object()
+        chain = []
+        t = tender
+        while t:
+            chain.append({"id": t.id, "tour_number": t.tour_number})
+            t = t.parent
+        chain.reverse()
+        return Response(chain)
+
+    @extend_schema(
+        request={
+            "application/json": {
+                "type": "object",
+                "properties": {
+                    "mode": {"type": "string", "enum": ["winner", "cancel", "next_round"]},
+                    "position_winners": {
+                        "type": "array",
+                        "items": {"type": "object", "properties": {"position_id": {"type": "integer"}, "proposal_id": {"type": "integer"}}},
+                    },
+                },
+                "required": ["mode"],
+            }
+        },
+    )
+    @action(detail=True, methods=["post"], url_path="fix-decision")
+    def fix_decision(self, request, pk=None):
+        """
+        Зафіксувати рішення: winner — з переможцями по позиціях, cancel — без переможців,
+        next_round — створити наступний тур на етапі підготовки.
+        """
+        tender = self.get_object()
+        mode = request.data.get("mode")
+        if mode not in ("winner", "cancel", "next_round"):
+            return Response(
+                {"detail": "mode має бути: winner, cancel або next_round."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if mode == "winner":
+            position_winners = request.data.get("position_winners") or []
+            SalesTenderPosition.objects.filter(tender=tender).update(winner_proposal=None)
+            for item in position_winners:
+                pos_id = item.get("position_id")
+                prop_id = item.get("proposal_id")
+                if pos_id is not None and prop_id is not None:
+                    pos = SalesTenderPosition.objects.filter(tender=tender, id=pos_id).first()
+                    if pos and SalesTenderProposal.objects.filter(tender=tender, id=prop_id).exists():
+                        pos.winner_proposal_id = prop_id
+                        pos.save()
+            tender.stage = "approval"
+            tender.save(update_fields=["stage"])
+            return Response({"stage": "approval", "id": tender.id})
+        if mode == "cancel":
+            SalesTenderPosition.objects.filter(tender=tender).update(winner_proposal=None)
+            tender.stage = "approval"
+            tender.save(update_fields=["stage"])
+            return Response({"stage": "approval", "id": tender.id})
+        # next_round
+        parent = tender
+        new_tender = SalesTender.objects.create(
+            company=parent.company,
+            parent=parent,
+            tour_number=(parent.tour_number or 1) + 1,
+            name=parent.name,
+            stage="preparation",
+            category=parent.category,
+            expense_article=parent.expense_article,
+            estimated_budget=parent.estimated_budget,
+            branch=parent.branch,
+            department=parent.department,
+            conduct_type=parent.conduct_type,
+            publication_type=parent.publication_type,
+            currency=parent.currency,
+            general_terms=parent.general_terms or "",
+            price_criterion_vat=parent.price_criterion_vat or "",
+            price_criterion_delivery=parent.price_criterion_delivery or "",
+            created_by=request.user,
+        )
+        new_tender.cpv_categories.set(parent.cpv_categories.all())
+        new_tender.tender_criteria.set(parent.tender_criteria.all())
+        for pos in parent.positions.all():
+            SalesTenderPosition.objects.create(
+                tender=new_tender,
+                nomenclature=pos.nomenclature,
+                quantity=pos.quantity,
+                description=pos.description or "",
+            )
+        return Response({"stage": "preparation", "id": new_tender.id}, status=status.HTTP_201_CREATED)
 
     @extend_schema(responses=SalesTenderProposalSerializer(many=True))
     @action(detail=True, methods=["get"], url_path="proposals")

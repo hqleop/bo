@@ -18,6 +18,16 @@
         <span class="font-normal text-gray-700">{{ tender.name }}</span>
       </h1>
     </div>
+    <div v-if="tourOptions.length" class="mb-3 flex items-center gap-2">
+      <span class="text-sm text-gray-600">Тур:</span>
+      <USelectMenu
+        :model-value="tenderId"
+        :items="tourOptions"
+        value-key="value"
+        class="min-w-[100px]"
+        @update:model-value="onTourSelect"
+      />
+    </div>
     <div class="tender-stepper tender-stepper--compact mb-6">
       <UStepper
         v-model="currentStepValue"
@@ -297,26 +307,115 @@
         </template>
 
         <template v-else-if="displayStage === 'decision'">
-          <UCard>
-            <template #header>
-              <h3 class="text-lg font-semibold">Вибір рішення</h3>
-            </template>
-            <p class="text-sm text-gray-600">
-              Рекомендація системи для продажу: обрати учасника з найбільшою
-              ціною.
-            </p>
-          </UCard>
+          <div class="space-y-6">
+            <div class="border rounded-lg p-4 bg-gray-50/50">
+              <div class="flex flex-wrap items-end gap-6">
+                <UFormField label="Орієнтовна ринкова" class="min-w-[220px]">
+                  <USelectMenu
+                    v-model="estimatedMarketMethod"
+                    :items="estimatedMarketOptions"
+                    value-key="value"
+                    placeholder="Оберіть"
+                  />
+                </UFormField>
+                <UFormField label="Рішення" class="min-w-[200px]">
+                  <UInput placeholder="—" disabled />
+                </UFormField>
+              </div>
+            </div>
+
+            <div class="border rounded-lg p-4 bg-white">
+              <h4 class="text-sm font-semibold text-gray-700 mb-3">
+                Позиції тендера
+              </h4>
+              <div class="min-h-0 overflow-auto">
+                <UTable
+                  :data="decisionTableRows"
+                  :columns="decisionTableColumns"
+                  class="w-full"
+                >
+                  <template #best_counterparty-cell="{ row }">
+                    <span
+                      class="inline-block w-full py-1 -my-1 px-2 -mx-2 rounded bg-green-50 text-gray-700"
+                      >{{ row.original.best_counterparty }}</span
+                    >
+                  </template>
+                  <template #best_price-cell="{ row }">
+                    <span
+                      class="inline-block w-full py-1 -my-1 px-2 -mx-2 rounded bg-green-50 text-gray-700"
+                      >{{ row.original.best_price }}</span
+                    >
+                  </template>
+                  <template #selected_counterparty-cell="{ row }">
+                    <span
+                      class="inline-block w-full py-1 -my-1 px-2 -mx-2 rounded bg-amber-50 text-gray-700"
+                      >{{ row.original.selected_counterparty }}</span
+                    >
+                  </template>
+                  <template #selected_price-cell="{ row }">
+                    <span
+                      class="inline-block w-full py-1 -my-1 px-2 -mx-2 rounded bg-amber-50 text-gray-700"
+                      >{{ row.original.selected_price }}</span
+                    >
+                  </template>
+                </UTable>
+              </div>
+            </div>
+          </div>
         </template>
 
         <template v-else-if="displayStage === 'approval'">
-          <UCard>
-            <template #header>
-              <h3 class="text-lg font-semibold">Затвердження</h3>
-            </template>
-            <p class="text-sm text-gray-600">
-              Підтвердьте рішення, щоб завершити тендер.
-            </p>
-          </UCard>
+          <div class="space-y-4">
+            <UCard>
+              <template #header>
+                <h3 class="text-lg font-semibold">Затвердження</h3>
+              </template>
+              <p class="text-sm text-gray-600 mb-4">
+                Перегляньте переможців по позиціях та підтвердьте рішення для завершення тендера.
+              </p>
+              <div class="border rounded-lg overflow-hidden">
+                <table class="w-full text-sm border-collapse">
+                  <thead>
+                    <tr class="border-b bg-gray-50">
+                      <th class="text-left p-2 font-medium">Позиція</th>
+                      <th class="text-left p-2 font-medium">Кількість</th>
+                      <th class="text-left p-2 font-medium">Переможець</th>
+                      <th class="text-left p-2 font-medium">Ціна</th>
+                      <th
+                        v-for="c in tenderCriteria"
+                        :key="c.id"
+                        class="text-left p-2 font-medium"
+                      >
+                        {{ c.name }}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="pos in tender.value?.positions ?? []"
+                      :key="pos.id"
+                      class="border-b hover:bg-gray-50/50"
+                    >
+                      <td class="p-2">{{ pos.name }}</td>
+                      <td class="p-2">{{ pos.quantity }} {{ pos.unit_name ?? '' }}</td>
+                      <td class="p-2">{{ pos.winner_supplier_name ?? '—' }}</td>
+                      <td class="p-2">{{ pos.winner_price ?? '—' }}</td>
+                      <td
+                        v-for="c in tenderCriteria"
+                        :key="c.id"
+                        class="p-2"
+                      >
+                        {{ (pos.winner_criterion_values && (pos.winner_criterion_values[c.id] ?? pos.winner_criterion_values[String(c.id)])) ?? '—' }}
+                      </td>
+                    </tr>
+                    <tr v-if="!(tender.value?.positions?.length)">
+                      <td colspan="100" class="p-4 text-center text-gray-500">Немає позицій.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </UCard>
+          </div>
         </template>
 
         <template v-else>
@@ -338,8 +437,12 @@
 
         <template v-else-if="displayStage === 'preparation'">
           <template v-if="form.conduct_type === 'registration'">
+            <p v-if="isViewingPreviousTour" class="text-xs text-gray-500 mb-2">
+              Перегляд попереднього туру. Зміни пропозицій заборонені.
+            </p>
             <UButton
               class="w-full"
+              :disabled="isViewingPreviousTour"
               @click="openSubmitProposal"
               :loading="saving"
             >
@@ -373,9 +476,16 @@
         </template>
 
         <template v-else-if="displayStage === 'decision'">
-          <UButton class="w-full" @click="showDecisionModal = true"
-            >Зафіксувати рішення</UButton
+          <UButton
+            class="w-full"
+            variant="outline"
+            @click="showWinnerModal = true"
           >
+            Ручний вибір переможця
+          </UButton>
+          <UButton class="w-full" @click="showDecisionModal = true">
+            Зафіксувати рішення
+          </UButton>
         </template>
 
         <template v-else-if="displayStage === 'approval'">
@@ -447,27 +557,62 @@
       </template>
     </UModal>
 
+    <UModal v-model:open="showWinnerModal">
+      <template #content>
+        <UCard>
+          <template #header><h3>Ручний вибір переможця</h3></template>
+          <p class="text-sm text-gray-600 mb-4">
+            Оберіть переможця по кожній позиції з контрагентів, які подали
+            пропозиції.
+          </p>
+          <div class="space-y-3 max-h-[60vh] overflow-auto">
+            <div
+              v-for="pos in tenderPositions"
+              :key="pos.id"
+              class="flex flex-wrap items-center gap-2 border-b border-gray-100 pb-3"
+            >
+              <span class="text-sm font-medium min-w-[140px]">{{
+                pos.name
+              }}</span>
+              <USelectMenu
+                :model-value="selectedWinnerByPosition[pos.id] ?? null"
+                :items="decisionWinnerOptionsForPosition(pos.id)"
+                value-key="value"
+                placeholder="Оберіть контрагента"
+                class="flex-1 min-w-[200px]"
+                @update:model-value="(v) => setDecisionWinner(pos.id, v)"
+              />
+            </div>
+          </div>
+          <template #footer>
+            <UButton @click="showWinnerModal = false">Закрити</UButton>
+          </template>
+        </UCard>
+      </template>
+    </UModal>
+
     <UModal v-model:open="showDecisionModal">
       <template #content>
         <UCard>
           <template #header><h3>Зафіксувати рішення</h3></template>
           <div class="space-y-2">
-            <UButton class="w-full" @click="fixDecision('winner')"
-              >Завершити з переможцем</UButton
-            >
+            <UButton class="w-full" @click="fixDecision('winner')">
+              Закрити із переможцями
+            </UButton>
             <UButton
               class="w-full"
               variant="outline"
               @click="fixDecision('next_round')"
-              >Перевести на наступний тур</UButton
             >
+              Перенести на наступний тур
+            </UButton>
             <UButton
               class="w-full"
-              color="red"
               variant="outline"
               @click="fixDecision('cancel')"
-              >Скасувати</UButton
             >
+              Скасувати
+            </UButton>
           </div>
         </UCard>
       </template>
@@ -490,6 +635,7 @@ const { fetch } = useApi();
 const tender = ref<any | null>(null);
 const loading = ref(true);
 const saving = ref(false);
+const tourOptions = ref<{ value: number; label: string }[]>([]);
 const prepTab = ref<"positions" | "criteria">("positions");
 const prepTabs = [
   { label: "Позиції", value: "positions" },
@@ -522,7 +668,15 @@ const availableNomenclatures = ref<any[]>([]);
 const showPublishModal = ref(false);
 const showTimingModal = ref(false);
 const showDecisionModal = ref(false);
+const showWinnerModal = ref(false);
 const timingForm = reactive({ start_at: "", end_at: "" });
+
+const decisionProposals = ref<any[]>([]);
+const estimatedMarketMethod = ref("arithmetic_mean");
+const estimatedMarketOptions = [
+  { value: "arithmetic_mean", label: "Середня арифметична" },
+];
+const selectedWinnerByPosition = ref<Record<number, number>>({});
 
 const stageItems = [
   {
@@ -551,6 +705,9 @@ const stageItems = [
 
 const isRegistration = computed(
   () => (tender.value?.conduct_type ?? form.conduct_type) === "registration",
+);
+const isViewingPreviousTour = computed(
+  () => tender.value && tender.value.is_latest_tour === false,
 );
 
 const visibleStageItems = computed(() => {
@@ -633,6 +790,152 @@ const positionsColumns = [
   { accessorKey: "vat", header: "ПДВ" },
 ];
 
+function getProposalPositionValue(proposal: any, positionId: number) {
+  const list = proposal?.position_values || [];
+  return list.find(
+    (pv: any) =>
+      (pv.tender_position_id ??
+        pv.tender_position?.id ??
+        pv.tender_position) === positionId,
+  );
+}
+
+function getBestProposalIdForPosition(positionId: number, isPurchase: boolean) {
+  const withPrice: { id: number; price: number }[] = [];
+  for (const p of decisionProposals.value) {
+    const pv = getProposalPositionValue(p, positionId);
+    const num = Number(pv?.price);
+    if (!Number.isNaN(num)) withPrice.push({ id: p.id, price: num });
+  }
+  if (withPrice.length === 0) return null;
+  const best = isPurchase
+    ? withPrice.reduce((a, b) => (a.price <= b.price ? a : b))
+    : withPrice.reduce((a, b) => (a.price >= b.price ? a : b));
+  return best.id;
+}
+
+function decisionWinnerOptionsForPosition(positionId: number) {
+  return decisionProposals.value
+    .filter((p) => {
+      const pv = getProposalPositionValue(p, positionId);
+      return pv != null && pv.price != null && !Number.isNaN(Number(pv.price));
+    })
+    .map((p) => ({
+      value: p.id,
+      label:
+        p.supplier_name ?? p.supplier_company?.name ?? `Пропозиція #${p.id}`,
+    }));
+}
+
+function setDecisionWinner(positionId: number, proposalId: number | null) {
+  const next = { ...selectedWinnerByPosition.value };
+  if (proposalId != null) next[positionId] = proposalId;
+  else delete next[positionId];
+  selectedWinnerByPosition.value = next;
+}
+
+const decisionTableColumns = [
+  { accessorKey: "name", header: "Позиція" },
+  { accessorKey: "quantity_unit", header: "Кількість" },
+  { accessorKey: "market_value", header: "Орієнтовна ринкова" },
+  { accessorKey: "best_counterparty", header: "Кращий контрагент" },
+  { accessorKey: "best_price", header: "Краща ціна" },
+  { accessorKey: "selected_counterparty", header: "Контрагент що обирається" },
+  { accessorKey: "selected_price", header: "Ціна що обирається" },
+  { accessorKey: "price_diff", header: "Розбіжність у ціні" },
+  { accessorKey: "profit_market", header: "Прибуток по орієнтовній ринковій" },
+];
+
+const decisionTableRows = computed(() => {
+  const proposals = decisionProposals.value;
+  const selected = selectedWinnerByPosition.value;
+  const isPurchase = false;
+  return tenderPositions.value.map((pos) => {
+    const pvList = proposals
+      .map((p) => ({ proposal: p, pv: getProposalPositionValue(p, pos.id) }))
+      .filter(
+        (x) =>
+          x.pv != null &&
+          Number(x.pv.price) !== undefined &&
+          !Number.isNaN(Number(x.pv.price)),
+      );
+    const prices = pvList.map((x) => Number(x.pv!.price));
+    const avgPrice =
+      prices.length > 0
+        ? prices.reduce((a, b) => a + b, 0) / prices.length
+        : null;
+    const marketValue =
+      estimatedMarketMethod.value === "arithmetic_mean" && avgPrice != null
+        ? avgPrice.toFixed(2)
+        : avgPrice != null
+          ? avgPrice.toFixed(2)
+          : "—";
+
+    let bestProposal: any = null;
+    let bestPrice: number | null = null;
+    if (pvList.length > 0) {
+      const byPrice = [...pvList].sort((a, b) =>
+        isPurchase
+          ? Number(a.pv!.price) - Number(b.pv!.price)
+          : Number(b.pv!.price) - Number(a.pv!.price),
+      );
+      bestProposal = byPrice[0].proposal;
+      bestPrice = Number(byPrice[0].pv!.price);
+    }
+    const bestCounterparty =
+      bestProposal?.supplier_name ??
+      bestProposal?.supplier_company?.name ??
+      "—";
+    const bestPriceStr = bestPrice != null ? bestPrice.toFixed(2) : "—";
+
+    const selectedProposalId = selected[pos.id] ?? bestProposal?.id ?? null;
+    const selectedProposal = selectedProposalId
+      ? proposals.find((p) => p.id === selectedProposalId)
+      : bestProposal;
+    const selectedPv = selectedProposal
+      ? getProposalPositionValue(selectedProposal, pos.id)
+      : null;
+    const selectedPrice =
+      selectedPv != null && !Number.isNaN(Number(selectedPv.price))
+        ? Number(selectedPv.price)
+        : null;
+    const selectedCounterparty =
+      selectedProposal?.supplier_name ??
+      selectedProposal?.supplier_company?.name ??
+      "—";
+    const selectedPriceStr =
+      selectedPrice != null ? selectedPrice.toFixed(2) : "—";
+
+    const priceDiff =
+      bestPrice != null && selectedPrice != null
+        ? selectedPrice - bestPrice
+        : null;
+    const priceDiffStr = priceDiff != null ? priceDiff.toFixed(2) : "—";
+
+    const profitMarket =
+      avgPrice != null && selectedPrice != null
+        ? selectedPrice - avgPrice
+        : null;
+    const profitMarketStr =
+      profitMarket != null ? profitMarket.toFixed(2) : "—";
+
+    return {
+      id: pos.id,
+      name: pos.name,
+      quantity_unit: pos.unit_name
+        ? `${pos.quantity} ${pos.unit_name}`
+        : String(pos.quantity),
+      market_value: marketValue,
+      best_counterparty: bestCounterparty,
+      best_price: bestPriceStr,
+      selected_counterparty: selectedCounterparty,
+      selected_price: selectedPriceStr,
+      price_diff: priceDiffStr,
+      profit_market: profitMarketStr,
+    };
+  });
+});
+
 const selectedNomenclatureIds = computed(() =>
   tenderPositions.value.map((p) => p.nomenclature_id),
 );
@@ -687,14 +990,14 @@ async function openSubmitProposal() {
       alert(msg || "Неможливо відкрити подачу пропозицій.");
       return;
     }
-    await navigateTo(`/cabinet/tenders/sales/${tenderId.value}/proposals`);
+    await navigateTo(`/cabinet/tenders/sales/proposals/${tenderId.value}`);
   } finally {
     saving.value = false;
   }
 }
 
 function goToProposalsPage() {
-  navigateTo(`/cabinet/tenders/sales/${tenderId.value}/proposals`);
+  navigateTo(`/cabinet/tenders/sales/proposals/${tenderId.value}`);
 }
 
 // Дерево критеріїв для ContentSearch
@@ -834,9 +1137,29 @@ async function loadTender() {
     });
     timingForm.start_at = isoToInput(data.start_at);
     timingForm.end_at = isoToInput(data.end_at);
+    await loadTours();
     await autoAdvanceAcceptance();
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadTours() {
+  if (!tenderId.value) return;
+  const { data } = await fetch(
+    `/sales-tenders/${tenderId.value}/tours/`,
+    { headers: getAuthHeaders() },
+  );
+  const list = Array.isArray(data) ? data : [];
+  tourOptions.value = list.map((t: { id: number; tour_number: number }) => ({
+    value: t.id,
+    label: `Тур ${t.tour_number}`,
+  }));
+}
+
+function onTourSelect(value: number | null) {
+  if (value != null && value !== tenderId.value) {
+    navigateTo(`/cabinet/tenders/sales/${value}`);
   }
 }
 
@@ -1035,36 +1358,50 @@ async function autoAdvanceAcceptance() {
 
 async function fixDecision(mode: "winner" | "cancel" | "next_round") {
   showDecisionModal.value = false;
-  if (mode === "winner" || mode === "cancel") {
-    await patchTender({ stage: "approval" });
-    return;
+  saving.value = true;
+  try {
+    const body: { mode: string; position_winners?: { position_id: number; proposal_id: number }[] } = { mode };
+    if (mode === "winner") {
+      body.position_winners = Object.entries(selectedWinnerByPosition.value).map(([position_id, proposal_id]) => ({
+        position_id: Number(position_id),
+        proposal_id,
+      }));
+    }
+    const { data, error } = await fetch(
+      `/sales-tenders/${tenderId.value}/fix-decision/`,
+      {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body,
+      },
+    );
+    if (error || !data) return;
+    if (data.id && data.stage === "preparation") {
+      await navigateTo(`/cabinet/tenders/sales/${data.id}`);
+      return;
+    }
+    await loadTender();
+  } finally {
+    saving.value = false;
   }
-  const { data } = await fetch("/sales-tenders/", {
-    method: "POST",
-    headers: getAuthHeaders(),
-    body: {
-      company: tender.value.company,
-      parent: tender.value.id,
-      tour_number: (tender.value.tour_number || 1) + 1,
-      name: tender.value.name,
-      stage: "preparation",
-      category: tender.value.category,
-      cpv_ids: (tender.value.cpv_categories || []).map((c: any) => c.id),
-      expense_article: tender.value.expense_article,
-      estimated_budget: tender.value.estimated_budget,
-      branch: tender.value.branch,
-      department: tender.value.department,
-      conduct_type: tender.value.conduct_type,
-      publication_type: tender.value.publication_type,
-      currency: tender.value.currency,
-      general_terms: tender.value.general_terms,
-    },
-  });
-  if (data?.id) await navigateTo(`/cabinet/tenders/sales/${data.id}`);
 }
 
 async function approveTender() {
   await patchTender({ stage: "completed" });
+}
+
+async function loadDecisionProposals() {
+  if (!tenderId.value) return;
+  const { data } = await fetch(`/sales-tenders/${tenderId.value}/proposals/`, {
+    headers: getAuthHeaders(),
+  });
+  decisionProposals.value = Array.isArray(data) ? data : [];
+  const next: Record<number, number> = {};
+  for (const pos of tenderPositions.value) {
+    const bestId = getBestProposalIdForPosition(pos.id, false);
+    if (bestId != null) next[pos.id] = bestId;
+  }
+  selectedWinnerByPosition.value = next;
 }
 
 onMounted(async () => {
@@ -1072,9 +1409,13 @@ onMounted(async () => {
   await loadOptions();
   await loadNomenclaturesForPreparation();
   if (form.branch) await loadDepartments();
+  if (displayStage.value === "decision") await loadDecisionProposals();
 });
 
 watch(tenderId, () => loadTender());
+watch(displayStage, async (stage) => {
+  if (stage === "decision") await loadDecisionProposals();
+});
 watch([isRegistration, () => displayStage.value], () => {
   if (isRegistration.value && displayStage.value === "acceptance") {
     displayStage.value = "decision";

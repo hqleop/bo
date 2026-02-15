@@ -577,12 +577,56 @@ class ProcurementTenderPositionSerializer(serializers.ModelSerializer):
     )
     name = serializers.CharField(source="nomenclature.name", read_only=True)
     unit_name = serializers.CharField(source="nomenclature.unit.name", read_only=True)
+    winner_proposal_id = serializers.SerializerMethodField()
+    winner_supplier_name = serializers.SerializerMethodField()
+    winner_price = serializers.SerializerMethodField()
+    winner_criterion_values = serializers.SerializerMethodField()
 
     class Meta:
         model = ProcurementTenderPosition
-        fields = ("id", "tender", "nomenclature", "nomenclature_id", "name", "unit_name", "quantity", "description")
-        read_only_fields = ("id", "tender", "name", "unit_name")
+        fields = (
+            "id", "tender", "nomenclature", "nomenclature_id", "name", "unit_name",
+            "quantity", "description",
+            "winner_proposal_id", "winner_supplier_name", "winner_price", "winner_criterion_values",
+        )
+        read_only_fields = ("id", "tender", "name", "unit_name", "winner_proposal_id", "winner_supplier_name", "winner_price", "winner_criterion_values")
         extra_kwargs = {"nomenclature": {"required": False}}
+
+    def get_winner_proposal_id(self, obj):
+        try:
+            return getattr(obj, "winner_proposal_id", None)
+        except Exception:
+            return None
+
+    def get_winner_supplier_name(self, obj):
+        try:
+            if not getattr(obj, "winner_proposal_id", None) or not getattr(obj, "winner_proposal", None):
+                return None
+            return getattr(obj.winner_proposal.supplier_company, "name", None)
+        except Exception:
+            return None
+
+    def get_winner_price(self, obj):
+        try:
+            if not getattr(obj, "winner_proposal_id", None) or not getattr(obj, "winner_proposal", None):
+                return None
+            pv = TenderProposalPosition.objects.filter(
+                proposal=obj.winner_proposal, tender_position=obj
+            ).first()
+            return str(pv.price) if pv and pv.price is not None else None
+        except Exception:
+            return None
+
+    def get_winner_criterion_values(self, obj):
+        try:
+            if not getattr(obj, "winner_proposal_id", None) or not getattr(obj, "winner_proposal", None):
+                return None
+            pv = TenderProposalPosition.objects.filter(
+                proposal=obj.winner_proposal, tender_position=obj
+            ).first()
+            return pv.criterion_values if pv and getattr(pv, "criterion_values", None) else {}
+        except Exception:
+            return {}
 
 
 class ProcurementTenderSerializer(serializers.ModelSerializer):
@@ -610,6 +654,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
         many=True, queryset=TenderCriterion.objects.all(), required=False, source="tender_criteria"
     )
     criteria = serializers.SerializerMethodField()
+    is_latest_tour = serializers.SerializerMethodField()
 
     class Meta:
         model = ProcurementTender
@@ -653,6 +698,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             "criterion_ids",
             "criteria",
             "positions",
+            "is_latest_tour",
         )
         read_only_fields = (
             "id",
@@ -669,7 +715,11 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             "expense_article_name",
             "branch_name",
             "department_name",
+            "is_latest_tour",
         )
+
+    def get_is_latest_tour(self, obj):
+        return not obj.next_tours.exists()
 
     def get_category_name(self, obj):
         return obj.category.name if obj.category else ""
@@ -827,12 +877,56 @@ class SalesTenderPositionSerializer(serializers.ModelSerializer):
     )
     name = serializers.CharField(source="nomenclature.name", read_only=True)
     unit_name = serializers.CharField(source="nomenclature.unit.name", read_only=True)
+    winner_proposal_id = serializers.SerializerMethodField()
+    winner_supplier_name = serializers.SerializerMethodField()
+    winner_price = serializers.SerializerMethodField()
+    winner_criterion_values = serializers.SerializerMethodField()
 
     class Meta:
         model = SalesTenderPosition
-        fields = ("id", "tender", "nomenclature", "nomenclature_id", "name", "unit_name", "quantity", "description")
-        read_only_fields = ("id", "tender", "name", "unit_name")
+        fields = (
+            "id", "tender", "nomenclature", "nomenclature_id", "name", "unit_name",
+            "quantity", "description",
+            "winner_proposal_id", "winner_supplier_name", "winner_price", "winner_criterion_values",
+        )
+        read_only_fields = ("id", "tender", "name", "unit_name", "winner_proposal_id", "winner_supplier_name", "winner_price", "winner_criterion_values")
         extra_kwargs = {"nomenclature": {"required": False}}
+
+    def get_winner_proposal_id(self, obj):
+        try:
+            return getattr(obj, "winner_proposal_id", None)
+        except Exception:
+            return None
+
+    def get_winner_supplier_name(self, obj):
+        try:
+            if not getattr(obj, "winner_proposal_id", None) or not getattr(obj, "winner_proposal", None):
+                return None
+            return getattr(obj.winner_proposal.supplier_company, "name", None)
+        except Exception:
+            return None
+
+    def get_winner_price(self, obj):
+        try:
+            if not getattr(obj, "winner_proposal_id", None) or not getattr(obj, "winner_proposal", None):
+                return None
+            pv = SalesTenderProposalPosition.objects.filter(
+                proposal=obj.winner_proposal, tender_position=obj
+            ).first()
+            return str(pv.price) if pv and pv.price is not None else None
+        except Exception:
+            return None
+
+    def get_winner_criterion_values(self, obj):
+        try:
+            if not getattr(obj, "winner_proposal_id", None) or not getattr(obj, "winner_proposal", None):
+                return None
+            pv = SalesTenderProposalPosition.objects.filter(
+                proposal=obj.winner_proposal, tender_position=obj
+            ).first()
+            return pv.criterion_values if pv and getattr(pv, "criterion_values", None) else {}
+        except Exception:
+            return {}
 
 
 class SalesTenderSerializer(serializers.ModelSerializer):
@@ -860,6 +954,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
         many=True, queryset=TenderCriterion.objects.all(), required=False, source="tender_criteria"
     )
     criteria = serializers.SerializerMethodField()
+    is_latest_tour = serializers.SerializerMethodField()
 
     class Meta:
         model = SalesTender
@@ -903,6 +998,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             "criterion_ids",
             "criteria",
             "positions",
+            "is_latest_tour",
         )
         read_only_fields = (
             "id",
@@ -919,7 +1015,11 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             "expense_article_name",
             "branch_name",
             "department_name",
+            "is_latest_tour",
         )
+
+    def get_is_latest_tour(self, obj):
+        return not obj.next_tours.exists()
 
     def get_category_name(self, obj):
         return obj.category.name if obj.category else ""

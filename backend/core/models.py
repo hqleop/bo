@@ -684,6 +684,14 @@ class ProcurementTenderPosition(models.Model):
         max_digits=18, decimal_places=4, default=1,
     )
     description = models.TextField(blank=True, default="")
+    winner_proposal = models.ForeignKey(
+        "TenderProposal",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="won_positions",
+        help_text="Переможець по цій позиції (після фіксації рішення)",
+    )
 
     class Meta:
         verbose_name = "Позиція тендера на закупівлю"
@@ -939,6 +947,14 @@ class SalesTenderPosition(models.Model):
         max_digits=18, decimal_places=4, default=1,
     )
     description = models.TextField(blank=True, default="")
+    winner_proposal = models.ForeignKey(
+        "SalesTenderProposal",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="won_positions",
+        help_text="Переможець по цій позиції (після фіксації рішення)",
+    )
 
     class Meta:
         verbose_name = "Позиція тендера на продаж"
