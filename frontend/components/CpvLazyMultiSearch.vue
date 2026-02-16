@@ -90,8 +90,7 @@ const emit = defineEmits<{
   "update:selectedLabels": [value: string[]];
 }>();
 
-const { fetch } = useApi();
-const { getAuthHeaders } = useAuth();
+const tendersUC = useTendersUseCases();
 
 const isOpen = ref(false);
 const search = ref("");
@@ -155,7 +154,7 @@ function setNodeChildren(
 
 async function loadRoot() {
   loadingRoot.value = true;
-  const { data } = await fetch("/cpv/children/", { headers: getAuthHeaders() });
+  const { data } = await tendersUC.getCpvChildren();
   rootNodes.value = (data as CpvNode[]) || [];
   loadingRoot.value = false;
 }
@@ -165,10 +164,7 @@ async function loadChildren(node: CpvNode) {
   if (node.children && node.children.length) return;
 
   loadingChildren.value = new Set([...loadingChildren.value, node.id]);
-  const { data } = await fetch(
-    `/cpv/children/?parent_level_code=${encodeURIComponent(node.cpv_level_code)}`,
-    { headers: getAuthHeaders() },
-  );
+  const { data } = await tendersUC.getCpvChildren(node.cpv_level_code);
   const children = (data as CpvNode[]) || [];
   setNodeChildren(node.id, rootNodes.value, children);
   const newSet = new Set(loadingChildren.value);

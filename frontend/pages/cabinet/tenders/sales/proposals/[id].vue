@@ -313,7 +313,6 @@ definePageMeta({
 
 const route = useRoute();
 const tenderId = computed(() => Number(route.params.id));
-const { fetch } = useApi();
 
 const tender = ref<any | null>(null);
 const loading = ref(true);
@@ -332,7 +331,9 @@ const showCheckModal = ref(false);
 const showFilesModal = ref(false);
 const savingPositions = ref(false);
 
-const API_PREFIX = "/sales-tenders";
+const isSales = true;
+const tendersUC = useTendersUseCases();
+const suppliersUC = useSuppliersUseCases();
 
 const vatLabels: Record<string, string> = {
   with_vat: "з ПДВ",
@@ -464,7 +465,7 @@ const canGoToDecision = computed(() => {
 });
 
 async function loadTender() {
-  const { data } = await fetch(`${API_PREFIX}/${tenderId.value}/`, {});
+  const { data } = await tendersUC.getTender(tenderId.value, isSales);
   if (data) {
     tender.value = data;
     buildPositionRowsFromTender();
@@ -472,15 +473,12 @@ async function loadTender() {
 }
 
 async function loadProposals() {
-  const { data } = await fetch(
-    `${API_PREFIX}/${tenderId.value}/proposals/`,
-    {},
-  );
+  const { data } = await tendersUC.getTenderProposals(tenderId.value, isSales);
   if (data) proposals.value = Array.isArray(data) ? data : [];
 }
 
 async function loadSuppliers() {
-  const { data } = await fetch("/company-suppliers/", {});
+  const { data } = await suppliersUC.getSupplierRelations();
   if (data && Array.isArray(data)) {
     supplierOptions.value = data
       .filter((r: any) => r.supplier_company)
@@ -523,13 +521,9 @@ async function onSupplierSelect(id: number | null) {
 }
 
 async function addProposal(supplierCompanyId: number) {
-  const { data } = await fetch(
-    `${API_PREFIX}/${tenderId.value}/proposals/add/`,
-    {
-      method: "POST",
-      body: { supplier_company_id: supplierCompanyId },
-    },
-  );
+  const { data } = await tendersUC.addProposal(tenderId.value, isSales, {
+    supplier_company_id: supplierCompanyId,
+  });
   if (data) {
     proposals.value = [...proposals.value, data];
     currentProposal.value = data;
@@ -609,12 +603,11 @@ async function savePositionValues() {
         criterion_values,
       };
     });
-    const { data } = await fetch(
-      `${API_PREFIX}/${tenderId.value}/proposals/${currentProposal.value.id}/position-values/`,
-      {
-        method: "PATCH",
-        body: { position_values },
-      },
+    const { data } = await tendersUC.patchProposalPositionValues(
+      tenderId.value,
+      currentProposal.value.id,
+      isSales,
+      { position_values },
     );
     if (data) {
       currentProposal.value = data;
@@ -641,10 +634,8 @@ function onStageClick(_stageValue: string) {
 }
 
 async function goToDecisionStage() {
-  const { fetch } = useApi();
-  const { data } = await fetch(`${API_PREFIX}/${tenderId.value}/`, {
-    method: "PATCH",
-    body: { stage: "decision" },
+  const { data } = await tendersUC.patchTender(tenderId.value, isSales, {
+    stage: "decision",
   });
   if (data) {
     tender.value = { ...tender.value, ...data };

@@ -106,8 +106,7 @@ const supplierId = computed(() => {
   const num = Number(id);
   return Number.isNaN(num) ? 0 : num;
 });
-const { getAuthHeaders } = useAuth();
-const { fetch } = useApi();
+const suppliersUC = useSuppliersUseCases();
 
 const loading = ref(true);
 const supplier = ref<{ id: number; name: string; edrpou: string } | null>(null);
@@ -147,9 +146,7 @@ async function loadSupplier() {
   }
   loading.value = true;
   try {
-    const { data, error } = await fetch(`/companies/${id}/`, {
-      headers: getAuthHeaders(),
-    });
+    const { data, error } = await suppliersUC.getSupplier(id);
     if (error || !data) {
       supplier.value = null;
       return;
@@ -175,14 +172,12 @@ async function loadMembers() {
   if (!supplier.value) return;
   membersLoading.value = true;
   try {
-    const { data, error } = await fetch(`/companies/${supplierId.value}/members/`, {
-      headers: getAuthHeaders(),
-    });
+    const { data, error } = await suppliersUC.getSupplierMembers(supplierId.value);
     if (error) {
       members.value = [];
       return;
     }
-    members.value = Array.isArray(data) ? data : [];
+    members.value = data ?? [];
   } finally {
     membersLoading.value = false;
   }

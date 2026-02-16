@@ -106,7 +106,7 @@ if (isAuthenticated.value) {
   await navigateTo("/cabinet/dashboard");
 }
 
-const { fetch } = useApi();
+const usersUC = useUsersUseCases();
 const currentStep = ref(1);
 const loading = ref(false);
 const userId = ref<number | null>(null);
@@ -137,18 +137,15 @@ const companyTypeOptions = [
 
 const onStep1Submit = async () => {
   loading.value = true;
-  const { data, error } = await fetch("/registration/step1/", {
-    method: "POST",
-    body: step1Form,
-  });
+  const { data, error } = await usersUC.registerStep1(step1Form);
   loading.value = false;
 
   if (error) {
-    alert(error.detail || "Помилка реєстрації");
+    alert(typeof error === "string" ? error : "Помилка реєстрації");
     return;
   }
 
-  userId.value = data.id;
+  userId.value = (data as { id?: number; user_id?: number })?.user_id ?? (data as { id?: number })?.id ?? null;
   currentStep.value = 2;
 };
 
@@ -167,10 +164,6 @@ const onStep2Submit = async () => {
 
   loading.value = true;
 
-  const endpoint =
-    step2Form.type === "new"
-      ? "/registration/step2/new/"
-      : "/registration/step2/existing/";
   const body =
     step2Form.type === "new"
       ? {
@@ -186,15 +179,15 @@ const onStep2Submit = async () => {
           name: step2Form.name_existing?.trim() || undefined,
         };
 
-  const { data, error } = await fetch(endpoint, {
-    method: "POST",
-    body,
-  });
+  const { error } =
+    step2Form.type === "new"
+      ? await usersUC.registerStep2New(body)
+      : await usersUC.registerStep2Existing(body);
 
   loading.value = false;
 
   if (error) {
-    alert(error.detail || "Помилка реєстрації");
+    alert(typeof error === "string" ? error : "Помилка реєстрації");
     return;
   }
 

@@ -75,10 +75,8 @@ definePageMeta({
   meta: { title: "Профіль" },
 });
 
-const config = useRuntimeConfig();
-const { getAuthHeaders } = useAuth();
-const { fetch } = useApi();
 const { me, refreshMe } = useMe();
+const { updateProfile, uploadAvatar } = useUsersUseCases();
 
 const loading = ref(true);
 const saving = ref(false);
@@ -140,15 +138,11 @@ watch(
 async function onSubmit() {
   saving.value = true;
   try {
-    const { error } = await fetch("/auth/me/", {
-      method: "PATCH",
-      body: {
-        first_name: form.first_name,
-        last_name: form.last_name,
-        middle_name: form.middle_name,
-        phone: form.phone,
-      },
-      headers: getAuthHeaders(),
+    const { error } = await updateProfile({
+      first_name: form.first_name,
+      last_name: form.last_name,
+      middle_name: form.middle_name,
+      phone: form.phone,
     });
     if (error) {
       alert(typeof error === "string" ? error : "Помилка збереження");
@@ -168,28 +162,11 @@ async function onAvatarFileChange(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file) return;
-  const formData = new FormData();
-  formData.append("avatar", file);
-  const token = getAuthHeaders().Authorization;
-  if (!token) {
-    avatarError.value = "Потрібна авторизація.";
-    return;
-  }
-  try {
-    const res = await $fetch<{ avatar: string }>(`${config.public.apiBase}/auth/me/avatar/`, {
-      method: "POST",
-      body: formData,
-      headers: {
-        Authorization: token,
-      },
-    });
-    if (res?.avatar) {
-      await refreshMe();
-      avatarSuccess.value = "Фото збережено.";
-    }
-  } catch (e: any) {
-    const msg = e?.data?.detail || e?.message || e?.data?.avatar?.[0] || "Помилка завантаження.";
-    avatarError.value = typeof msg === "string" ? msg : JSON.stringify(msg);
+  const { error } = await uploadAvatar(file);
+  if (error) {
+    avatarError.value = error;
+  } else {
+    avatarSuccess.value = "Фото збережено.";
   }
   input.value = "";
 }

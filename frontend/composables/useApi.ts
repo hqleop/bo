@@ -1,72 +1,32 @@
+import { createApiClient } from '~/shared/api/apiClient'
+
+/**
+ * Composable для доступу до єдиного API-клієнта в Nuxt-контексті.
+ * HTTP-логіка в shared/api/apiClient. У компонентах та сторінках використовуйте useCases, не useApi напряму.
+ */
 export const useApi = () => {
   const config = useRuntimeConfig()
-  const apiBase = config.public.apiBase
   const { getAuthHeaders, checkAuth, refreshAccessToken, logout } = useAuth()
 
-  const fetch = async <T>(endpoint: string, options: any = {}) => {
-    // Якщо токена немає — спробувати оновити з refresh перед запитом
+  const apiClient = createApiClient({
+    baseURL: config.public.apiBase,
+    getAuthHeaders,
+    refreshAccessToken,
+    logout
+  })
+
+  const fetch = async <T>(endpoint: string, options: Record<string, unknown> = {}) => {
     if (!getAuthHeaders().Authorization) {
       await checkAuth()
     }
-    const authHeaders = getAuthHeaders()
-    const headers = {
-      'Content-Type': 'application/json',
-      ...authHeaders,
-      ...(options.headers || {})
-    }
-
-    try {
-      const response = await $fetch<T>(`${apiBase}${endpoint}`, {
-        ...options,
-        headers
-      })
-      return { data: response, error: null }
-    } catch (error: any) {
-      // Якщо 401 - спробуємо оновити токен
-      if (error.status === 401 || error.statusCode === 401) {
-        const refreshed = await refreshAccessToken()
-        if (refreshed) {
-          // Повторюємо запит з новим токеном
-          const newHeaders = {
-            'Content-Type': 'application/json',
-            ...getAuthHeaders(),
-            ...options.headers
-          }
-          try {
-            const response = await $fetch<T>(`${apiBase}${endpoint}`, {
-              ...options,
-              headers: newHeaders
-            })
-            return { data: response, error: null }
-          } catch (retryError: any) {
-            // Якщо повторний запит не вдався - виходимо
-            logout()
-            return { data: null, error: 'Сесія закінчилась. Будь ласка, увійдіть знову.' }
-          }
-        } else {
-          // Не вдалося оновити токен - виходимо
-          logout()
-          return { data: null, error: 'Сесія закінчилась. Будь ласка, увійдіть знову.' }
-        }
-      }
-      return { data: null, error: error.data || error.message || 'Помилка запиту' }
-    }
+    return apiClient.request<T>(endpoint, {
+      method: (options.method as string) ?? 'GET',
+      body: options.body,
+      headers: options.headers as Record<string, string> | undefined,
+      query: options.query as Record<string, string> | undefined
+    })
   }
 
   return { fetch }
 }
 
-// Global fetch wrapper for useFetch
-export const useApiFetch = (url: string, options: any = {}) => {
-  const config = useRuntimeConfig()
-  const apiBase = config.public.apiBase
-  const { getAuthHeaders } = useAuth()
-
-  return useFetch(`${apiBase}${url}`, {
-    ...options,
-    headers: {
-      ...getAuthHeaders(),
-      ...options.headers
-    }
-  })
-}

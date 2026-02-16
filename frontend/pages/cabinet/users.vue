@@ -257,9 +257,7 @@ definePageMeta({
   },
 });
 
-const { fetch } = useApi();
-const config = useRuntimeConfig();
-const { getAuthHeaders } = useAuth();
+const usersUC = useUsersUseCases();
 
 const showAddModal = ref(false);
 const showEditModal = ref(false);
@@ -294,47 +292,33 @@ const departmentFilterUserIds = ref<Set<number>>(new Set());
 const categoryFilterUserIds = ref<Set<number>>(new Set());
 const expenseFilterUserIds = ref<Set<number>>(new Set());
 
-// --- Завантаження даних ---
+// --- Завантаження даних (через useCases) ---
 const loadMemberships = async () => {
-  const { data, error } = await fetch("/memberships/", {
-    headers: getAuthHeaders(),
-  });
+  const { data, error } = await usersUC.getMemberships();
   if (!error && data) {
     membershipsData.value = data;
   }
 };
 
 const loadBranches = async () => {
-  const { data } = await fetch("/branches/", {
-    headers: getAuthHeaders(),
-  });
-  if (data) branchesTree.value = data;
+  const { data } = await usersUC.getBranches();
+  if (data?.length) branchesTree.value = data;
 };
 
 const loadCategories = async () => {
-  const { data } = await fetch("/categories/", {
-    headers: getAuthHeaders(),
-  });
-  if (data) categoriesTree.value = data;
+  const { data } = await usersUC.getCategories();
+  if (data?.length) categoriesTree.value = data;
 };
 
 const loadExpenses = async () => {
-  const { data } = await fetch("/expenses/", {
-    headers: getAuthHeaders(),
-  });
-  if (data) expensesTree.value = data;
+  const { data } = await usersUC.getExpenses();
+  if (data?.length) expensesTree.value = data;
 };
 
 const loadDepartmentsForBranch = async (branchId: number) => {
   if (departmentsByBranch.value[branchId]) return;
-  const { data } = await fetch(`/departments/?branch_id=${branchId}`, {
-    headers: getAuthHeaders(),
-  });
-  if (data) {
-    departmentsByBranch.value[branchId] = data;
-  } else {
-    departmentsByBranch.value[branchId] = [];
-  }
+  const { data } = await usersUC.getDepartments(branchId);
+  departmentsByBranch.value[branchId] = Array.isArray(data) ? data : [];
 };
 
 // --- Хелпери для дерева фільтрів ---
@@ -435,12 +419,8 @@ const updateBranchFilterUserIds = async () => {
   const ids = new Set<number>();
   await Promise.all(
     filters.branchIds.map(async (branchId) => {
-      const { data } = await fetch(`/branch-users/?branch_id=${branchId}`, {
-        headers: getAuthHeaders(),
-      });
-      if (data) {
-        (data as any[]).forEach((bu: any) => ids.add(bu.user.id));
-      }
+      const userIds = await usersUC.getBranchUserIds(branchId);
+      userIds.forEach((id) => ids.add(id));
     }),
   );
   branchFilterUserIds.value = ids;
@@ -450,13 +430,8 @@ const updateDepartmentFilterUserIds = async () => {
   const ids = new Set<number>();
   await Promise.all(
     filters.departmentIds.map(async (deptId) => {
-      const { data } = await fetch(
-        `/department-users/?department_id=${deptId}`,
-        { headers: getAuthHeaders() },
-      );
-      if (data) {
-        (data as any[]).forEach((du: any) => ids.add(du.user.id));
-      }
+      const userIds = await usersUC.getDepartmentUserIds(deptId);
+      userIds.forEach((id) => ids.add(id));
     }),
   );
   departmentFilterUserIds.value = ids;
@@ -466,12 +441,8 @@ const updateCategoryFilterUserIds = async () => {
   const ids = new Set<number>();
   await Promise.all(
     filters.categoryIds.map(async (catId) => {
-      const { data } = await fetch(`/category-users/?category_id=${catId}`, {
-        headers: getAuthHeaders(),
-      });
-      if (data) {
-        (data as any[]).forEach((cu: any) => ids.add(cu.user.id));
-      }
+      const userIds = await usersUC.getCategoryUserIds(catId);
+      userIds.forEach((id) => ids.add(id));
     }),
   );
   categoryFilterUserIds.value = ids;
@@ -481,12 +452,8 @@ const updateExpenseFilterUserIds = async () => {
   const ids = new Set<number>();
   await Promise.all(
     filters.expenseIds.map(async (expId) => {
-      const { data } = await fetch(`/expense-users/?expense_id=${expId}`, {
-        headers: getAuthHeaders(),
-      });
-      if (data) {
-        (data as any[]).forEach((eu: any) => ids.add(eu.user.id));
-      }
+      const userIds = await usersUC.getExpenseUserIds(expId);
+      userIds.forEach((id) => ids.add(id));
     }),
   );
   expenseFilterUserIds.value = ids;
@@ -679,18 +646,13 @@ const onAddUser = async () => {
     return;
   }
   savingUser.value = true;
-  const payload = {
+  const { error } = await usersUC.createUser({
     first_name: addForm.first_name,
     last_name: addForm.last_name,
     middle_name: "",
     phone: addForm.phone,
     email: addForm.email,
     password: addForm.password,
-  };
-  const { error } = await fetch("/memberships/create-user/", {
-    method: "POST",
-    body: payload,
-    headers: getAuthHeaders(),
   });
   savingUser.value = false;
   if (error) {
@@ -708,24 +670,17 @@ const onEditUser = async () => {
     return;
   }
   savingUser.value = true;
-  const body: Record<string, string> = {
+  const payload = {
     first_name: editForm.first_name,
     last_name: editForm.last_name,
     email: editForm.email,
     phone: editForm.phone,
   };
   if (editForm.password) {
-    body.password = editForm.password;
-    body.password_confirm = editForm.password_confirm;
+    payload.password = editForm.password;
+    payload.password_confirm = editForm.password_confirm;
   }
-  const { error } = await fetch(
-    `/memberships/${selectedMembership.value.id}/update-user/`,
-    {
-      method: "PATCH",
-      body,
-      headers: getAuthHeaders(),
-    },
-  );
+  const { error } = await usersUC.updateUser(selectedMembership.value.id, payload);
   savingUser.value = false;
   if (error) {
     alert("Помилка оновлення даних користувача");
@@ -746,13 +701,7 @@ const activateSelected = async () => {
   ) {
     return;
   }
-  const { error } = await fetch(
-    `/memberships/${selectedMembership.value.id}/activate/`,
-    {
-      method: "POST",
-      headers: getAuthHeaders(),
-    },
-  );
+  const { error } = await usersUC.activateMembership(selectedMembership.value.id);
   if (error) {
     alert("Помилка активації користувача");
     return;
@@ -771,13 +720,7 @@ const deactivateSelected = async () => {
   ) {
     return;
   }
-  const { error } = await fetch(
-    `/memberships/${selectedMembership.value.id}/deactivate/`,
-    {
-      method: "POST",
-      headers: getAuthHeaders(),
-    },
-  );
+  const { error } = await usersUC.deactivateMembership(selectedMembership.value.id);
   if (error) {
     alert("Помилка деактивації користувача");
     return;

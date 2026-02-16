@@ -54,8 +54,10 @@ definePageMeta({
   },
 });
 
-const { fetch } = useApi();
+const usersUC = useUsersUseCases();
 const showAddModal = ref(false);
+const roles = ref<any[]>([]);
+const permissions = ref<any[]>([]);
 
 const columns = [
   { key: "name", label: "Назва" },
@@ -64,23 +66,14 @@ const columns = [
   { key: "actions", label: "Дії" },
 ];
 
-const config = useRuntimeConfig();
-const { getAuthHeaders } = useAuth();
-const { data: rolesData, refresh } = await useFetch(
-  `${config.public.apiBase}/roles/`,
-  {
-    headers: getAuthHeaders(),
-  },
-);
-const roles = computed(() => rolesData.value || []);
-
-const { data: permissionsData } = await useFetch(
-  `${config.public.apiBase}/permissions/`,
-  {
-    headers: getAuthHeaders(),
-  },
-);
-const permissions = computed(() => permissionsData.value || []);
+onMounted(async () => {
+  const [rolesRes, permissionsRes] = await Promise.all([
+    usersUC.getRoles(),
+    usersUC.getPermissions(),
+  ]);
+  roles.value = rolesRes.data ?? [];
+  permissions.value = permissionsRes.data ?? [];
+});
 const permissionItems = computed(() =>
   (permissions.value as any[]).map((p) => ({
     id: p.id,

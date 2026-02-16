@@ -629,8 +629,8 @@ definePageMeta({
 
 const route = useRoute();
 const tenderId = computed(() => Number(route.params.id));
-const { getAuthHeaders } = useAuth();
-const { fetch } = useApi();
+const isSales = true;
+const tendersUC = useTendersUseCases();
 
 const tender = ref<any | null>(null);
 const loading = ref(true);
@@ -1022,9 +1022,7 @@ const selectedCriteriaIds = computed(() =>
 );
 
 async function loadReferenceCriteria() {
-  const { data } = await fetch("/tender-criteria/", {
-    headers: getAuthHeaders(),
-  });
+  const { data } = await tendersUC.getTenderCriteria();
   referenceCriteria.value = Array.isArray(data) ? data : [];
 }
 
@@ -1081,9 +1079,7 @@ function inputToIso(value: string) {
 async function loadTender() {
   loading.value = true;
   try {
-    const { data, error } = await fetch(`/sales-tenders/${tenderId.value}/`, {
-      headers: getAuthHeaders(),
-    });
+    const { data, error } = await tendersUC.getTender(tenderId.value, isSales);
     if (error || !data) {
       tender.value = null;
       return;
@@ -1146,15 +1142,8 @@ async function loadTender() {
 
 async function loadTours() {
   if (!tenderId.value) return;
-  const { data } = await fetch(
-    `/sales-tenders/${tenderId.value}/tours/`,
-    { headers: getAuthHeaders() },
-  );
-  const list = Array.isArray(data) ? data : [];
-  tourOptions.value = list.map((t: { id: number; tour_number: number }) => ({
-    value: t.id,
-    label: `Тур ${t.tour_number}`,
-  }));
+  const { data } = await tendersUC.getTenderTours(tenderId.value, isSales);
+  tourOptions.value = Array.isArray(data) ? data : [];
 }
 
 function onTourSelect(value: number | null) {
@@ -1164,12 +1153,11 @@ function onTourSelect(value: number | null) {
 }
 
 async function loadOptions() {
-  const headers = getAuthHeaders();
   const [cats, expenses, branches, currencies] = await Promise.all([
-    fetch("/categories/", { headers }),
-    fetch("/expenses/", { headers }),
-    fetch("/branches/", { headers }),
-    fetch("/currencies/", { headers }),
+    tendersUC.getCategories(),
+    tendersUC.getExpenses(),
+    tendersUC.getBranches(),
+    tendersUC.getCurrencies(),
   ]);
   categoryTree.value = (cats.data as any[]) || [];
   expenseOptions.value = flattenTree((expenses.data as any[]) || []);
@@ -1183,39 +1171,26 @@ async function loadOptions() {
 async function loadNomenclaturesForPreparation() {
   loadingNomenclatures.value = true;
   try {
-    const headers = getAuthHeaders();
     let items: any[] = [];
 
     if ((form.cpv_ids?.length ?? 0) > 0) {
       const merged = new Map<number, any>();
       for (const cpvId of form.cpv_ids) {
-        const { data: byCpv } = await fetch(`/nomenclatures/?cpv_id=${cpvId}`, {
-          headers,
-        });
+        const { data: byCpv } = await tendersUC.getNomenclaturesByCpv(cpvId);
         for (const n of (byCpv as any[]) || []) merged.set(n.id, n);
       }
       items = Array.from(merged.values());
     } else if (form.category) {
-      const { data: byCategory } = await fetch(
-        `/nomenclatures/?category_id=${form.category}`,
-        { headers },
-      );
+      const { data: byCategory } = await tendersUC.getNomenclaturesByCategory(form.category);
       const merged = new Map<number, any>();
       for (const n of (byCategory as any[]) || []) merged.set(n.id, n);
 
-      const { data: categoryData } = await fetch(
-        `/categories/${form.category}/`,
-        {
-          headers,
-        },
-      );
+      const { data: categoryData } = await tendersUC.getCategory(form.category);
       const cpvIds: number[] = ((categoryData as any)?.cpvs || []).map(
         (c: any) => c.id,
       );
       for (const cpvId of cpvIds) {
-        const { data: byCpv } = await fetch(`/nomenclatures/?cpv_id=${cpvId}`, {
-          headers,
-        });
+        const { data: byCpv } = await tendersUC.getNomenclaturesByCpv(cpvId);
         for (const n of (byCpv as any[]) || []) merged.set(n.id, n);
       }
       items = Array.from(merged.values());
@@ -1262,9 +1237,7 @@ async function loadDepartments() {
     departmentOptions.value = [];
     return;
   }
-  const { data } = await fetch(`/departments/?branch_id=${form.branch}`, {
-    headers: getAuthHeaders(),
-  });
+  const { data } = await tendersUC.getDepartments(form.branch);
   departmentOptions.value = flattenTree((data as any[]) || []);
 }
 
@@ -1275,11 +1248,7 @@ function onBranchChange() {
 
 async function patchTender(payload: Record<string, unknown>) {
   if (!tender.value?.id) return false;
-  const { data, error } = await fetch(`/sales-tenders/${tender.value.id}/`, {
-    method: "PATCH",
-    headers: getAuthHeaders(),
-    body: payload,
-  });
+  const { data, error } = await tendersUC.patchTender(tender.value.id, isSales, payload);
   if (error || !data) return false;
   tender.value = { ...tender.value, ...data };
   if (data.stage != null) {
@@ -1367,14 +1336,7 @@ async function fixDecision(mode: "winner" | "cancel" | "next_round") {
         proposal_id,
       }));
     }
-    const { data, error } = await fetch(
-      `/sales-tenders/${tenderId.value}/fix-decision/`,
-      {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body,
-      },
-    );
+    const { data, error } = await tendersUC.fixTenderDecision(tenderId.value, isSales, body);
     if (error || !data) return;
     if (data.id && data.stage === "preparation") {
       await navigateTo(`/cabinet/tenders/sales/${data.id}`);
@@ -1392,9 +1354,7 @@ async function approveTender() {
 
 async function loadDecisionProposals() {
   if (!tenderId.value) return;
-  const { data } = await fetch(`/sales-tenders/${tenderId.value}/proposals/`, {
-    headers: getAuthHeaders(),
-  });
+  const { data } = await tendersUC.getTenderProposals(tenderId.value, isSales);
   decisionProposals.value = Array.isArray(data) ? data : [];
   const next: Record<number, number> = {};
   for (const pos of tenderPositions.value) {

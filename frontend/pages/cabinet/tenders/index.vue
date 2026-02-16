@@ -94,9 +94,7 @@ const viewType = computed(() => (route.query.view === 'sales' ? 'sales' : 'purch
 
 const TENDERS_PAGE_SIZE = 20;
 
-const { getAuthHeaders } = useAuth();
-const { fetch } = useApi();
-
+const tendersUC = useTendersUseCases();
 const tenders = ref<any[]>([]);
 const currentPage = ref(1);
 
@@ -122,9 +120,8 @@ const createUrl = computed(() => {
 });
 
 async function loadTenders() {
-  const endpoint = viewType.value === 'sales' ? '/sales-tenders/' : '/procurement-tenders/';
-  const { data } = await fetch(endpoint, { headers: getAuthHeaders() });
-  tenders.value = Array.isArray(data) ? data : [];
+  const { data } = await tendersUC.getTenderList(viewType.value === 'sales');
+  tenders.value = data ?? [];
 }
 
 onMounted(() => loadTenders());

@@ -111,8 +111,7 @@ definePageMeta({
   meta: { title: "Контрагенти" },
 });
 
-const { getAuthHeaders } = useAuth();
-const { fetch } = useApi();
+const suppliersUC = useSuppliersUseCases();
 
 const loading = ref(true);
 const saving = ref(false);
@@ -148,8 +147,8 @@ const filteredSuppliers = computed(() => {
 async function loadSuppliers() {
   loading.value = true;
   try {
-    const { data } = await fetch("/company-suppliers/", { headers: getAuthHeaders() });
-    supplierRelations.value = Array.isArray(data) ? data : [];
+    const { data } = await suppliersUC.getSupplierRelations();
+    supplierRelations.value = data ?? [];
   } finally {
     loading.value = false;
   }
@@ -161,12 +160,10 @@ async function onCheckCode() {
   checkingCode.value = true;
   companyByCode.value = null;
   try {
-    const { data } = await fetch(`/companies/?edrpou=${encodeURIComponent(code)}`, { headers: getAuthHeaders() });
-    const list = Array.isArray(data) ? data : [];
-    const found = list[0];
-    if (found) {
-      companyByCode.value = { id: found.id, edrpou: found.edrpou ?? code, name: found.name ?? "" };
-      addForm.name = found.name ?? "";
+    const { data } = await suppliersUC.findCompanyByEdrpou(code);
+    if (data) {
+      companyByCode.value = data;
+      addForm.name = data.name ?? "";
     } else {
       addForm.name = "";
     }
@@ -186,17 +183,12 @@ async function onAdd() {
     return;
   }
   saving.value = true;
-  const headers = getAuthHeaders();
   try {
     const body: { edrpou: string; name?: string } = { edrpou: code };
     if (addForm.name.trim()) body.name = addForm.name.trim();
-    const { data, error } = await fetch("/company-suppliers/", {
-      method: "POST",
-      body,
-      headers,
-    });
+    const { error } = await suppliersUC.addSupplier(body);
     if (error) {
-      const msg = typeof error === "string" ? error : (error as any)?.name ?? (error as any)?.edrpou ?? "Помилка додавання";
+      const msg = typeof error === "string" ? error : "Помилка додавання";
       alert(msg);
       return;
     }

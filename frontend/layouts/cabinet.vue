@@ -384,15 +384,15 @@ function logoutUser() {
 
 const pageTitle = useRoute().meta.title || "Кабінет";
 
-// Notifications
-const { data: notifications } = await useFetch(
-  `${config.public.apiBase}/notifications/`,
-  {
-    headers: getAuthHeaders(),
-  },
-);
+// Notifications (via users useCases)
+const usersUC = useUsersUseCases();
+const notifications = ref<{ id: number; is_read?: boolean }[]>([]);
+onMounted(async () => {
+  const { data } = await usersUC.getNotifications();
+  notifications.value = data ?? [];
+});
 const unreadNotificationsCount = computed(
-  () => notifications.value?.filter((n: any) => !n.is_read).length || 0,
+  () => notifications.value?.filter((n) => !n.is_read).length || 0,
 );
 
 const formatDate = (date: string) => {

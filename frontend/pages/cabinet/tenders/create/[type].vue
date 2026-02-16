@@ -82,8 +82,8 @@ const route = useRoute();
 const isSales = computed(() => String(route.params.type || "").toLowerCase() === "sales");
 const listView = computed(() => (isSales.value ? "sales" : "purchase"));
 
-const { getAuthHeaders } = useAuth();
-const { fetch } = useApi();
+const { me } = useMe();
+const tendersUC = useTendersUseCases();
 
 const saving = ref(false);
 const error = ref("");
@@ -151,12 +151,11 @@ function toggleCategory(id: number) {
 }
 
 async function loadOptions() {
-  const headers = getAuthHeaders();
   const [cats, expenses, branches, currencies] = await Promise.all([
-    fetch("/categories/", { headers }),
-    fetch("/expenses/", { headers }),
-    fetch("/branches/", { headers }),
-    fetch("/currencies/", { headers }),
+    tendersUC.getCategories(),
+    tendersUC.getExpenses(),
+    tendersUC.getBranches(),
+    tendersUC.getCurrencies(),
   ]);
 
   categoryTree.value = (cats.data as any[]) || [];
@@ -175,19 +174,13 @@ async function loadDepartments() {
     departmentOptions.value = [];
     return;
   }
-  const { data } = await fetch(`/departments/?branch_id=${form.branch}`, { headers: getAuthHeaders() });
+  const { data } = await tendersUC.getDepartments(form.branch);
   departmentOptions.value = flattenTree((data as any[]) || []);
 }
 
 function onBranchChange() {
   form.department = undefined;
   loadDepartments();
-}
-
-async function getCurrentCompanyId() {
-  const { data } = await fetch("/auth/me/", { headers: getAuthHeaders() });
-  const me = data as any;
-  return me?.memberships?.[0]?.company?.id ?? null;
 }
 
 async function saveTender() {
@@ -200,36 +193,30 @@ async function saveTender() {
     return;
   }
 
+  const companyId = (me.value as any)?.memberships?.[0]?.company?.id ?? null;
+  if (!companyId) {
+    error.value = "Неможливо визначити компанію.";
+    return;
+  }
+
   saving.value = true;
   error.value = "";
   try {
-    const companyId = await getCurrentCompanyId();
-    if (!companyId) {
-      error.value = "Неможливо визначити компанію.";
-      return;
-    }
-
-    const endpoint = isSales.value ? "/sales-tenders/" : "/procurement-tenders/";
-    const { data: createdRaw, error: createError } = await fetch(endpoint, {
-      method: "POST",
-      headers: getAuthHeaders(),
-      body: {
-        company: companyId,
-        name: form.name.trim(),
-        stage: "preparation",
-        category: form.category,
-        cpv_ids: form.cpv_ids,
-        expense_article: form.expense_article,
-        estimated_budget: form.estimated_budget,
-        branch: form.branch,
-        department: form.department,
-        conduct_type: form.conduct_type,
-        publication_type: form.publication_type,
-        currency: form.currency,
-        general_terms: form.general_terms,
-      },
+    const { data: created, error: createError } = await tendersUC.createTender(isSales.value, {
+      company: companyId,
+      name: form.name.trim(),
+      stage: "preparation",
+      category: form.category,
+      cpv_ids: form.cpv_ids,
+      expense_article: form.expense_article,
+      estimated_budget: form.estimated_budget,
+      branch: form.branch,
+      department: form.department,
+      conduct_type: form.conduct_type,
+      publication_type: form.publication_type,
+      currency: form.currency,
+      general_terms: form.general_terms,
     });
-    const created = createdRaw as any;
 
     if (createError || !created?.id) {
       error.value = typeof createError === "string" ? createError : "Помилка створення тендера.";

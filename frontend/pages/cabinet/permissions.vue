@@ -16,16 +16,16 @@ definePageMeta({
   }
 })
 
-const config = useRuntimeConfig()
-const { getAuthHeaders } = useAuth()
+const usersUC = useUsersUseCases()
+const permissions = ref<any[]>([])
 
 const columns = [
   { key: 'code', label: 'Код' },
   { key: 'label', label: 'Назва' }
 ]
 
-const { data: permissionsData } = await useFetch(`${config.public.apiBase}/permissions/`, {
-  headers: getAuthHeaders()
+onMounted(async () => {
+  const { data } = await usersUC.getPermissions()
+  permissions.value = data ?? []
 })
-const permissions = computed(() => permissionsData.value || [])
 </script>
