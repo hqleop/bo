@@ -140,9 +140,7 @@
           :items="categoryFilterOptions"
           value-key="value"
           placeholder="Оберіть категорію"
-          :disabled="
-            !!filters.cpvId || categoryFilterOptions.length === 0
-          "
+          :disabled="!!filters.cpvId || categoryFilterOptions.length === 0"
           @update:model-value="onCategoryFilterChange"
         />
       </UFormField>
@@ -162,97 +160,97 @@
     <!-- Модальне вікно номенклатури -->
     <UModal v-model:open="showNomenclatureModal">
       <template #content>
-      <UCard>
-        <template #header>
-          <h3>
-            {{
-              editingNomenclature
-                ? "Редагувати номенклатуру"
-                : "Додати номенклатуру"
-            }}
-          </h3>
-        </template>
-        <UForm
-          :state="nomenclatureForm"
-          @submit="saveNomenclature"
-          class="space-y-4"
-        >
-          <UFormField label="Назва" name="name" required>
-            <UInput v-model="nomenclatureForm.name" />
-          </UFormField>
-
-          <UFormField label="Одиниця виміру" name="unit" required>
-            <USelectMenu
-              v-model="nomenclatureForm.unit"
-              :items="unitOptions"
-              value-key="value"
-              placeholder="Оберіть одиницю виміру"
-            />
-          </UFormField>
-
-          <div class="grid grid-cols-2 gap-4">
-            <UFormField label="Код / Артикул" name="code">
-              <UInput v-model="nomenclatureForm.code" />
+        <UCard>
+          <template #header>
+            <h3>
+              {{
+                editingNomenclature
+                  ? "Редагувати номенклатуру"
+                  : "Додати номенклатуру"
+              }}
+            </h3>
+          </template>
+          <UForm
+            :state="nomenclatureForm"
+            @submit="saveNomenclature"
+            class="space-y-4"
+          >
+            <UFormField label="Назва" name="name" required>
+              <UInput v-model="nomenclatureForm.name" />
             </UFormField>
-            <UFormField label="Зовнішній номер" name="external_number">
-              <UInput v-model="nomenclatureForm.external_number" />
-            </UFormField>
-          </div>
 
-          <UFormField label="Опис" name="description">
-            <UTextarea v-model="nomenclatureForm.description" />
-          </UFormField>
-
-          <div class="grid grid-cols-2 gap-4">
-            <UFormField label="Специфікація (файл)" name="specification_file">
-              <UInput
-                v-model="nomenclatureForm.specification_file"
-                placeholder="Назва або шлях до файлу"
+            <UFormField label="Одиниця виміру" name="unit" required>
+              <USelectMenu
+                v-model="nomenclatureForm.unit"
+                :items="unitOptions"
+                value-key="value"
+                placeholder="Оберіть одиницю виміру"
               />
             </UFormField>
-            <UFormField label="Зображення (файл)" name="image_file">
-              <UInput
-                v-model="nomenclatureForm.image_file"
-                placeholder="Назва або шлях до файлу"
+
+            <div class="grid grid-cols-2 gap-4">
+              <UFormField label="Код / Артикул" name="code">
+                <UInput v-model="nomenclatureForm.code" />
+              </UFormField>
+              <UFormField label="Зовнішній номер" name="external_number">
+                <UInput v-model="nomenclatureForm.external_number" />
+              </UFormField>
+            </div>
+
+            <UFormField label="Опис" name="description">
+              <UTextarea v-model="nomenclatureForm.description" />
+            </UFormField>
+
+            <div class="grid grid-cols-2 gap-4">
+              <UFormField label="Специфікація (файл)" name="specification_file">
+                <UInput
+                  v-model="nomenclatureForm.specification_file"
+                  placeholder="Назва або шлях до файлу"
+                />
+              </UFormField>
+              <UFormField label="Зображення (файл)" name="image_file">
+                <UInput
+                  v-model="nomenclatureForm.image_file"
+                  placeholder="Назва або шлях до файлу"
+                />
+              </UFormField>
+            </div>
+
+            <UFormField label="Категорія" name="category">
+              <USelectMenu
+                v-model="nomenclatureForm.category"
+                :items="categoryOptions"
+                value-key="value"
+                placeholder="Без категорії"
+                :disabled="selectedCpvIds.length > 0"
+                @update:model-value="onFormCategoryChange"
               />
             </UFormField>
-          </div>
 
-          <UFormField label="Категорія" name="category">
-            <USelectMenu
-              v-model="nomenclatureForm.category"
-              :items="categoryOptions"
-              value-key="value"
-              placeholder="Без категорії"
-              :disabled="selectedCpvIds.length > 0"
-              @update:model-value="onFormCategoryChange"
+            <CpvLazyMultiSearch
+              label="Категорія CPV"
+              placeholder="Оберіть CPV-категорії (доступні, якщо не обрана звичайна категорія)"
+              :disabled="!!nomenclatureForm.category"
+              :selected-ids="selectedCpvIds"
+              :selected-labels="selectedCpvLabels"
+              @update:selected-ids="selectedCpvIds = $event"
+              @update:selected-labels="selectedCpvLabels = $event"
             />
-          </UFormField>
 
-          <CpvLazyMultiSearch
-            label="Категорія CPV"
-            placeholder="Оберіть CPV-категорії (доступні, якщо не обрана звичайна категорія)"
-            :disabled="!!nomenclatureForm.category"
-            :selected-ids="selectedCpvIds"
-            :selected-labels="selectedCpvLabels"
-            @update:selected-ids="selectedCpvIds = $event"
-            @update:selected-labels="selectedCpvLabels = $event"
-          />
-
-          <div class="flex gap-4 mt-4">
-            <UButton
-              variant="outline"
-              class="flex-1"
-              @click="showNomenclatureModal = false"
-            >
-              Скасувати
-            </UButton>
-            <UButton type="submit" class="flex-1" :loading="saving">
-              Зберегти
-            </UButton>
-          </div>
-        </UForm>
-      </UCard>
+            <div class="flex gap-4 mt-4">
+              <UButton
+                variant="outline"
+                class="flex-1"
+                @click="showNomenclatureModal = false"
+              >
+                Скасувати
+              </UButton>
+              <UButton type="submit" class="flex-1" :loading="saving">
+                Зберегти
+              </UButton>
+            </div>
+          </UForm>
+        </UCard>
       </template>
     </UModal>
   </div>
@@ -353,7 +351,6 @@ const loadCategories = async () => {
   }
 };
 
-
 // Опції для селектів
 const unitOptions = computed(() =>
   units.value.map((u: any) => ({ value: u.id, label: u.name })),
@@ -393,7 +390,8 @@ function flattenCategoriesWithCpvs(
   list: any[],
   level = 0,
 ): { id: number; name: string; level: number; cpv_ids: number[] }[] {
-  const out: { id: number; name: string; level: number; cpv_ids: number[] }[] = [];
+  const out: { id: number; name: string; level: number; cpv_ids: number[] }[] =
+    [];
   if (!list?.length) return out;
   for (const n of list) {
     const cpv_ids = (n.cpvs || []).map((c: any) => c.id);
@@ -473,9 +471,7 @@ const filteredNomenclatures = computed(() => {
 
   const term = filters.name.trim().toLowerCase();
   if (term) {
-    list = list.filter((n: any) =>
-      (n.name || "").toLowerCase().includes(term),
-    );
+    list = list.filter((n: any) => (n.name || "").toLowerCase().includes(term));
   }
 
   if (filters.categoryId) {
@@ -564,9 +560,7 @@ const tableMeta = computed(() => ({
 }));
 
 // Пагінація: загальна кількість відфільтрованих записів
-const totalFilteredCount = computed(
-  () => filteredNomenclatures.value.length,
-);
+const totalFilteredCount = computed(() => filteredNomenclatures.value.length);
 
 // Скидання на першу сторінку при зміні фільтрів
 watch(
@@ -580,11 +574,15 @@ watch(
 const totalPages = computed(() =>
   Math.max(1, Math.ceil(totalFilteredCount.value / NOMENCLATURE_PAGE_SIZE)),
 );
-watch([totalPages, currentPage], () => {
-  if (currentPage.value > totalPages.value) {
-    currentPage.value = totalPages.value;
-  }
-}, { immediate: true });
+watch(
+  [totalPages, currentPage],
+  () => {
+    if (currentPage.value > totalPages.value) {
+      currentPage.value = totalPages.value;
+    }
+  },
+  { immediate: true },
+);
 
 // Дані для таблиці: лише поточна сторінка (50 записів) + category_display
 const tableData = computed(() => {
@@ -612,8 +610,19 @@ const openNomenclatureModal = (item?: any) => {
     nomenclatureForm.image_file = item.image_file || "";
     nomenclatureForm.category = item.category || null;
     const cpvs = item.cpv_categories || [];
-    selectedCpvIds.value = cpvs.length ? cpvs.map((c: any) => c.id) : (item.cpv_category ? [item.cpv_category] : []);
-    selectedCpvLabels.value = cpvs.length ? cpvs.map((c: any) => c.label || `${c.cpv_code || ""} - ${c.name_ua || ""}`.trim()) : (item.cpv_label ? [item.cpv_label] : []);
+    selectedCpvIds.value = cpvs.length
+      ? cpvs.map((c: any) => c.id)
+      : item.cpv_category
+        ? [item.cpv_category]
+        : [];
+    selectedCpvLabels.value = cpvs.length
+      ? cpvs.map(
+          (c: any) =>
+            c.label || `${c.cpv_code || ""} - ${c.name_ua || ""}`.trim(),
+        )
+      : item.cpv_label
+        ? [item.cpv_label]
+        : [];
   } else {
     nomenclatureForm.id = null;
     nomenclatureForm.name = "";
@@ -772,10 +781,6 @@ const deleteSelected = async () => {
 };
 
 onMounted(async () => {
-  await Promise.all([
-    loadNomenclatures(),
-    loadUnits(),
-    loadCategories(),
-  ]);
+  await Promise.all([loadNomenclatures(), loadUnits(), loadCategories()]);
 });
 </script>

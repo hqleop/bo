@@ -15,7 +15,10 @@
           />
 
           <div v-if="loadingRoot" class="py-6 text-center text-gray-500">
-            <UIcon name="i-heroicons-arrow-path" class="animate-spin size-5 mx-auto" />
+            <UIcon
+              name="i-heroicons-arrow-path"
+              class="animate-spin size-5 mx-auto"
+            />
           </div>
 
           <div v-else class="space-y-1">
@@ -34,7 +37,9 @@
                 />
                 <span
                   class="flex-1 truncate text-sm"
-                  :class="{ 'font-semibold text-primary': selectedIdsSet.has(node.id) }"
+                  :class="{
+                    'font-semibold text-primary': selectedIdsSet.has(node.id),
+                  }"
                 >
                   {{ node.label }}
                 </span>
@@ -106,8 +111,7 @@ const displayText = computed(() => {
   const ids = props.selectedIds || [];
   if (!ids.length) return "";
   const labels = ids.map(
-    (id, i) =>
-      labelsById.value[id] ?? props.selectedLabels?.[i] ?? `#${id}`,
+    (id, i) => labelsById.value[id] ?? props.selectedLabels?.[i] ?? `#${id}`,
   );
   return labels.join(", ");
 });
@@ -196,7 +200,10 @@ function toggleNode(node: CpvNode) {
     labelsById.value = { ...labelsById.value, [node.id]: node.label };
   }
   const labels = ids.map(
-    (id) => labelsById.value[id] ?? props.selectedLabels?.[props.selectedIds?.indexOf(id) ?? -1] ?? "",
+    (id) =>
+      labelsById.value[id] ??
+      props.selectedLabels?.[props.selectedIds?.indexOf(id) ?? -1] ??
+      "",
   );
   emit("update:selectedIds", ids);
   emit("update:selectedLabels", labels);

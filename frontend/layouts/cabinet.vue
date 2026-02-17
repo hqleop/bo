@@ -51,7 +51,9 @@
                 <span
                   class="text-sm font-medium text-gray-700 whitespace-nowrap"
                 >
-                  {{ meLoading ? "…" : (headerName || userEmail || "Користувач") }}
+                  {{
+                    meLoading ? "…" : headerName || userEmail || "Користувач"
+                  }}
                 </span>
               </NuxtLink>
               <UButton

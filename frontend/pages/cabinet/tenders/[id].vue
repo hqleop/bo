@@ -9,24 +9,27 @@
     Тендер не знайдено.
   </div>
   <div v-else class="h-full flex flex-col">
-    <div class="mb-4">
+    <div class="mb-4 flex items-center justify-between gap-4">
       <h1
         v-if="tender.number"
-        class="text-xl font-semibold text-gray-900 truncate"
+        class="text-xl font-semibold text-gray-900 truncate min-w-0"
       >
         № {{ tender.number }}
         <span class="font-normal text-gray-700">{{ tender.name }}</span>
       </h1>
-    </div>
-    <div v-if="tourOptions.length" class="mb-3 flex items-center gap-2">
-      <span class="text-sm text-gray-600">Тур:</span>
-      <USelectMenu
-        :model-value="tenderId"
-        :items="tourOptions"
-        value-key="value"
-        class="min-w-[100px]"
-        @update:model-value="onTourSelect"
-      />
+      <div
+        v-if="tourOptions.length"
+        class="flex items-center gap-2 shrink-0"
+      >
+        <span class="text-sm text-gray-600">Тур:</span>
+        <USelect
+          :model-value="tenderId"
+          :items="tourOptions"
+          value-key="value"
+          class="min-w-[120px]"
+          @update:model-value="onTourSelect"
+        />
+      </div>
     </div>
     <div class="tender-stepper tender-stepper--compact mb-6">
       <UStepper
@@ -37,104 +40,169 @@
       />
     </div>
 
+    <UAlert
+      v-if="isViewingPreviousTour"
+      color="neutral"
+      variant="subtle"
+      icon="i-heroicons-eye"
+      title="Перегляд попереднього туру"
+      description="Ви переглядаєте збережені дані попереднього туру. Редагування та зміна етапів недоступні — кожен тур зберігається окремо."
+      class="mb-4"
+    />
+
     <div class="flex flex-1 min-h-0 gap-6">
       <div
         class="flex-1 min-w-0 min-h-0"
         :class="displayStage === 'preparation' ? '' : 'overflow-y-auto'"
       >
         <template v-if="displayStage === 'passport'">
-          <UCard>
+          <UCard class="overflow-hidden">
             <template #header>
-              <h3 class="text-lg font-semibold">Паспорт тендера</h3>
+              <h3 class="text-lg font-semibold text-gray-900">Паспорт тендера</h3>
             </template>
-            <UForm :state="form" class="space-y-4">
-              <UFormField label="Назва тендера" required>
-                <UInput v-model="form.name" placeholder="Назва тендера" />
-              </UFormField>
-              <ContentSearch
-                label="Категорія"
-                placeholder="Оберіть категорію"
-                search-placeholder="Пошук категорії"
-                :disabled="(form.cpv_ids?.length ?? 0) > 0"
-                :tree="categoryTree"
-                :selected-ids="selectedCategoryIds"
-                :search-term="categorySearch"
-                @toggle="toggleCategory"
-                @update:search-term="categorySearch = $event"
-              />
-              <CpvLazyMultiSearch
-                label="Категорія CPV"
-                placeholder="Оберіть CPV"
-                :disabled="!!form.category"
-                :selected-ids="form.cpv_ids"
-                :selected-labels="tenderCpvLabels"
-                @update:selected-ids="form.cpv_ids = $event"
-                @update:selected-labels="tenderCpvLabels = $event"
-              />
-              <UFormField label="Стаття бюджету">
-                <USelectMenu
-                  v-model="form.expense_article"
-                  :items="expenseOptions"
-                  value-key="value"
-                  placeholder="Оберіть статтю"
-                />
-              </UFormField>
-              <UFormField label="Орієнтовний бюджет">
-                <UInput
-                  v-model.number="form.estimated_budget"
-                  type="number"
-                  step="0.01"
-                  placeholder="0"
-                />
-              </UFormField>
-              <UFormField label="Філіал">
-                <USelectMenu
-                  v-model="form.branch"
-                  :items="branchOptions"
-                  value-key="value"
-                  placeholder="Оберіть філіал"
-                  @update:model-value="onBranchChange"
-                />
-              </UFormField>
-              <UFormField label="Підрозділ">
-                <USelectMenu
-                  v-model="form.department"
-                  :items="departmentOptions"
-                  value-key="value"
-                  placeholder="Оберіть підрозділ"
-                />
-              </UFormField>
-              <UFormField label="Тип проведення" required>
-                <USelectMenu
-                  v-model="form.conduct_type"
-                  :items="conductTypeOptions"
-                  value-key="value"
-                  placeholder="Оберіть тип"
-                />
-              </UFormField>
-              <UFormField label="Тип публікації" required>
-                <USelectMenu
-                  v-model="form.publication_type"
-                  :items="publicationTypeOptions"
-                  value-key="value"
-                  placeholder="Оберіть тип"
-                />
-              </UFormField>
-              <UFormField label="Валюта тендера" required>
-                <USelectMenu
-                  v-model="form.currency"
-                  :items="currencyOptions"
-                  value-key="value"
-                  placeholder="Оберіть валюту"
-                />
-              </UFormField>
-              <UFormField label="Загальні умови">
-                <UTextarea
-                  v-model="form.general_terms"
-                  :rows="6"
-                  placeholder="Опис загальних умов"
-                />
-              </UFormField>
+            <UForm :state="form" class="space-y-6">
+              <div class="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-6 lg:gap-8">
+                <div class="space-y-6">
+                  <UFormField label="Назва тендера" required class="mb-0 w-full">
+                    <UInput
+                      v-model="form.name"
+                      placeholder="Введіть назву тендера"
+                      size="md"
+                      class="w-full"
+                      :disabled="isViewingPreviousTour"
+                    />
+                  </UFormField>
+
+                  <div>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Категорізація</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <ContentSearch
+                    label="Категорія"
+                    placeholder="Оберіть категорію"
+                    search-placeholder="Пошук категорії"
+                    :disabled="isViewingPreviousTour || (form.cpv_ids?.length ?? 0) > 0"
+                    :tree="categoryTree"
+                    :selected-ids="selectedCategoryIds"
+                    :search-term="categorySearch"
+                    @toggle="toggleCategory"
+                    @update:search-term="categorySearch = $event"
+                  />
+                  <CpvLazyMultiSearch
+                    label="Категорія CPV"
+                    placeholder="Оберіть CPV"
+                    :disabled="isViewingPreviousTour || !!form.category"
+                    :selected-ids="form.cpv_ids"
+                    :selected-labels="tenderCpvLabels"
+                    @update:selected-ids="form.cpv_ids = $event"
+                    @update:selected-labels="tenderCpvLabels = $event"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Бюджет і валюта</p>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <UFormField label="Стаття бюджету">
+                    <USelectMenu
+                      v-model="form.expense_article"
+                      :items="expenseOptions"
+                      value-key="value"
+                      placeholder="Оберіть статтю"
+                      size="sm"
+                      :disabled="isViewingPreviousTour"
+                    />
+                  </UFormField>
+                  <UFormField label="Орієнтовний бюджет">
+                    <UInput
+                      v-model.number="form.estimated_budget"
+                      type="number"
+                      step="0.01"
+                      placeholder="0"
+                      size="sm"
+                      :disabled="isViewingPreviousTour"
+                    />
+                  </UFormField>
+                  <UFormField label="Валюта" required>
+                    <USelectMenu
+                      v-model="form.currency"
+                      :items="currencyOptions"
+                      value-key="value"
+                      placeholder="Валюту"
+                      size="sm"
+                      :disabled="isViewingPreviousTour"
+                    />
+                  </UFormField>
+                </div>
+              </div>
+
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Організаційна структура</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <UFormField label="Філіал">
+                    <USelectMenu
+                      v-model="form.branch"
+                      :items="branchOptions"
+                      value-key="value"
+                      placeholder="Оберіть філіал"
+                      size="sm"
+                      :disabled="isViewingPreviousTour"
+                      @update:model-value="onBranchChange"
+                    />
+                  </UFormField>
+                  <UFormField label="Підрозділ">
+                    <USelectMenu
+                      v-model="form.department"
+                      :items="departmentOptions"
+                      value-key="value"
+                      placeholder="Оберіть підрозділ"
+                      size="sm"
+                      :disabled="isViewingPreviousTour"
+                    />
+                  </UFormField>
+                </div>
+              </div>
+
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Параметри процедури</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <UFormField label="Тип проведення" required>
+                    <USelectMenu
+                      v-model="form.conduct_type"
+                      :items="conductTypeOptions"
+                      value-key="value"
+                      placeholder="Оберіть тип"
+                      size="sm"
+                      :disabled="isViewingPreviousTour"
+                    />
+                  </UFormField>
+                  <UFormField label="Тип публікації" required>
+                    <USelectMenu
+                      v-model="form.publication_type"
+                      :items="publicationTypeOptions"
+                      value-key="value"
+                      placeholder="Оберіть тип"
+                      size="sm"
+                      :disabled="isViewingPreviousTour"
+                    />
+                  </UFormField>
+                </div>
+              </div>
+
+                </div>
+
+                <div class="border-t border-gray-200 pt-5 lg:border-t-0 lg:border-l lg:border-gray-200 lg:pt-0 lg:pl-6 flex flex-col min-h-[320px]">
+                  <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Загальні умови проведення тендера</p>
+                  <UFormField label="Опис умов та вимог" class="mb-0 flex-1 flex flex-col min-h-0">
+                    <UTextarea
+                      v-model="form.general_terms"
+                      :rows="14"
+                      placeholder="Опишіть загальні умови, вимоги до учасників, порядок оцінки пропозицій тощо. Цей текст буде доступний учасникам."
+                      class="min-h-[320px] resize-y flex-1"
+                      :disabled="isViewingPreviousTour"
+                    />
+                  </UFormField>
+                </div>
+              </div>
             </UForm>
           </UCard>
         </template>
@@ -154,38 +222,48 @@
               <template #content="{ item }">
                 <div
                   v-if="item.value === 'positions'"
-                  class="h-full min-h-0 flex flex-col gap-3"
+                  class="h-full min-h-0 flex gap-4"
                 >
-                  <div class="flex items-end gap-3">
-                    <div class="w-full max-w-xl">
-                      <ContentSearch
-                        label="Пошук і додавання номенклатури"
-                        placeholder="Номенклатура"
-                        search-placeholder="Пошук номенклатури"
-                        :tree="nomenclatureSearchTree"
-                        :selected-ids="selectedNomenclatureIds"
-                        :search-term="nomenclatureSearch"
-                        @toggle="toggleTenderPosition"
-                        @update:search-term="nomenclatureSearch = $event"
+                  <!-- Ліва колонка: пошук + дерево категорії → номенклатури -->
+                  <aside
+                    class="w-72 flex-shrink-0 flex flex-col min-h-0 border border-gray-200 rounded-lg bg-gray-50/50 overflow-hidden"
+                  >
+                    <div class="p-2 border-b border-gray-200">
+                      <UInput
+                        v-model="nomenclatureSearch"
+                        placeholder="Пошук номенклатури"
+                        size="sm"
+                        class="w-full"
                       />
                     </div>
-                  </div>
+                    <div class="flex-1 min-h-0 overflow-auto p-2">
+                      <div
+                        v-if="loadingNomenclatures"
+                        class="text-sm text-gray-500 py-4 text-center"
+                      >
+                        Завантаження номенклатур...
+                      </div>
+                      <div
+                        v-else-if="!nomenclatureTreeItems.length"
+                        class="text-sm text-gray-500 py-4 text-center"
+                      >
+                        Оберіть категорію або CPV у паспорті тендера.
+                      </div>
+                      <UTree
+                        v-else
+                        :items="nomenclatureTreeItems"
+                        size="sm"
+                        :get-key="getNomenclatureTreeKey"
+                        class="border-0"
+                        @select="onNomenclatureTreeSelect"
+                      />
+                    </div>
+                  </aside>
 
-                  <div
-                    v-if="loadingNomenclatures"
-                    class="text-sm text-gray-500 py-2"
-                  >
-                    Завантаження номенклатур...
-                  </div>
-                  <div
-                    v-else-if="!nomenclatureSearchTree.length"
-                    class="text-sm text-gray-500 py-2"
-                  >
-                    Немає доступних номенклатур для обраної категорії/CPV.
-                  </div>
-
-                  <div class="flex-1 min-h-0 overflow-auto">
-                    <UTable
+                  <!-- Таблиця позицій -->
+                  <div class="flex-1 min-h-0 flex flex-col min-w-0">
+                    <div class="flex-1 min-h-0 overflow-auto">
+                      <UTable
                       :data="tenderPositions"
                       :columns="positionsColumns"
                       class="w-full"
@@ -197,19 +275,36 @@
                           step="0.01"
                           v-model.number="row.original.quantity"
                           size="sm"
+                          :disabled="isViewingPreviousTour"
                         />
                       </template>
                       <template #description-cell="{ row }">
-                        <UInput v-model="row.original.description" size="sm" />
+                        <UInput
+                          v-model="row.original.description"
+                          size="sm"
+                          :disabled="isViewingPreviousTour"
+                        />
                       </template>
                       <template #vat-cell>
                         <UInput value="" disabled size="sm" />
                       </template>
+                      <template #actions-cell="{ row }">
+                        <UButton
+                          color="error"
+                          variant="ghost"
+                          size="xs"
+                          icon="i-heroicons-trash"
+                          :aria-label="'Видалити позицію'"
+                          :disabled="isViewingPreviousTour"
+                          @click="removeTenderPositionByRow(row)"
+                        />
+                      </template>
                     </UTable>
                   </div>
                 </div>
+                </div>
 
-                <div v-else class="space-y-6">
+                <div v-else-if="item.value === 'criteria'" class="space-y-6">
                   <!-- Параметри цінового критерія -->
                   <div class="border rounded-lg p-4 bg-gray-50/50">
                     <h4 class="text-sm font-semibold text-gray-700 mb-3">
@@ -235,55 +330,77 @@
                     </div>
                   </div>
 
-                  <!-- Інші критерії тендера -->
-                  <div class="border rounded-lg p-4">
-                    <h4 class="text-sm font-semibold text-gray-700 mb-3">
-                      Інші критерії тендера
-                    </h4>
-                    <p class="text-sm text-gray-600 mb-3">
-                      Додайте критерії з довідника. Учасники заповнюватимуть їх
-                      у пропозиціях.
-                    </p>
-                    <div class="flex items-end gap-3 mb-3">
-                      <div class="w-full max-w-xl">
-                        <ContentSearch
-                          label="Пошук і додавання критеріїв"
-                          placeholder="Критерії з довідника"
-                          search-placeholder="Пошук критеріїв"
-                          :tree="criteriaSearchTree"
-                          :selected-ids="selectedCriteriaIds"
-                          :search-term="criteriaSearch"
-                          @toggle="toggleTenderCriterion"
-                          @update:search-term="criteriaSearch = $event"
+                  <!-- Інші критерії тендера: ліва панель (пошук + дерево) + список обраних -->
+                  <div class="flex gap-4 min-h-0 flex-1">
+                    <aside
+                      class="w-72 flex-shrink-0 flex flex-col min-h-0 border border-gray-200 rounded-lg bg-gray-50/50 overflow-hidden"
+                    >
+                      <div class="p-2 border-b border-gray-200">
+                        <UInput
+                          v-model="criteriaSearch"
+                          placeholder="Пошук критеріїв"
+                          size="sm"
+                          class="w-full"
                         />
                       </div>
-                    </div>
-                    <ul
-                      v-if="tenderCriteria.length > 0"
-                      class="space-y-2 text-sm"
-                    >
-                      <li
-                        v-for="c in tenderCriteria"
-                        :key="c.id"
-                        class="flex items-center justify-between gap-2 py-2 px-3 rounded-md bg-gray-50 border border-gray-200"
+                      <div class="flex-1 min-h-0 overflow-auto p-2">
+                        <div
+                          v-if="loadingReferenceCriteria"
+                          class="text-sm text-gray-500 py-4 text-center"
+                        >
+                          Завантаження критеріїв...
+                        </div>
+                        <div
+                          v-else-if="!criteriaTreeItems.length"
+                          class="text-sm text-gray-500 py-4 text-center"
+                        >
+                          Немає критеріїв у довіднику.
+                        </div>
+                        <UTree
+                          v-else
+                          :items="criteriaTreeItems"
+                          size="sm"
+                          :get-key="getCriteriaTreeKey"
+                          class="border-0"
+                          @select="onCriteriaTreeSelect"
+                        />
+                      </div>
+                    </aside>
+                    <div class="flex-1 min-w-0 flex flex-col border rounded-lg p-4 bg-white">
+                      <h4 class="text-sm font-semibold text-gray-700 mb-3">
+                        Додані критерії
+                      </h4>
+                      <p class="text-sm text-gray-600 mb-3">
+                        Подвійний клік по критерію в списку зліва додає його сюди. Учасники заповнюватимуть їх у пропозиціях.
+                      </p>
+                      <ul
+                        v-if="tenderCriteria.length > 0"
+                        class="space-y-2 text-sm flex-1 min-h-0 overflow-auto"
                       >
-                        <span class="font-medium">{{ c.name }}</span>
-                        <span class="text-gray-500 text-xs">{{
-                          criterionTypeLabel(c.type)
-                        }}</span>
+                        <li
+                          v-for="c in tenderCriteria"
+                          :key="c.id"
+                          class="flex items-center justify-between gap-2 py-2 px-3 rounded-md bg-gray-50 border border-gray-200"
+                        >
+                          <span class="font-medium">{{ c.name }}</span>
+                          <span class="text-gray-500 text-xs">{{
+                            criterionTypeLabel(c.type)
+                          }}</span>
                         <UButton
                           icon="i-heroicons-trash"
                           size="xs"
                           variant="ghost"
                           color="error"
                           aria-label="Видалити з тендера"
+                          :disabled="isViewingPreviousTour"
                           @click="removeCriterionFromTender(c)"
                         />
-                      </li>
-                    </ul>
-                    <p v-else class="text-sm text-gray-500 py-2">
-                      Критерії не додано. Оберіть критерії з довідника вище.
-                    </p>
+                        </li>
+                      </ul>
+                      <p v-else class="text-sm text-gray-500 py-2">
+                        Критерії не додано.
+                      </p>
+                    </div>
                   </div>
                 </div>
               </template>
@@ -373,7 +490,8 @@
                 <h3 class="text-lg font-semibold">Затвердження</h3>
               </template>
               <p class="text-sm text-gray-600 mb-4">
-                Перегляньте переможців по позиціях та підтвердьте рішення для завершення тендера.
+                Перегляньте переможців по позиціях та підтвердьте рішення для
+                завершення тендера.
               </p>
               <div class="border rounded-lg overflow-hidden">
                 <table class="w-full text-sm border-collapse">
@@ -399,19 +517,24 @@
                       class="border-b hover:bg-gray-50/50"
                     >
                       <td class="p-2">{{ pos.name }}</td>
-                      <td class="p-2">{{ pos.quantity }} {{ pos.unit_name ?? '' }}</td>
-                      <td class="p-2">{{ pos.winner_supplier_name ?? '—' }}</td>
-                      <td class="p-2">{{ pos.winner_price ?? '—' }}</td>
-                      <td
-                        v-for="c in tenderCriteria"
-                        :key="c.id"
-                        class="p-2"
-                      >
-                        {{ (pos.winner_criterion_values && (pos.winner_criterion_values[c.id] ?? pos.winner_criterion_values[String(c.id)])) ?? '—' }}
+                      <td class="p-2">
+                        {{ pos.quantity }} {{ pos.unit_name ?? "" }}
+                      </td>
+                      <td class="p-2">{{ pos.winner_supplier_name ?? "—" }}</td>
+                      <td class="p-2">{{ pos.winner_price ?? "—" }}</td>
+                      <td v-for="c in tenderCriteria" :key="c.id" class="p-2">
+                        {{
+                          (pos.winner_criterion_values &&
+                            (pos.winner_criterion_values[c.id] ??
+                              pos.winner_criterion_values[String(c.id)])) ??
+                          "—"
+                        }}
                       </td>
                     </tr>
-                    <tr v-if="!(tender.value?.positions?.length)">
-                      <td colspan="100" class="p-4 text-center text-gray-500">Немає позицій.</td>
+                    <tr v-if="!tender.value?.positions?.length">
+                      <td colspan="100" class="p-4 text-center text-gray-500">
+                        Немає позицій.
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -432,16 +555,18 @@
 
       <aside class="w-56 flex-shrink-0 space-y-3">
         <template v-if="displayStage === 'passport'">
-          <UButton class="w-full" :loading="saving" @click="savePassport"
-            >Зберегти</UButton
+          <UButton
+            class="w-full"
+            :loading="saving"
+            :disabled="isViewingPreviousTour"
+            @click="savePassport"
           >
+            Зберегти
+          </UButton>
         </template>
 
         <template v-else-if="displayStage === 'preparation'">
           <template v-if="form.conduct_type === 'registration'">
-            <p v-if="isViewingPreviousTour" class="text-xs text-gray-500 mb-2">
-              Перегляд попереднього туру. Зміни пропозицій заборонені.
-            </p>
             <UButton
               class="w-full"
               :disabled="isViewingPreviousTour"
@@ -452,19 +577,25 @@
             </UButton>
           </template>
           <template v-else>
-            <UButton class="w-full" @click="openPublishModal"
-              >Опублікувати</UButton
+            <UButton
+              class="w-full"
+              :disabled="isViewingPreviousTour"
+              @click="openPublishModal"
             >
+              Опублікувати
+            </UButton>
             <UButton
               class="w-full"
               variant="outline"
+              :disabled="isViewingPreviousTour"
               @click="
                 alert(
                   'Модальне вікно запрошення учасників буде додано наступним кроком.',
                 )
               "
-              >Запросити учасників</UButton
             >
+              Запросити учасників
+            </UButton>
           </template>
           <UButton class="w-full" variant="outline" @click="goToProposalsPage">
             Прикріплені файли
@@ -472,26 +603,41 @@
         </template>
 
         <template v-else-if="displayStage === 'acceptance'">
-          <UButton class="w-full" @click="openTimingModal"
-            >Змінити час проведення</UButton
+          <UButton
+            class="w-full"
+            :disabled="isViewingPreviousTour"
+            @click="openTimingModal"
           >
+            Змінити час проведення
+          </UButton>
         </template>
 
         <template v-else-if="displayStage === 'decision'">
           <UButton
             class="w-full"
             variant="outline"
+            :disabled="isViewingPreviousTour"
             @click="showWinnerModal = true"
           >
             Ручний вибір переможця
           </UButton>
-          <UButton class="w-full" @click="showDecisionModal = true">
+          <UButton
+            class="w-full"
+            :disabled="isViewingPreviousTour"
+            @click="showDecisionModal = true"
+          >
             Зафіксувати рішення
           </UButton>
         </template>
 
         <template v-else-if="displayStage === 'approval'">
-          <UButton class="w-full" @click="approveTender">Затвердити</UButton>
+          <UButton
+            class="w-full"
+            :disabled="isViewingPreviousTour"
+            @click="approveTender"
+          >
+            Затвердити
+          </UButton>
         </template>
       </aside>
     </div>
@@ -546,13 +692,20 @@
               <UInput v-model="timingForm.end_at" type="datetime-local" />
             </UFormField>
             <div class="flex gap-2">
-              <UButton class="flex-1" @click="saveTiming">Зберегти</UButton>
+              <UButton
+                class="flex-1"
+                :disabled="isViewingPreviousTour"
+                @click="saveTiming"
+              >
+                Зберегти
+              </UButton>
               <UButton
                 class="flex-1"
                 variant="outline"
                 @click="showTimingModal = false"
-                >Скасувати</UButton
               >
+                Скасувати
+              </UButton>
             </div>
           </div>
         </UCard>
@@ -623,6 +776,8 @@
 </template>
 
 <script setup lang="ts">
+import { TENDER_STAGE_ITEMS } from "~/domains/tenders/tenders.constants";
+
 definePageMeta({
   layout: "cabinet",
   middleware: "auth",
@@ -679,30 +834,7 @@ const estimatedMarketOptions = [
 ];
 const selectedWinnerByPosition = ref<Record<number, number>>({});
 
-const stageItems = [
-  {
-    value: "passport",
-    title: "Паспорт тендера",
-    icon: "i-heroicons-document-text",
-  },
-  {
-    value: "preparation",
-    title: "Підготовка процедури",
-    icon: "i-heroicons-clipboard-document-list",
-  },
-  {
-    value: "acceptance",
-    title: "Прийом пропозицій",
-    icon: "i-heroicons-envelope",
-  },
-  { value: "decision", title: "Вибір рішення", icon: "i-heroicons-scale" },
-  {
-    value: "approval",
-    title: "Затвердження",
-    icon: "i-heroicons-check-circle",
-  },
-  { value: "completed", title: "Завершений", icon: "i-heroicons-flag" },
-];
+const stageItems = TENDER_STAGE_ITEMS;
 
 const isRegistration = computed(
   () => (tender.value?.conduct_type ?? form.conduct_type) === "registration",
@@ -789,6 +921,7 @@ const positionsColumns = [
   { accessorKey: "quantity", header: "Кількість" },
   { accessorKey: "description", header: "Опис" },
   { accessorKey: "vat", header: "ПДВ" },
+  { accessorKey: "actions", header: "", cellClass: "w-12" },
 ];
 
 function getProposalPositionValue(proposal: any, positionId: number) {
@@ -937,16 +1070,57 @@ const decisionTableRows = computed(() => {
   });
 });
 
-const selectedNomenclatureIds = computed(() =>
-  tenderPositions.value.map((p) => p.nomenclature_id),
-);
-const nomenclatureSearchTree = computed(() =>
-  availableNomenclatures.value.map((n: any) => ({
+/** Дерево для UTree: категорії (батьки) → номенклатури (діти), формат Nuxt UI TreeItem */
+const nomenclatureTreeItems = computed(() => {
+  const list = availableNomenclatures.value;
+  const term = (nomenclatureSearch.value || "").trim().toLowerCase();
+  const filtered =
+    term === ""
+      ? list
+      : list.filter(
+          (n: any) =>
+            (n.name || "").toLowerCase().includes(term) ||
+            (n.unit_name || "").toLowerCase().includes(term),
+        );
+  if (filtered.length === 0) return [];
+  const categoryId = form.category;
+  const cpvIds = form.cpv_ids ?? [];
+  const cpvLabels = tenderCpvLabels.value ?? [];
+  let label: string;
+  let id: string;
+  if (categoryId !== null && categoryId !== undefined) {
+    label = findCategoryNameById(categoryTree.value, categoryId) || "Категорія";
+    id = `cat-${categoryId}`;
+  } else if (cpvIds.length > 0 && cpvLabels.length > 0) {
+    label = cpvLabels.length === 1 ? (cpvLabels[0] ?? "") : cpvLabels.join(", ");
+    id = `cpv-${cpvIds.join("-")}`;
+  } else {
+    label = "Номенклатури";
+    id = "nomenclatures";
+  }
+  const children = filtered.map((n: any) => ({
     id: n.id,
-    name: `${n.name}${n.unit_name ? ` (${n.unit_name})` : ""}`,
-    children: [],
-  })),
-);
+    label: `${n.name || ""}${n.unit_name ? ` (${n.unit_name})` : ""}`,
+  }));
+  return [{ id, label, defaultExpanded: true, children }];
+});
+
+function getNomenclatureTreeKey(item: { id?: number | string; label?: string }) {
+  return String(item.id ?? item.label ?? "");
+}
+
+function onNomenclatureTreeSelect(e: unknown, item: { id?: number | string; children?: unknown[] }) {
+  const ev = e as { detail?: { originalEvent?: { detail?: number; preventDefault?: () => void } }; preventDefault?: () => void };
+  const orig = ev?.detail?.originalEvent ?? ev;
+  const isLeaf = item && !(item.children?.length);
+  const isDoubleClick = (orig as { detail?: number })?.detail === 2;
+  if (isLeaf && isDoubleClick && item.id != null) {
+    const numId = typeof item.id === "number" ? item.id : Number(item.id);
+    if (!Number.isNaN(numId)) addPositionFromNomenclature(numId);
+  }
+  if (typeof (orig as { preventDefault?: () => void })?.preventDefault === "function")
+    (orig as { preventDefault: () => void }).preventDefault();
+}
 
 const canEditStart = computed(() => {
   if (!tender.value?.start_at) return true;
@@ -1001,19 +1175,6 @@ function goToProposalsPage() {
   navigateTo(`/cabinet/tenders/proposals/${tenderId.value}`);
 }
 
-// Дерево критеріїв для ContentSearch (плоский список з полем name)
-const criteriaSearchTree = computed(() =>
-  referenceCriteria.value.map((c: any) => ({
-    id: c.id,
-    name: `${c.name} (${criterionTypeLabel(c.type)})`,
-    children: [],
-  })),
-);
-
-const selectedCriteriaIds = computed(() =>
-  tenderCriteria.value.map((c) => c.id),
-);
-
 function criterionTypeLabel(type: string) {
   const map: Record<string, string> = {
     numeric: "Числовий",
@@ -1024,25 +1185,77 @@ function criterionTypeLabel(type: string) {
   return map[type] ?? type;
 }
 
-async function loadReferenceCriteria() {
-  const { data } = await tendersUC.getTenderCriteria();
-  referenceCriteria.value = Array.isArray(data) ? data : [];
+const loadingReferenceCriteria = ref(false);
+
+/** Дерево для UTree: один батьківський вузол «Критерії», діти — критерії з довідника (з фільтром пошуку) */
+const criteriaTreeItems = computed(() => {
+  const list = referenceCriteria.value;
+  const term = (criteriaSearch.value || "").trim().toLowerCase();
+  const filtered =
+    term === ""
+      ? list
+      : list.filter(
+          (c: any) =>
+            (c.name || "").toLowerCase().includes(term) ||
+            (criterionTypeLabel(c.type) || "").toLowerCase().includes(term),
+        );
+  if (filtered.length === 0) return [];
+  const children = filtered.map((c: any) => ({
+    id: c.id,
+    label: `${c.name || ""} (${criterionTypeLabel(c.type)})`,
+  }));
+  return [{ id: "criteria-root", label: "Критерії", defaultExpanded: true, children }];
+});
+
+function getCriteriaTreeKey(item: { id?: number | string; label?: string }) {
+  return String(item.id ?? item.label ?? "");
 }
 
-function toggleTenderCriterion(criterionId: number) {
-  const existing = tenderCriteria.value.find((c) => c.id === criterionId);
-  if (existing) {
-    tenderCriteria.value = tenderCriteria.value.filter(
-      (x) => x.id !== criterionId,
-    );
-    return;
+function onCriteriaTreeSelect(e: unknown, item: { id?: number | string; children?: unknown[] }) {
+  const ev = e as { detail?: { originalEvent?: { detail?: number; preventDefault?: () => void } }; preventDefault?: () => void };
+  const orig = ev?.detail?.originalEvent ?? ev;
+  const isLeaf = item && !(item.children?.length);
+  const isDoubleClick = (orig as { detail?: number })?.detail === 2;
+  if (isLeaf && isDoubleClick && item.id != null) {
+    const numId = typeof item.id === "number" ? item.id : Number(item.id);
+    if (!Number.isNaN(numId)) addCriterionFromTree(numId);
   }
-  const c = referenceCriteria.value.find((x) => x.id === criterionId);
+  if (typeof (orig as { preventDefault?: () => void })?.preventDefault === "function")
+    (orig as { preventDefault: () => void }).preventDefault();
+}
+
+/** Додати критерій з довідника (подвійний клік у лівій панелі). Якщо вже є — нічого не робимо. */
+function addCriterionFromTree(criterionId: number) {
+  if (isViewingPreviousTour.value) return;
+  if (tenderCriteria.value.some((c) => c.id === criterionId)) return;
+  const c = referenceCriteria.value.find((x: any) => x.id === criterionId);
   if (c) tenderCriteria.value = [...tenderCriteria.value, c];
 }
 
+async function loadReferenceCriteria() {
+  loadingReferenceCriteria.value = true;
+  try {
+    const { data } = await tendersUC.getTenderCriteria();
+    referenceCriteria.value = Array.isArray(data) ? data : [];
+  } finally {
+    loadingReferenceCriteria.value = false;
+  }
+}
+
 function removeCriterionFromTender(c: any) {
+  if (isViewingPreviousTour.value) return;
   tenderCriteria.value = tenderCriteria.value.filter((x) => x.id !== c.id);
+}
+
+function findCategoryNameById(tree: any[], id: number): string | null {
+  for (const node of tree || []) {
+    if (node.id === id) return node.name ?? node.label ?? null;
+    if (node.children?.length) {
+      const found = findCategoryNameById(node.children, id);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 function flattenTree(
@@ -1146,7 +1359,13 @@ async function loadTender() {
 async function loadTours() {
   if (!tenderId.value) return;
   const { data } = await tendersUC.getTenderTours(tenderId.value, isSales);
-  tourOptions.value = Array.isArray(data) ? data : [];
+  // API повертає [{ id, tour_number }]; тур 1 — перший (корінь), наступні — повторні проведення
+  tourOptions.value = Array.isArray(data)
+    ? (data as { id: number; tour_number: number }[]).map((t) => ({
+        value: t.id,
+        label: `Тур ${t.tour_number ?? 1}`,
+      }))
+    : [];
 }
 
 function onTourSelect(value: number | null) {
@@ -1184,7 +1403,9 @@ async function loadNomenclaturesForPreparation() {
       }
       items = Array.from(merged.values());
     } else if (form.category) {
-      const { data: byCategory } = await tendersUC.getNomenclaturesByCategory(form.category);
+      const { data: byCategory } = await tendersUC.getNomenclaturesByCategory(
+        form.category,
+      );
       const merged = new Map<number, any>();
       for (const n of (byCategory as any[]) || []) merged.set(n.id, n);
 
@@ -1210,21 +1431,17 @@ async function loadNomenclaturesForPreparation() {
   }
 }
 
-function toggleTenderPosition(nomenclatureId: number) {
-  const existingIndex = tenderPositions.value.findIndex(
-    (p) => p.nomenclature_id === nomenclatureId,
-  );
-
-  if (existingIndex >= 0) {
-    tenderPositions.value.splice(existingIndex, 1);
+/** Додати позицію з номенклатури (подвійний клік у лівій панелі). Якщо вже є — нічого не робимо. */
+function addPositionFromNomenclature(nomenclatureId: number) {
+  if (isViewingPreviousTour.value) return;
+  if (
+    tenderPositions.value.some((p) => p.nomenclature_id === nomenclatureId)
+  )
     return;
-  }
-
   const n = availableNomenclatures.value.find(
     (x: any) => x.id === nomenclatureId,
   );
   if (!n) return;
-
   tenderPositions.value.push({
     nomenclature_id: n.id,
     name: n.name,
@@ -1233,6 +1450,16 @@ function toggleTenderPosition(nomenclatureId: number) {
     description: "",
     vat: "",
   });
+}
+
+/** Видалити позицію з тендера (за рядком таблиці). */
+function removeTenderPositionByRow(row: { index?: number; original?: (typeof tenderPositions.value)[number] }) {
+  if (isViewingPreviousTour.value) return;
+  const idx =
+    typeof row.index === "number" && row.index >= 0
+      ? row.index
+      : tenderPositions.value.findIndex((p) => p === row.original);
+  if (idx >= 0) tenderPositions.value.splice(idx, 1);
 }
 
 async function loadDepartments() {
@@ -1251,7 +1478,11 @@ function onBranchChange() {
 
 async function patchTender(payload: Record<string, unknown>) {
   if (!tender.value?.id) return false;
-  const { data, error } = await tendersUC.patchTender(tender.value.id, isSales, payload);
+  const { data, error } = await tendersUC.patchTender(
+    tender.value.id,
+    isSales,
+    payload,
+  );
   if (error || !data) return false;
   tender.value = { ...tender.value, ...data };
   if (data.stage != null) {
@@ -1332,14 +1563,23 @@ async function fixDecision(mode: "winner" | "cancel" | "next_round") {
   showDecisionModal.value = false;
   saving.value = true;
   try {
-    const body: { mode: string; position_winners?: { position_id: number; proposal_id: number }[] } = { mode };
+    const body: {
+      mode: string;
+      position_winners?: { position_id: number; proposal_id: number }[];
+    } = { mode };
     if (mode === "winner") {
-      body.position_winners = Object.entries(selectedWinnerByPosition.value).map(([position_id, proposal_id]) => ({
+      body.position_winners = Object.entries(
+        selectedWinnerByPosition.value,
+      ).map(([position_id, proposal_id]) => ({
         position_id: Number(position_id),
         proposal_id,
       }));
     }
-    const { data, error } = await tendersUC.fixTenderDecision(tenderId.value, isSales, body);
+    const { data, error } = await tendersUC.fixTenderDecision(
+      tenderId.value,
+      isSales,
+      body,
+    );
     if (error || !data) return;
     if (data.id && data.stage === "preparation") {
       await navigateTo(`/cabinet/tenders/${data.id}`);

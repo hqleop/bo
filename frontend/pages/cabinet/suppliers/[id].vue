@@ -1,13 +1,19 @@
 <template>
   <div v-if="loading" class="flex items-center justify-center py-12">
-    <UIcon name="i-heroicons-arrow-path" class="animate-spin size-8 text-gray-400" />
+    <UIcon
+      name="i-heroicons-arrow-path"
+      class="animate-spin size-8 text-gray-400"
+    />
   </div>
   <div v-else-if="!supplier" class="text-center py-12 text-gray-500">
     Контрагента не знайдено.
   </div>
   <div v-else class="h-full flex flex-col min-h-0">
     <div class="mb-4">
-      <NuxtLink to="/cabinet/suppliers" class="text-sm text-primary hover:underline">
+      <NuxtLink
+        to="/cabinet/suppliers"
+        class="text-sm text-primary hover:underline"
+      >
         ← Назад до списку контрагентів
       </NuxtLink>
     </div>
@@ -41,15 +47,29 @@
           content
         >
           <template #content="{ item }">
-            <div v-if="item.value === 'tenders'" class="flex-1 min-h-0 overflow-auto">
+            <div
+              v-if="item.value === 'tenders'"
+              class="flex-1 min-h-0 overflow-auto"
+            >
               <p class="text-sm text-gray-600 mb-3">
-                Тендери (закупівлі та продажі), в яких компанія брала або бере участь.
+                Тендери (закупівлі та продажі), в яких компанія брала або бере
+                участь.
               </p>
-              <div v-if="tendersLoading" class="flex items-center justify-center py-8 text-gray-500">
-                <UIcon name="i-heroicons-arrow-path" class="animate-spin size-6" />
+              <div
+                v-if="tendersLoading"
+                class="flex items-center justify-center py-8 text-gray-500"
+              >
+                <UIcon
+                  name="i-heroicons-arrow-path"
+                  class="animate-spin size-6"
+                />
               </div>
-              <div v-else-if="tendersList.length === 0" class="text-sm text-gray-500 py-6">
-                Наразі немає даних про участь у тендерах. Список з’явиться після реалізації подачі пропозицій учасниками.
+              <div
+                v-else-if="tendersList.length === 0"
+                class="text-sm text-gray-500 py-6"
+              >
+                Наразі немає даних про участь у тендерах. Список з’явиться після
+                реалізації подачі пропозицій учасниками.
               </div>
               <ul v-else class="space-y-2">
                 <li
@@ -58,10 +78,16 @@
                   class="flex items-center justify-between py-2 px-3 rounded-md border border-gray-200 bg-gray-50/50"
                 >
                   <NuxtLink
-                    :to="t.type === 'sales' ? `/cabinet/tenders/sales/${t.id}` : `/cabinet/tenders/${t.id}`"
+                    :to="
+                      t.type === 'sales'
+                        ? `/cabinet/tenders/sales/${t.id}`
+                        : `/cabinet/tenders/${t.id}`
+                    "
                     class="text-primary hover:underline font-medium"
                   >
-                    {{ t.type === 'sales' ? 'Продаж' : 'Закупівля' }} №{{ t.number }}{{ t.tour_number > 1 ? ` (тур ${t.tour_number})` : '' }}
+                    {{ t.type === "sales" ? "Продаж" : "Закупівля" }} №{{
+                      t.number
+                    }}{{ t.tour_number > 1 ? ` (тур ${t.tour_number})` : "" }}
                   </NuxtLink>
                   <span class="text-sm text-gray-500">{{ t.name }}</span>
                 </li>
@@ -72,10 +98,19 @@
               <p class="text-sm text-gray-600 mb-3">
                 Користувачі, зареєстровані за цією компанією.
               </p>
-              <div v-if="membersLoading" class="flex items-center justify-center py-8 text-gray-500">
-                <UIcon name="i-heroicons-arrow-path" class="animate-spin size-6" />
+              <div
+                v-if="membersLoading"
+                class="flex items-center justify-center py-8 text-gray-500"
+              >
+                <UIcon
+                  name="i-heroicons-arrow-path"
+                  class="animate-spin size-6"
+                />
               </div>
-              <div v-else-if="members.length === 0" class="text-sm text-gray-500 py-6">
+              <div
+                v-else-if="members.length === 0"
+                class="text-sm text-gray-500 py-6"
+              >
                 Немає зареєстрованих агентів за цією компанією.
               </div>
               <UTable
@@ -117,7 +152,15 @@ const tabItems = [
 ];
 
 const tendersLoading = ref(false);
-const tendersList = ref<{ id: number; number: number; tour_number: number; name: string; type?: string }[]>([]);
+const tendersList = ref<
+  {
+    id: number;
+    number: number;
+    tour_number: number;
+    name: string;
+    type?: string;
+  }[]
+>([]);
 const membersLoading = ref(false);
 const members = ref<any[]>([]);
 
@@ -131,10 +174,18 @@ const membersColumns = [
 const membersTableData = computed(() =>
   members.value.map((m: any) => ({
     email: m.user?.email ?? "—",
-    displayName: [m.user?.first_name, m.user?.last_name].filter(Boolean).join(" ") || "—",
+    displayName:
+      [m.user?.first_name, m.user?.last_name].filter(Boolean).join(" ") || "—",
     roleName: m.role?.name ?? "—",
-    statusLabel: m.status === "approved" ? "Підтверджено" : m.status === "pending" ? "Очікує" : m.status === "rejected" ? "Відхилено" : m.status ?? "—",
-  }))
+    statusLabel:
+      m.status === "approved"
+        ? "Підтверджено"
+        : m.status === "pending"
+          ? "Очікує"
+          : m.status === "rejected"
+            ? "Відхилено"
+            : (m.status ?? "—"),
+  })),
 );
 
 async function loadSupplier() {
@@ -172,7 +223,9 @@ async function loadMembers() {
   if (!supplier.value) return;
   membersLoading.value = true;
   try {
-    const { data, error } = await suppliersUC.getSupplierMembers(supplierId.value);
+    const { data, error } = await suppliersUC.getSupplierMembers(
+      supplierId.value,
+    );
     if (error) {
       members.value = [];
       return;

@@ -127,171 +127,171 @@
     <!-- Модальне вікно для філіалу -->
     <UModal v-model:open="showBranchModal">
       <template #content>
-      <UCard>
-        <template #header>
-          <h3>{{ editingBranch ? "Редагувати філіал" : "Додати філіал" }}</h3>
-        </template>
-        <UForm :state="branchForm" @submit="saveBranch" class="space-y-4">
-          <UFormField label="Назва" name="name" required>
-            <UInput v-model="branchForm.name" />
-          </UFormField>
-          <UFormField label="Код" name="code">
-            <UInput v-model="branchForm.code" />
-          </UFormField>
-          <UFormField label="Батьківський філіал" name="parent_id">
-            <USelectMenu
-              v-model="branchForm.parent_id"
-              :items="branchParentOptions"
-              value-key="value"
-              placeholder="Без батьківського філіалу"
-            />
-          </UFormField>
-          <div class="flex gap-4">
-            <UButton
-              variant="outline"
-              class="flex-1"
-              @click="showBranchModal = false"
-              >Скасувати</UButton
-            >
-            <UButton type="submit" class="flex-1" :loading="saving"
-              >Зберегти</UButton
-            >
-          </div>
-        </UForm>
-      </UCard>
+        <UCard>
+          <template #header>
+            <h3>{{ editingBranch ? "Редагувати філіал" : "Додати філіал" }}</h3>
+          </template>
+          <UForm :state="branchForm" @submit="saveBranch" class="space-y-4">
+            <UFormField label="Назва" name="name" required>
+              <UInput v-model="branchForm.name" />
+            </UFormField>
+            <UFormField label="Код" name="code">
+              <UInput v-model="branchForm.code" />
+            </UFormField>
+            <UFormField label="Батьківський філіал" name="parent_id">
+              <USelectMenu
+                v-model="branchForm.parent_id"
+                :items="branchParentOptions"
+                value-key="value"
+                placeholder="Без батьківського філіалу"
+              />
+            </UFormField>
+            <div class="flex gap-4">
+              <UButton
+                variant="outline"
+                class="flex-1"
+                @click="showBranchModal = false"
+                >Скасувати</UButton
+              >
+              <UButton type="submit" class="flex-1" :loading="saving"
+                >Зберегти</UButton
+              >
+            </div>
+          </UForm>
+        </UCard>
       </template>
     </UModal>
 
     <!-- Модальне вікно для підрозділу -->
     <UModal v-model:open="showDepartmentModal">
       <template #content>
-      <UCard>
-        <template #header>
-          <h3>
-            {{
-              editingDepartment ? "Редагувати підрозділ" : "Додати підрозділ"
-            }}
-          </h3>
-        </template>
-        <UForm
-          :state="departmentForm"
-          @submit="saveDepartment"
-          class="space-y-4"
-        >
-          <UFormField label="Назва" name="name" required>
-            <UInput v-model="departmentForm.name" />
-          </UFormField>
-          <UFormField label="Батьківський підрозділ" name="parent_id">
-            <USelectMenu
-              v-model="departmentForm.parent_id"
-              :items="departmentParentOptions"
-              value-key="value"
-              placeholder="Без батьківського підрозділу"
-            />
-          </UFormField>
-          <div class="flex gap-4">
-            <UButton
-              variant="outline"
-              class="flex-1"
-              @click="showDepartmentModal = false"
-              >Скасувати</UButton
-            >
-            <UButton type="submit" class="flex-1" :loading="saving"
-              >Зберегти</UButton
-            >
-          </div>
-        </UForm>
-      </UCard>
+        <UCard>
+          <template #header>
+            <h3>
+              {{
+                editingDepartment ? "Редагувати підрозділ" : "Додати підрозділ"
+              }}
+            </h3>
+          </template>
+          <UForm
+            :state="departmentForm"
+            @submit="saveDepartment"
+            class="space-y-4"
+          >
+            <UFormField label="Назва" name="name" required>
+              <UInput v-model="departmentForm.name" />
+            </UFormField>
+            <UFormField label="Батьківський підрозділ" name="parent_id">
+              <USelectMenu
+                v-model="departmentForm.parent_id"
+                :items="departmentParentOptions"
+                value-key="value"
+                placeholder="Без батьківського підрозділу"
+              />
+            </UFormField>
+            <div class="flex gap-4">
+              <UButton
+                variant="outline"
+                class="flex-1"
+                @click="showDepartmentModal = false"
+                >Скасувати</UButton
+              >
+              <UButton type="submit" class="flex-1" :loading="saving"
+                >Зберегти</UButton
+              >
+            </div>
+          </UForm>
+        </UCard>
       </template>
     </UModal>
 
     <!-- Модальне вікно для додавання користувачів -->
     <UModal v-model:open="showAddUsersModal">
       <template #content>
-      <UCard>
-        <template #header>
-          <h3>Додати користувачів</h3>
-        </template>
-        <div class="space-y-2 max-h-96 overflow-y-auto">
-          <div
-            v-for="user in availableCompanyUsers"
-            :key="user.id"
-            class="flex items-center p-2 rounded hover:bg-gray-50"
-          >
-            <UCheckbox
-              :model-value="usersToAdd.includes(user.id)"
-              @update:model-value="toggleUserToAdd(user.id)"
-            />
-            <div class="ml-3 flex-1">
-              <div class="font-medium">
-                {{ user.first_name }} {{ user.last_name }}
+        <UCard>
+          <template #header>
+            <h3>Додати користувачів</h3>
+          </template>
+          <div class="space-y-2 max-h-96 overflow-y-auto">
+            <div
+              v-for="user in availableCompanyUsers"
+              :key="user.id"
+              class="flex items-center p-2 rounded hover:bg-gray-50"
+            >
+              <UCheckbox
+                :model-value="usersToAdd.includes(user.id)"
+                @update:model-value="toggleUserToAdd(user.id)"
+              />
+              <div class="ml-3 flex-1">
+                <div class="font-medium">
+                  {{ user.first_name }} {{ user.last_name }}
+                </div>
+                <div class="text-sm text-gray-500">{{ user.email }}</div>
               </div>
-              <div class="text-sm text-gray-500">{{ user.email }}</div>
             </div>
           </div>
-        </div>
-        <template #footer>
-          <div class="flex gap-4">
-            <UButton
-              variant="outline"
-              class="flex-1"
-              @click="showAddUsersModal = false"
-              >Скасувати</UButton
-            >
-            <UButton class="flex-1" @click="addUsers" :loading="saving"
-              >Додати</UButton
-            >
-          </div>
-        </template>
-      </UCard>
+          <template #footer>
+            <div class="flex gap-4">
+              <UButton
+                variant="outline"
+                class="flex-1"
+                @click="showAddUsersModal = false"
+                >Скасувати</UButton
+              >
+              <UButton class="flex-1" @click="addUsers" :loading="saving"
+                >Додати</UButton
+              >
+            </div>
+          </template>
+        </UCard>
       </template>
     </UModal>
 
     <!-- Модальне вікно для видалення користувачів -->
     <UModal v-model:open="showRemoveUsersModal">
       <template #content>
-      <UCard>
-        <template #header>
-          <h3>Видалити користувачів</h3>
-        </template>
-        <div class="space-y-2 max-h-96 overflow-y-auto">
-          <div
-            v-for="user in currentUsers.filter((u) =>
-              selectedUsers.includes(u.user.id),
-            )"
-            :key="user.id"
-            class="flex items-center p-2 rounded hover:bg-gray-50"
-          >
-            <UCheckbox
-              :model-value="usersToRemove.includes(user.user.id)"
-              @update:model-value="toggleUserToRemove(user.user.id)"
-            />
-            <div class="ml-3 flex-1">
-              <div class="font-medium">
-                {{ user.user.first_name }} {{ user.user.last_name }}
+        <UCard>
+          <template #header>
+            <h3>Видалити користувачів</h3>
+          </template>
+          <div class="space-y-2 max-h-96 overflow-y-auto">
+            <div
+              v-for="user in currentUsers.filter((u) =>
+                selectedUsers.includes(u.user.id),
+              )"
+              :key="user.id"
+              class="flex items-center p-2 rounded hover:bg-gray-50"
+            >
+              <UCheckbox
+                :model-value="usersToRemove.includes(user.user.id)"
+                @update:model-value="toggleUserToRemove(user.user.id)"
+              />
+              <div class="ml-3 flex-1">
+                <div class="font-medium">
+                  {{ user.user.first_name }} {{ user.user.last_name }}
+                </div>
+                <div class="text-sm text-gray-500">{{ user.user.email }}</div>
               </div>
-              <div class="text-sm text-gray-500">{{ user.user.email }}</div>
             </div>
           </div>
-        </div>
-        <template #footer>
-          <div class="flex gap-4">
-            <UButton
-              variant="outline"
-              class="flex-1"
-              @click="showRemoveUsersModal = false"
-              >Скасувати</UButton
-            >
-            <UButton
-              class="flex-1"
-              color="red"
-              @click="removeUsers"
-              :loading="saving"
-              >Видалити</UButton
-            >
-          </div>
-        </template>
-      </UCard>
+          <template #footer>
+            <div class="flex gap-4">
+              <UButton
+                variant="outline"
+                class="flex-1"
+                @click="showRemoveUsersModal = false"
+                >Скасувати</UButton
+              >
+              <UButton
+                class="flex-1"
+                color="red"
+                @click="removeUsers"
+                :loading="saving"
+                >Видалити</UButton
+              >
+            </div>
+          </template>
+        </UCard>
       </template>
     </UModal>
   </div>

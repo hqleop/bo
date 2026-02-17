@@ -28,8 +28,13 @@
 
       <div class="flex flex-1 min-h-0 gap-6">
         <div class="flex-1 min-w-0 min-h-0 flex flex-col gap-4">
-          <h2 class="text-base font-bold text-gray-800 text-center">Подача пропозицій (закупівля)</h2>
-          <p v-if="isViewingPreviousTour" class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+          <h2 class="text-base font-bold text-gray-800 text-center">
+            Подача пропозицій (закупівля)
+          </h2>
+          <p
+            v-if="isViewingPreviousTour"
+            class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2"
+          >
             Перегляд попереднього туру. Зміни пропозицій заборонені.
           </p>
           <UFormField label="Контрагент (постачальник)">
@@ -114,7 +119,9 @@
                             class="min-w-[100px]"
                             @blur="savePositionValues"
                           />
-                          <span v-else class="text-gray-700">{{ row.price || "—" }}</span>
+                          <span v-else class="text-gray-700">{{
+                            row.price || "—"
+                          }}</span>
                         </td>
                         <td v-for="c in tenderCriteria" :key="c.id" class="p-2">
                           <UInput
@@ -124,13 +131,18 @@
                             class="min-w-[80px]"
                             @blur="savePositionValues"
                           />
-                          <span v-else class="text-gray-700">{{ row.criterion_values[c.id] || "—" }}</span>
+                          <span v-else class="text-gray-700">{{
+                            row.criterion_values[c.id] || "—"
+                          }}</span>
                         </td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
-                <div v-if="currentProposal && !isViewingPreviousTour" class="mt-3 pt-3 border-t">
+                <div
+                  v-if="currentProposal && !isViewingPreviousTour"
+                  class="mt-3 pt-3 border-t"
+                >
                   <UButton size="sm" @click="savePositionValues"
                     >Подати пропозицію</UButton
                   >
@@ -211,25 +223,51 @@
         </template>
       </UModal>
 
-      <UModal v-model:open="showCheckModal" :ui="{ width: 'max-w-[95vw]', height: 'max-h-[90vh]' }">
+      <UModal
+        v-model:open="showCheckModal"
+        :ui="{ width: 'max-w-[95vw]', height: 'max-h-[90vh]' }"
+      >
         <template #content>
           <UCard class="flex flex-col max-h-[90vh] overflow-hidden">
             <template #header>
               <h3 class="text-lg font-semibold">Перевірка пропозицій</h3>
             </template>
-            <div class="overflow-auto min-h-0 flex-1 resize-y min-h-[300px]" style="resize: vertical;">
-              <table v-if="tenderPositions.length && proposals.length" class="w-full text-sm border-collapse">
+            <div
+              class="overflow-auto min-h-0 flex-1 resize-y min-h-[300px]"
+              style="resize: vertical"
+            >
+              <table
+                v-if="tenderPositions.length && proposals.length"
+                class="w-full text-sm border-collapse"
+              >
                 <thead>
                   <tr class="border-b bg-gray-100">
-                    <th class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap">Назва позиції</th>
-                    <th class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap">Кількість</th>
+                    <th
+                      class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap"
+                    >
+                      Назва позиції
+                    </th>
+                    <th
+                      class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap"
+                    >
+                      Кількість
+                    </th>
                     <template v-for="proposal in proposals" :key="proposal.id">
                       <th
                         :colspan="2 + tenderCriteria.length"
                         class="text-left p-2 font-medium bg-gray-200 border-l border-gray-300"
                       >
-                        {{ proposal.supplier_company?.name || proposal.supplier_name || '—' }}
-                        <span v-if="proposal.supplier_company?.edrpou" class="text-gray-600 font-normal"> ({{ proposal.supplier_company.edrpou }})</span>
+                        {{
+                          proposal.supplier_company?.name ||
+                          proposal.supplier_name ||
+                          "—"
+                        }}
+                        <span
+                          v-if="proposal.supplier_company?.edrpou"
+                          class="text-gray-600 font-normal"
+                        >
+                          ({{ proposal.supplier_company.edrpou }})</span
+                        >
                       </th>
                     </template>
                   </tr>
@@ -237,8 +275,16 @@
                     <th class="p-2 bg-gray-50"></th>
                     <th class="p-2 bg-gray-50"></th>
                     <template v-for="proposal in proposals" :key="proposal.id">
-                      <th class="text-left p-2 font-medium border-l border-gray-200 whitespace-nowrap">{{ priceColumnHeader }}</th>
-                      <th class="text-left p-2 font-medium border-l border-gray-200 whitespace-nowrap">Сума</th>
+                      <th
+                        class="text-left p-2 font-medium border-l border-gray-200 whitespace-nowrap"
+                      >
+                        {{ priceColumnHeader }}
+                      </th>
+                      <th
+                        class="text-left p-2 font-medium border-l border-gray-200 whitespace-nowrap"
+                      >
+                        Сума
+                      </th>
                       <th
                         v-for="c in tenderCriteria"
                         :key="c.id"
@@ -255,34 +301,63 @@
                     :key="pos.id"
                     class="border-b hover:bg-gray-50/50"
                   >
-                    <td class="p-2 bg-white whitespace-nowrap">{{ pos.name }}</td>
-                    <td class="p-2 bg-white whitespace-nowrap">{{ pos.quantity }} {{ pos.unit_name || '' }}</td>
+                    <td class="p-2 bg-white whitespace-nowrap">
+                      {{ pos.name }}
+                    </td>
+                    <td class="p-2 bg-white whitespace-nowrap">
+                      {{ pos.quantity }} {{ pos.unit_name || "" }}
+                    </td>
                     <template v-for="proposal in proposals" :key="proposal.id">
                       <td
                         class="p-2 border-l border-gray-200"
-                        :class="(checkComparisonByPosition[pos.id]?.bestId === proposal.id && 'bg-green-500/20') || (checkComparisonByPosition[pos.id]?.worstId === proposal.id && checkComparisonByPosition[pos.id]?.worstId !== checkComparisonByPosition[pos.id]?.bestId && 'bg-red-500/20')"
+                        :class="
+                          (checkComparisonByPosition[pos.id]?.bestId ===
+                            proposal.id &&
+                            'bg-green-500/20') ||
+                          (checkComparisonByPosition[pos.id]?.worstId ===
+                            proposal.id &&
+                            checkComparisonByPosition[pos.id]?.worstId !==
+                              checkComparisonByPosition[pos.id]?.bestId &&
+                            'bg-red-500/20')
+                        "
                       >
-                        {{ getProposalPositionValue(proposal, pos.id)?.price ?? '—' }}
+                        {{
+                          getProposalPositionValue(proposal, pos.id)?.price ??
+                          "—"
+                        }}
                       </td>
                       <td
                         class="p-2 border-l border-gray-200"
-                        :class="(checkComparisonByPosition[pos.id]?.bestId === proposal.id && 'bg-green-500/20') || (checkComparisonByPosition[pos.id]?.worstId === proposal.id && checkComparisonByPosition[pos.id]?.worstId !== checkComparisonByPosition[pos.id]?.bestId && 'bg-red-500/20')"
+                        :class="
+                          (checkComparisonByPosition[pos.id]?.bestId ===
+                            proposal.id &&
+                            'bg-green-500/20') ||
+                          (checkComparisonByPosition[pos.id]?.worstId ===
+                            proposal.id &&
+                            checkComparisonByPosition[pos.id]?.worstId !==
+                              checkComparisonByPosition[pos.id]?.bestId &&
+                            'bg-red-500/20')
+                        "
                       >
-                        {{ getProposalPositionSum(proposal, pos) ?? '—' }}
+                        {{ getProposalPositionSum(proposal, pos) ?? "—" }}
                       </td>
                       <td
                         v-for="c in tenderCriteria"
                         :key="c.id"
                         class="p-2 border-l border-gray-200"
                       >
-                        {{ getProposalCriterionValue(proposal, pos.id, c.id) ?? '—' }}
+                        {{
+                          getProposalCriterionValue(proposal, pos.id, c.id) ??
+                          "—"
+                        }}
                       </td>
                     </template>
                   </tr>
                 </tbody>
               </table>
               <p v-else class="text-gray-500 py-8 text-center">
-                Немає позицій або пропозицій для порівняння. Додайте позиції в тендер та заповніть пропозиції від контрагентів.
+                Немає позицій або пропозицій для порівняння. Додайте позиції в
+                тендер та заповніть пропозиції від контрагентів.
               </p>
             </div>
           </UCard>
@@ -346,11 +421,27 @@ const tenderCriteria = computed(() => tender.value?.criteria ?? []);
 const tenderPositions = computed(() => tender.value?.positions ?? []);
 
 const stageItems = [
-  { value: "passport", title: "Паспорт тендера", icon: "i-heroicons-document-text" },
-  { value: "preparation", title: "Підготовка процедури", icon: "i-heroicons-clipboard-document-list" },
-  { value: "acceptance", title: "Прийом пропозицій", icon: "i-heroicons-envelope" },
+  {
+    value: "passport",
+    title: "Паспорт тендера",
+    icon: "i-heroicons-document-text",
+  },
+  {
+    value: "preparation",
+    title: "Підготовка процедури",
+    icon: "i-heroicons-clipboard-document-list",
+  },
+  {
+    value: "acceptance",
+    title: "Прийом пропозицій",
+    icon: "i-heroicons-envelope",
+  },
   { value: "decision", title: "Вибір рішення", icon: "i-heroicons-scale" },
-  { value: "approval", title: "Затвердження", icon: "i-heroicons-check-circle" },
+  {
+    value: "approval",
+    title: "Затвердження",
+    icon: "i-heroicons-check-circle",
+  },
   { value: "completed", title: "Завершений", icon: "i-heroicons-flag" },
 ];
 
@@ -408,11 +499,18 @@ const filteredSuppliers = computed(() => {
 function getProposalPositionValue(proposal: any, positionId: number) {
   const list = proposal?.position_values || [];
   return list.find(
-    (pv: any) => (pv.tender_position_id ?? pv.tender_position?.id ?? pv.tender_position) === positionId
+    (pv: any) =>
+      (pv.tender_position_id ??
+        pv.tender_position?.id ??
+        pv.tender_position) === positionId,
   );
 }
 
-function getProposalCriterionValue(proposal: any, positionId: number, criterionId: number) {
+function getProposalCriterionValue(
+  proposal: any,
+  positionId: number,
+  criterionId: number,
+) {
   const pv = getProposalPositionValue(proposal, positionId);
   const cv = pv?.criterion_values;
   if (!cv || typeof cv !== "object") return null;
@@ -420,14 +518,20 @@ function getProposalCriterionValue(proposal: any, positionId: number, criterionI
   return v != null && v !== "" ? v : null;
 }
 
-function getProposalPositionSum(proposal: any, pos: { id: number; quantity: number }) {
+function getProposalPositionSum(
+  proposal: any,
+  pos: { id: number; quantity: number },
+) {
   const pv = getProposalPositionValue(proposal, pos.id);
   const price = pv?.price;
   if (price == null || price === "") return null;
   const num = Number(price);
   if (Number.isNaN(num)) return null;
   const qty = Number(pos.quantity) || 0;
-  return (qty * num).toLocaleString("uk-UA", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return (qty * num).toLocaleString("uk-UA", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
 }
 
 /** Закупівля: краща = менша ціна, гірша = більша ціна */
@@ -445,7 +549,8 @@ function getBestWorstForPosition(positionId: number) {
 }
 
 const checkComparisonByPosition = computed(() => {
-  const out: Record<number, { bestId: number | null; worstId: number | null }> = {};
+  const out: Record<number, { bestId: number | null; worstId: number | null }> =
+    {};
   for (const pos of tenderPositions.value) {
     out[pos.id] = getBestWorstForPosition(pos.id);
   }

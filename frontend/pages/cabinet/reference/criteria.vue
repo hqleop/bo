@@ -35,10 +35,7 @@
           </div>
         </template>
       </UTable>
-      <div
-        v-if="criteria.length === 0"
-        class="text-center text-gray-400 py-8"
-      >
+      <div v-if="criteria.length === 0" class="text-center text-gray-400 py-8">
         Немає критеріїв. Додайте перший.
       </div>
     </div>
@@ -48,11 +45,14 @@
       <template #content>
         <UCard>
           <template #header>
-            <h3>{{ editing ? 'Редагувати критерій' : 'Додати критерій' }}</h3>
+            <h3>{{ editing ? "Редагувати критерій" : "Додати критерій" }}</h3>
           </template>
           <UForm :state="form" @submit="save" class="space-y-4">
             <UFormField label="Назва критерія" name="name" required>
-              <UInput v-model="form.name" placeholder="Наприклад: Ціна за одиницю" />
+              <UInput
+                v-model="form.name"
+                placeholder="Наприклад: Ціна за одиницю"
+              />
             </UFormField>
 
             <UFormField label="Тип критерія" name="type" required>
@@ -68,10 +68,18 @@
             <template v-if="form.type === 'numeric'">
               <div class="grid grid-cols-2 gap-4">
                 <UFormField label="Мін. значення (діапазон)" name="range_min">
-                  <UInput v-model.number="form.options.range_min" type="number" placeholder="Не обмежено" />
+                  <UInput
+                    v-model.number="form.options.range_min"
+                    type="number"
+                    placeholder="Не обмежено"
+                  />
                 </UFormField>
                 <UFormField label="Макс. значення (діапазон)" name="range_max">
-                  <UInput v-model.number="form.options.range_max" type="number" placeholder="Не обмежено" />
+                  <UInput
+                    v-model.number="form.options.range_max"
+                    type="number"
+                    placeholder="Не обмежено"
+                  />
                 </UFormField>
               </div>
               <UFormField
@@ -157,11 +165,15 @@
             </p>
 
             <div class="flex gap-4 pt-2">
-              <UButton variant="outline" class="flex-1" @click="showModal = false">
+              <UButton
+                variant="outline"
+                class="flex-1"
+                @click="showModal = false"
+              >
                 Скасувати
               </UButton>
               <UButton type="submit" class="flex-1" :loading="saving">
-                {{ editing ? 'Зберегти' : 'Додати' }}
+                {{ editing ? "Зберегти" : "Додати" }}
               </UButton>
             </div>
           </UForm>
@@ -234,8 +246,12 @@ function openModal(item?: any) {
     form.options = {
       range_min: opt.range_min ?? null,
       range_max: opt.range_max ?? null,
-      numeric_choices: Array.isArray(opt.numeric_choices) ? [...opt.numeric_choices] : [],
-      text_choices: Array.isArray(opt.text_choices) ? [...opt.text_choices] : [],
+      numeric_choices: Array.isArray(opt.numeric_choices)
+        ? [...opt.numeric_choices]
+        : [],
+      text_choices: Array.isArray(opt.text_choices)
+        ? [...opt.text_choices]
+        : [],
     };
   } else {
     resetForm();
@@ -245,7 +261,8 @@ function openModal(item?: any) {
 }
 
 function ensureOptionsArrays() {
-  if (!Array.isArray(form.options.numeric_choices)) form.options.numeric_choices = [];
+  if (!Array.isArray(form.options.numeric_choices))
+    form.options.numeric_choices = [];
   if (!Array.isArray(form.options.text_choices)) form.options.text_choices = [];
 }
 
@@ -266,7 +283,7 @@ watch(
   (newType) => {
     form.options = optionsForType(newType);
     ensureOptionsArrays();
-  }
+  },
 );
 
 function selectCriterion(item: any) {
@@ -293,7 +310,7 @@ const tableData = computed(() =>
   criteria.value.map((c: any) => ({
     ...c,
     options_summary: formatOptionsSummary(c),
-  }))
+  })),
 );
 
 function formatOptionsSummary(c: any): string {
@@ -317,7 +334,9 @@ function formatOptionsSummary(c: any): string {
 }
 
 async function loadCriteria() {
-  const { data } = await fetch("/tender-criteria/", { headers: getAuthHeaders() });
+  const { data } = await fetch("/tender-criteria/", {
+    headers: getAuthHeaders(),
+  });
   criteria.value = data ?? [];
 }
 
@@ -339,15 +358,19 @@ async function save() {
   try {
     const options: Record<string, unknown> = {};
     if (form.type === "numeric") {
-      if (form.options.range_min != null && form.options.range_min !== "") options.range_min = Number(form.options.range_min);
-      if (form.options.range_max != null && form.options.range_max !== "") options.range_max = Number(form.options.range_max);
+      if (form.options.range_min != null && form.options.range_min !== "")
+        options.range_min = Number(form.options.range_min);
+      if (form.options.range_max != null && form.options.range_max !== "")
+        options.range_max = Number(form.options.range_max);
       const nums = (form.options.numeric_choices || [])
         .map((v) => (v === "" || v === null ? null : Number(v)))
         .filter((v) => v !== null && !Number.isNaN(v));
       if (nums.length) options.numeric_choices = nums;
     }
     if (form.type === "text") {
-      const texts = (form.options.text_choices || []).map((s) => String(s).trim()).filter(Boolean);
+      const texts = (form.options.text_choices || [])
+        .map((s) => String(s).trim())
+        .filter(Boolean);
       if (texts.length) options.text_choices = texts;
     }
 

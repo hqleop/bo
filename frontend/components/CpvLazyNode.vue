@@ -1,6 +1,9 @@
 <template>
   <div>
-    <div class="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50" :style="{ paddingLeft: `${depth * 14 + 8}px` }">
+    <div
+      class="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50"
+      :style="{ paddingLeft: `${depth * 14 + 8}px` }"
+    >
       <UCheckbox
         v-if="selectedIds?.length !== undefined"
         :model-value="isSelected"
@@ -12,7 +15,9 @@
         size="xs"
         color="gray"
         variant="ghost"
-        :icon="isExpanded ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'"
+        :icon="
+          isExpanded ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'
+        "
         class="shrink-0"
         @click="emit('toggle-expand', node)"
       />
@@ -30,7 +35,11 @@
     </div>
 
     <div v-if="isExpanded">
-      <div v-if="isLoading" class="text-xs text-gray-500 py-1" :style="{ paddingLeft: `${depth * 14 + 36}px` }">
+      <div
+        v-if="isLoading"
+        class="text-xs text-gray-500 py-1"
+        :style="{ paddingLeft: `${depth * 14 + 36}px` }"
+      >
         Завантаження...
       </div>
       <template v-else>

@@ -15,7 +15,10 @@
           />
 
           <div v-if="loadingRoot" class="py-6 text-center text-gray-500">
-            <UIcon name="i-heroicons-arrow-path" class="animate-spin size-5 mx-auto" />
+            <UIcon
+              name="i-heroicons-arrow-path"
+              class="animate-spin size-5 mx-auto"
+            />
           </div>
 
           <div v-else class="space-y-1">
@@ -26,7 +29,9 @@
                 size="xs"
                 variant="ghost"
                 class="w-full justify-start truncate"
-                :class="{ 'font-semibold text-primary': selectedId === node.id }"
+                :class="{
+                  'font-semibold text-primary': selectedId === node.id,
+                }"
                 @click="selectNode(node)"
               >
                 {{ node.label }}
@@ -119,7 +124,11 @@ const searchedNodes = computed(() => {
   return filterBySearch(flattenLoaded(rootNodes.value));
 });
 
-function setNodeChildren(targetId: number, nodes: CpvNode[], children: CpvNode[]): boolean {
+function setNodeChildren(
+  targetId: number,
+  nodes: CpvNode[],
+  children: CpvNode[],
+): boolean {
   for (const n of nodes) {
     if (n.id === targetId) {
       n.children = children;

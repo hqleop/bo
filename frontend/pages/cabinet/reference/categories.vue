@@ -85,141 +85,143 @@
     <!-- Модальне вікно для категорії -->
     <UModal v-model:open="showCategoryModal">
       <template #content>
-      <UCard>
-        <template #header>
-          <h3>
-            {{ editingCategory ? "Редагувати категорію" : "Додати категорію" }}
-          </h3>
-        </template>
-        <UForm :state="categoryForm" @submit="saveCategory" class="space-y-4">
-          <UFormField label="Назва" name="name" required>
-            <UInput v-model="categoryForm.name" />
-          </UFormField>
-          <UFormField label="Код" name="code">
-            <UInput v-model="categoryForm.code" />
-          </UFormField>
-          <UFormField label="Батьківська категорія" name="parent_id">
-            <USelectMenu
-              v-model="categoryForm.parent_id"
-              :items="categoryParentOptions"
-              value-key="value"
-              placeholder="Без батьківської категорії"
+        <UCard>
+          <template #header>
+            <h3>
+              {{
+                editingCategory ? "Редагувати категорію" : "Додати категорію"
+              }}
+            </h3>
+          </template>
+          <UForm :state="categoryForm" @submit="saveCategory" class="space-y-4">
+            <UFormField label="Назва" name="name" required>
+              <UInput v-model="categoryForm.name" />
+            </UFormField>
+            <UFormField label="Код" name="code">
+              <UInput v-model="categoryForm.code" />
+            </UFormField>
+            <UFormField label="Батьківська категорія" name="parent_id">
+              <USelectMenu
+                v-model="categoryForm.parent_id"
+                :items="categoryParentOptions"
+                value-key="value"
+                placeholder="Без батьківської категорії"
+              />
+            </UFormField>
+            <CpvLazyMultiSearch
+              label="CPV"
+              placeholder="Оберіть CPV"
+              :selected-ids="selectedCpvIds"
+              :selected-labels="selectedCpvLabels"
+              @update:selected-ids="selectedCpvIds = $event"
+              @update:selected-labels="selectedCpvLabels = $event"
             />
-          </UFormField>
-          <CpvLazyMultiSearch
-            label="CPV"
-            placeholder="Оберіть CPV"
-            :selected-ids="selectedCpvIds"
-            :selected-labels="selectedCpvLabels"
-            @update:selected-ids="selectedCpvIds = $event"
-            @update:selected-labels="selectedCpvLabels = $event"
-          />
-          <UFormField label="Опис" name="description">
-            <UTextarea v-model="categoryForm.description" />
-          </UFormField>
-          <div class="flex gap-4">
-            <UButton
-              variant="outline"
-              class="flex-1"
-              @click="showCategoryModal = false"
-              >Скасувати</UButton
-            >
-            <UButton type="submit" class="flex-1" :loading="saving"
-              >Зберегти</UButton
-            >
-          </div>
-        </UForm>
-      </UCard>
+            <UFormField label="Опис" name="description">
+              <UTextarea v-model="categoryForm.description" />
+            </UFormField>
+            <div class="flex gap-4">
+              <UButton
+                variant="outline"
+                class="flex-1"
+                @click="showCategoryModal = false"
+                >Скасувати</UButton
+              >
+              <UButton type="submit" class="flex-1" :loading="saving"
+                >Зберегти</UButton
+              >
+            </div>
+          </UForm>
+        </UCard>
       </template>
     </UModal>
 
     <!-- Модальне вікно для додавання користувачів -->
     <UModal v-model:open="showAddUsersModal">
       <template #content>
-      <UCard>
-        <template #header>
-          <h3>Додати користувачів</h3>
-        </template>
-        <div class="space-y-2 max-h-96 overflow-y-auto">
-          <div
-            v-for="user in availableCompanyUsers"
-            :key="user.id"
-            class="flex items-center p-2 rounded hover:bg-gray-50"
-          >
-            <UCheckbox
-              :model-value="usersToAdd.includes(user.id)"
-              @update:model-value="toggleUserToAdd(user.id)"
-            />
-            <div class="ml-3 flex-1">
-              <div class="font-medium">
-                {{ user.first_name }} {{ user.last_name }}
+        <UCard>
+          <template #header>
+            <h3>Додати користувачів</h3>
+          </template>
+          <div class="space-y-2 max-h-96 overflow-y-auto">
+            <div
+              v-for="user in availableCompanyUsers"
+              :key="user.id"
+              class="flex items-center p-2 rounded hover:bg-gray-50"
+            >
+              <UCheckbox
+                :model-value="usersToAdd.includes(user.id)"
+                @update:model-value="toggleUserToAdd(user.id)"
+              />
+              <div class="ml-3 flex-1">
+                <div class="font-medium">
+                  {{ user.first_name }} {{ user.last_name }}
+                </div>
+                <div class="text-sm text-gray-500">{{ user.email }}</div>
               </div>
-              <div class="text-sm text-gray-500">{{ user.email }}</div>
             </div>
           </div>
-        </div>
-        <template #footer>
-          <div class="flex gap-4">
-            <UButton
-              variant="outline"
-              class="flex-1"
-              @click="showAddUsersModal = false"
-              >Скасувати</UButton
-            >
-            <UButton class="flex-1" @click="addUsers" :loading="saving"
-              >Додати</UButton
-            >
-          </div>
-        </template>
-      </UCard>
+          <template #footer>
+            <div class="flex gap-4">
+              <UButton
+                variant="outline"
+                class="flex-1"
+                @click="showAddUsersModal = false"
+                >Скасувати</UButton
+              >
+              <UButton class="flex-1" @click="addUsers" :loading="saving"
+                >Додати</UButton
+              >
+            </div>
+          </template>
+        </UCard>
       </template>
     </UModal>
 
     <!-- Модальне вікно для видалення користувачів -->
     <UModal v-model:open="showRemoveUsersModal">
       <template #content>
-      <UCard>
-        <template #header>
-          <h3>Видалити користувачів</h3>
-        </template>
-        <div class="space-y-2 max-h-96 overflow-y-auto">
-          <div
-            v-for="user in currentUsers.filter((u) =>
-              selectedUsers.includes(u.user.id),
-            )"
-            :key="user.id"
-            class="flex items-center p-2 rounded hover:bg-gray-50"
-          >
-            <UCheckbox
-              :model-value="usersToRemove.includes(user.user.id)"
-              @update:model-value="toggleUserToRemove(user.user.id)"
-            />
-            <div class="ml-3 flex-1">
-              <div class="font-medium">
-                {{ user.user.first_name }} {{ user.user.last_name }}
+        <UCard>
+          <template #header>
+            <h3>Видалити користувачів</h3>
+          </template>
+          <div class="space-y-2 max-h-96 overflow-y-auto">
+            <div
+              v-for="user in currentUsers.filter((u) =>
+                selectedUsers.includes(u.user.id),
+              )"
+              :key="user.id"
+              class="flex items-center p-2 rounded hover:bg-gray-50"
+            >
+              <UCheckbox
+                :model-value="usersToRemove.includes(user.user.id)"
+                @update:model-value="toggleUserToRemove(user.user.id)"
+              />
+              <div class="ml-3 flex-1">
+                <div class="font-medium">
+                  {{ user.user.first_name }} {{ user.user.last_name }}
+                </div>
+                <div class="text-sm text-gray-500">{{ user.user.email }}</div>
               </div>
-              <div class="text-sm text-gray-500">{{ user.user.email }}</div>
             </div>
           </div>
-        </div>
-        <template #footer>
-          <div class="flex gap-4">
-            <UButton
-              variant="outline"
-              class="flex-1"
-              @click="showRemoveUsersModal = false"
-              >Скасувати</UButton
-            >
-            <UButton
-              class="flex-1"
-              color="red"
-              @click="removeUsers"
-              :loading="saving"
-              >Видалити</UButton
-            >
-          </div>
-        </template>
-      </UCard>
+          <template #footer>
+            <div class="flex gap-4">
+              <UButton
+                variant="outline"
+                class="flex-1"
+                @click="showRemoveUsersModal = false"
+                >Скасувати</UButton
+              >
+              <UButton
+                class="flex-1"
+                color="red"
+                @click="removeUsers"
+                :loading="saving"
+                >Видалити</UButton
+              >
+            </div>
+          </template>
+        </UCard>
       </template>
     </UModal>
   </div>
@@ -280,7 +282,6 @@ const loadCategories = async () => {
   }
 };
 
-
 const loadUsers = async () => {
   if (!selectedCategory.value) {
     currentUsers.value = [];
@@ -311,7 +312,8 @@ const selectCategory = (cat: any) => {
   const cpvs = cat.cpvs || [];
   selectedCpvIds.value = cpvs.map((c: any) => c.id);
   selectedCpvLabels.value = cpvs.map(
-    (c: any) => `${c.cpv_code || ""} - ${c.name_ua || c.name || ""}`.trim() || `#${c.id}`,
+    (c: any) =>
+      `${c.cpv_code || ""} - ${c.name_ua || c.name || ""}`.trim() || `#${c.id}`,
   );
   selectedUsers.value = [];
   loadUsers();
@@ -347,7 +349,9 @@ const openCategoryModal = (cat?: any) => {
     const cpvs = cat.cpvs || [];
     selectedCpvIds.value = cpvs.map((c: any) => c.id);
     selectedCpvLabels.value = cpvs.map(
-      (c: any) => `${c.cpv_code || ""} - ${c.name_ua || c.name || ""}`.trim() || `#${c.id}`,
+      (c: any) =>
+        `${c.cpv_code || ""} - ${c.name_ua || c.name || ""}`.trim() ||
+        `#${c.id}`,
     );
   } else {
     categoryForm.name = "";

@@ -9,7 +9,9 @@
 
     <div class="flex flex-1 min-h-0 gap-4">
       <!-- Таблиця зліва -->
-      <div class="flex-1 min-w-0 min-h-0 flex flex-col border rounded-lg bg-white">
+      <div
+        class="flex-1 min-w-0 min-h-0 flex flex-col border rounded-lg bg-white"
+      >
         <div class="flex-1 min-h-0 overflow-auto">
           <UTable
             v-if="filteredSuppliers.length > 0"
@@ -32,11 +34,12 @@
           >
             <UIcon name="i-heroicons-arrow-path" class="animate-spin size-6" />
           </div>
-          <div
-            v-else
-            class="text-center text-gray-500 py-12"
-          >
-            {{ searchTerm ? 'Контрагентів за пошуком не знайдено.' : 'Немає контрагентів. Додайте першого вручну або вони з\'являться після участі в тендерах.' }}
+          <div v-else class="text-center text-gray-500 py-12">
+            {{
+              searchTerm
+                ? "Контрагентів за пошуком не знайдено."
+                : "Немає контрагентів. Додайте першого вручну або вони з'являться після участі в тендерах."
+            }}
           </div>
         </div>
       </div>
@@ -63,7 +66,11 @@
           <UForm :state="addForm" @submit="onAdd" class="space-y-4">
             <UFormField label="Код компанії (ЄДРПОУ)" name="edrpou" required>
               <div class="flex gap-2">
-                <UInput v-model="addForm.edrpou" placeholder="Введіть код" class="flex-1" />
+                <UInput
+                  v-model="addForm.edrpou"
+                  placeholder="Введіть код"
+                  class="flex-1"
+                />
                 <UButton
                   type="button"
                   variant="outline"
@@ -75,12 +82,20 @@
               </div>
             </UFormField>
             <UFormField
-              :label="companyByCode ? 'Назва (з довідника)' : 'Назва компанії (попередня)'"
+              :label="
+                companyByCode
+                  ? 'Назва (з довідника)'
+                  : 'Назва компанії (попередня)'
+              "
               name="name"
             >
               <UInput
                 v-model="addForm.name"
-                :placeholder="companyByCode ? 'Підставлено з системи' : 'Якщо компанії немає — введіть назву; вона оновиться після реєстрації користувача'"
+                :placeholder="
+                  companyByCode
+                    ? 'Підставлено з системи'
+                    : 'Якщо компанії немає — введіть назву; вона оновиться після реєстрації користувача'
+                "
                 :readonly="!!companyByCode"
               />
             </UFormField>
@@ -116,11 +131,19 @@ const suppliersUC = useSuppliersUseCases();
 const loading = ref(true);
 const saving = ref(false);
 /** Відношення контрагентів: додані вручну + (згодом) участь у тендерах */
-const supplierRelations = ref<{ id: number; supplier_company: { id: number; edrpou: string; name: string }; source: string }[]>([]);
+const supplierRelations = ref<
+  {
+    id: number;
+    supplier_company: { id: number; edrpou: string; name: string };
+    source: string;
+  }[]
+>([]);
 const searchTerm = ref("");
 const showAddModal = ref(false);
 const checkingCode = ref(false);
-const companyByCode = ref<{ id: number; edrpou: string; name: string } | null>(null);
+const companyByCode = ref<{ id: number; edrpou: string; name: string } | null>(
+  null,
+);
 const addForm = reactive({ edrpou: "", name: "" });
 
 const columns = [
@@ -140,7 +163,7 @@ const filteredSuppliers = computed(() => {
   return list.filter(
     (s) =>
       s.name.toLowerCase().includes(term) ||
-      (s.edrpou && s.edrpou.toLowerCase().includes(term))
+      (s.edrpou && s.edrpou.toLowerCase().includes(term)),
   );
 });
 
@@ -179,7 +202,9 @@ async function onAdd() {
     return;
   }
   if (!companyByCode.value && !addForm.name.trim()) {
-    alert("Компанії з таким кодом немає. Введіть назву (попередню) для створення контрагента.");
+    alert(
+      "Компанії з таким кодом немає. Введіть назву (попередню) для створення контрагента.",
+    );
     return;
   }
   saving.value = true;
@@ -206,9 +231,12 @@ watch(showAddModal, (open) => {
   if (!open) return;
   companyByCode.value = null;
 });
-watch(() => addForm.edrpou, () => {
-  companyByCode.value = null;
-});
+watch(
+  () => addForm.edrpou,
+  () => {
+    companyByCode.value = null;
+  },
+);
 
 onMounted(() => loadSuppliers());
 </script>

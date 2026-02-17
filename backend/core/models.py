@@ -668,7 +668,11 @@ class ProcurementTender(models.Model):
 
 
 class ProcurementTenderPosition(models.Model):
-    """Позиція тендера на закупівлю (номенклатура + кількість, опис)."""
+    """
+    Позиція тендера на закупівлю.
+    name та unit_name — знімок на момент додавання; зміни в довіднику номенклатури їх не змінюють.
+    nomenclature_id — зв'язок з довідником (для історії/аналогій).
+    """
 
     tender = models.ForeignKey(
         ProcurementTender,
@@ -679,6 +683,19 @@ class ProcurementTenderPosition(models.Model):
         Nomenclature,
         on_delete=models.PROTECT,
         related_name="procurement_tender_positions",
+        help_text="Зв'язок з довідником; відображення в тендері йде з name/unit_name",
+    )
+    name = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Назва позиції (знімок з номенклатури на момент додавання)",
+    )
+    unit_name = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Одиниця виміру (знімок)",
     )
     quantity = models.DecimalField(
         max_digits=18, decimal_places=4, default=1,
@@ -700,7 +717,7 @@ class ProcurementTenderPosition(models.Model):
         unique_together = (("tender", "nomenclature"),)
 
     def __str__(self) -> str:
-        return f"{self.tender} — {self.nomenclature.name}"
+        return f"{self.tender} — {self.name or self.nomenclature.name}"
 
 
 class TenderProposal(models.Model):
@@ -931,7 +948,10 @@ class SalesTender(models.Model):
 
 
 class SalesTenderPosition(models.Model):
-    """Позиція тендера на продаж (номенклатура + кількість, опис)."""
+    """
+    Позиція тендера на продаж.
+    name та unit_name — знімок на момент додавання; зміни в довіднику номенклатури їх не змінюють.
+    """
 
     tender = models.ForeignKey(
         SalesTender,
@@ -942,6 +962,18 @@ class SalesTenderPosition(models.Model):
         Nomenclature,
         on_delete=models.PROTECT,
         related_name="sales_tender_positions",
+    )
+    name = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Назва позиції (знімок з номенклатури на момент додавання)",
+    )
+    unit_name = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Одиниця виміру (знімок)",
     )
     quantity = models.DecimalField(
         max_digits=18, decimal_places=4, default=1,

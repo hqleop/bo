@@ -49,11 +49,21 @@
 
           <!-- Existing Company: приєднання за кодом (ЄДРПОУ) -->
           <div v-if="step2Form.type === 'existing'">
-            <UFormField label="Код компанії (ЄДРПОУ)" name="edrpou_existing" required>
-              <UInput v-model="step2Form.edrpou_existing" placeholder="Введіть код компанії" />
+            <UFormField
+              label="Код компанії (ЄДРПОУ)"
+              name="edrpou_existing"
+              required
+            >
+              <UInput
+                v-model="step2Form.edrpou_existing"
+                placeholder="Введіть код компанії"
+              />
             </UFormField>
             <UFormField label="Назва компанії (опційно)" name="name_existing">
-              <UInput v-model="step2Form.name_existing" placeholder="При першій реєстрації — буде збережена як назва компанії" />
+              <UInput
+                v-model="step2Form.name_existing"
+                placeholder="При першій реєстрації — буде збережена як назва компанії"
+              />
             </UFormField>
           </div>
 
@@ -145,7 +155,10 @@ const onStep1Submit = async () => {
     return;
   }
 
-  userId.value = (data as { id?: number; user_id?: number })?.user_id ?? (data as { id?: number })?.id ?? null;
+  userId.value =
+    (data as { id?: number; user_id?: number })?.user_id ??
+    (data as { id?: number })?.id ??
+    null;
   currentStep.value = 2;
 };
 

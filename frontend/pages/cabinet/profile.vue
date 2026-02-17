@@ -3,13 +3,19 @@
     <UCard>
       <template #header>
         <h2 class="text-xl font-semibold">Профіль</h2>
-        <p class="text-sm text-gray-500 mt-1">Дані, внесені при реєстрації (крок 1). Можна змінити.</p>
+        <p class="text-sm text-gray-500 mt-1">
+          Дані, внесені при реєстрації (крок 1). Можна змінити.
+        </p>
       </template>
 
-      <div v-if="loading" class="py-8 text-center text-gray-500">Завантаження...</div>
+      <div v-if="loading" class="py-8 text-center text-gray-500">
+        Завантаження...
+      </div>
       <template v-else>
         <!-- Аватар -->
-        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 pb-6 border-b border-gray-200">
+        <div
+          class="flex flex-col sm:flex-row items-start sm:items-center gap-4 pb-6 border-b border-gray-200"
+        >
           <div class="flex items-center gap-4">
             <UAvatar
               :src="me?.user?.avatar"
@@ -25,44 +31,57 @@
                 class="hidden"
                 @change="onAvatarFileChange"
               />
-              <UButton variant="outline" size="sm" @click="avatarInputRef?.click()">
+              <UButton
+                variant="outline"
+                size="sm"
+                @click="avatarInputRef?.click()"
+              >
                 Завантажити фото
               </UButton>
-              <p class="text-xs text-gray-500">JPEG, PNG, GIF або WebP, макс. 5 МБ</p>
+              <p class="text-xs text-gray-500">
+                JPEG, PNG, GIF або WebP, макс. 5 МБ
+              </p>
             </div>
           </div>
-          <p v-if="avatarError" class="text-sm text-red-600">{{ avatarError }}</p>
-          <p v-if="avatarSuccess" class="text-sm text-green-600">{{ avatarSuccess }}</p>
+          <p v-if="avatarError" class="text-sm text-red-600">
+            {{ avatarError }}
+          </p>
+          <p v-if="avatarSuccess" class="text-sm text-green-600">
+            {{ avatarSuccess }}
+          </p>
         </div>
 
-        <UForm
-          :state="form"
-          @submit="onSubmit"
-          class="space-y-4"
-        >
-        <UFormField label="Прізвище" name="last_name" required>
-          <UInput v-model="form.last_name" />
-        </UFormField>
-        <UFormField label="Ім'я" name="first_name" required>
-          <UInput v-model="form.first_name" />
-        </UFormField>
-        <UFormField label="По батькові" name="middle_name">
-          <UInput v-model="form.middle_name" />
-        </UFormField>
-        <UFormField label="Телефон" name="phone" required>
-          <UInput v-model="form.phone" type="tel" />
-        </UFormField>
-        <UFormField label="Email" name="email">
-          <UInput v-model="form.email" type="email" disabled class="opacity-75" />
-          <template #hint>
-            <span class="text-xs text-gray-500">Змінити email неможливо</span>
-          </template>
-        </UFormField>
-        <div class="flex gap-3 pt-2">
-          <UButton type="submit" :loading="saving">Зберегти</UButton>
-          <UButton variant="outline" type="button" @click="resetForm">Скасувати</UButton>
-        </div>
-      </UForm>
+        <UForm :state="form" @submit="onSubmit" class="space-y-4">
+          <UFormField label="Прізвище" name="last_name" required>
+            <UInput v-model="form.last_name" />
+          </UFormField>
+          <UFormField label="Ім'я" name="first_name" required>
+            <UInput v-model="form.first_name" />
+          </UFormField>
+          <UFormField label="По батькові" name="middle_name">
+            <UInput v-model="form.middle_name" />
+          </UFormField>
+          <UFormField label="Телефон" name="phone" required>
+            <UInput v-model="form.phone" type="tel" />
+          </UFormField>
+          <UFormField label="Email" name="email">
+            <UInput
+              v-model="form.email"
+              type="email"
+              disabled
+              class="opacity-75"
+            />
+            <template #hint>
+              <span class="text-xs text-gray-500">Змінити email неможливо</span>
+            </template>
+          </UFormField>
+          <div class="flex gap-3 pt-2">
+            <UButton type="submit" :loading="saving">Зберегти</UButton>
+            <UButton variant="outline" type="button" @click="resetForm"
+              >Скасувати</UButton
+            >
+          </div>
+        </UForm>
       </template>
     </UCard>
   </div>
@@ -132,7 +151,7 @@ watch(
       loading.value = false;
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 async function onSubmit() {

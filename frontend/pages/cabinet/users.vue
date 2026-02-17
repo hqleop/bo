@@ -151,98 +151,98 @@
     <!-- Модальне вікно Додати користувача -->
     <UModal v-model:open="showAddModal">
       <template #content>
-      <UCard>
-        <template #header>
-          <h3>Додати користувача</h3>
-        </template>
-        <UForm :state="addForm" @submit="onAddUser" class="space-y-4">
-          <UFormField label="Прізвище" name="last_name" required>
-            <UInput v-model="addForm.last_name" />
-          </UFormField>
-          <UFormField label="Ім'я" name="first_name" required>
-            <UInput v-model="addForm.first_name" />
-          </UFormField>
-          <UFormField label="Електронна пошта" name="email" required>
-            <UInput v-model="addForm.email" type="email" />
-          </UFormField>
-          <UFormField label="Телефон" name="phone">
-            <UInput v-model="addForm.phone" />
-          </UFormField>
-          <UFormField label="Пароль" name="password" required>
-            <UInput v-model="addForm.password" type="password" />
-          </UFormField>
-          <UFormField
-            label="Підтвердження пароля"
-            name="password_confirm"
-            required
-          >
-            <UInput v-model="addForm.password_confirm" type="password" />
-          </UFormField>
-          <div class="flex gap-4">
-            <UButton
-              variant="outline"
-              class="flex-1"
-              @click="showAddModal = false"
+        <UCard>
+          <template #header>
+            <h3>Додати користувача</h3>
+          </template>
+          <UForm :state="addForm" @submit="onAddUser" class="space-y-4">
+            <UFormField label="Прізвище" name="last_name" required>
+              <UInput v-model="addForm.last_name" />
+            </UFormField>
+            <UFormField label="Ім'я" name="first_name" required>
+              <UInput v-model="addForm.first_name" />
+            </UFormField>
+            <UFormField label="Електронна пошта" name="email" required>
+              <UInput v-model="addForm.email" type="email" />
+            </UFormField>
+            <UFormField label="Телефон" name="phone">
+              <UInput v-model="addForm.phone" />
+            </UFormField>
+            <UFormField label="Пароль" name="password" required>
+              <UInput v-model="addForm.password" type="password" />
+            </UFormField>
+            <UFormField
+              label="Підтвердження пароля"
+              name="password_confirm"
+              required
             >
-              Скасувати
-            </UButton>
-            <UButton type="submit" class="flex-1" :loading="savingUser">
-              Додати
-            </UButton>
-          </div>
-        </UForm>
-      </UCard>
+              <UInput v-model="addForm.password_confirm" type="password" />
+            </UFormField>
+            <div class="flex gap-4">
+              <UButton
+                variant="outline"
+                class="flex-1"
+                @click="showAddModal = false"
+              >
+                Скасувати
+              </UButton>
+              <UButton type="submit" class="flex-1" :loading="savingUser">
+                Додати
+              </UButton>
+            </div>
+          </UForm>
+        </UCard>
       </template>
     </UModal>
 
     <!-- Модальне вікно Редагувати користувача -->
     <UModal v-model:open="showEditModal">
       <template #content>
-      <UCard>
-        <template #header>
-          <h3>Редагувати користувача</h3>
-        </template>
-        <UForm :state="editForm" @submit="onEditUser" class="space-y-4">
-          <UFormField label="Прізвище" name="last_name">
-            <UInput v-model="editForm.last_name" />
-          </UFormField>
-          <UFormField label="Ім'я" name="first_name">
-            <UInput v-model="editForm.first_name" />
-          </UFormField>
-          <UFormField label="Електронна пошта" name="email" required>
-            <UInput v-model="editForm.email" type="email" />
-          </UFormField>
-          <UFormField label="Телефон" name="phone">
-            <UInput v-model="editForm.phone" />
-          </UFormField>
-          <UFormField
-            label="Новий пароль"
-            name="password"
-            help="Залиште порожнім, якщо не потрібно змінювати"
-          >
-            <UInput v-model="editForm.password" type="password" />
-          </UFormField>
-          <UFormField
-            label="Підтвердження пароля"
-            name="password_confirm"
-            help="Заповніть, якщо вказали новий пароль"
-          >
-            <UInput v-model="editForm.password_confirm" type="password" />
-          </UFormField>
-          <div class="flex gap-4">
-            <UButton
-              variant="outline"
-              class="flex-1"
-              @click="showEditModal = false"
+        <UCard>
+          <template #header>
+            <h3>Редагувати користувача</h3>
+          </template>
+          <UForm :state="editForm" @submit="onEditUser" class="space-y-4">
+            <UFormField label="Прізвище" name="last_name">
+              <UInput v-model="editForm.last_name" />
+            </UFormField>
+            <UFormField label="Ім'я" name="first_name">
+              <UInput v-model="editForm.first_name" />
+            </UFormField>
+            <UFormField label="Електронна пошта" name="email" required>
+              <UInput v-model="editForm.email" type="email" />
+            </UFormField>
+            <UFormField label="Телефон" name="phone">
+              <UInput v-model="editForm.phone" />
+            </UFormField>
+            <UFormField
+              label="Новий пароль"
+              name="password"
+              help="Залиште порожнім, якщо не потрібно змінювати"
             >
-              Скасувати
-            </UButton>
-            <UButton type="submit" class="flex-1" :loading="savingUser">
-              Зберегти
-            </UButton>
-          </div>
-        </UForm>
-      </UCard>
+              <UInput v-model="editForm.password" type="password" />
+            </UFormField>
+            <UFormField
+              label="Підтвердження пароля"
+              name="password_confirm"
+              help="Заповніть, якщо вказали новий пароль"
+            >
+              <UInput v-model="editForm.password_confirm" type="password" />
+            </UFormField>
+            <div class="flex gap-4">
+              <UButton
+                variant="outline"
+                class="flex-1"
+                @click="showEditModal = false"
+              >
+                Скасувати
+              </UButton>
+              <UButton type="submit" class="flex-1" :loading="savingUser">
+                Зберегти
+              </UButton>
+            </div>
+          </UForm>
+        </UCard>
       </template>
     </UModal>
   </div>
@@ -680,7 +680,10 @@ const onEditUser = async () => {
     payload.password = editForm.password;
     payload.password_confirm = editForm.password_confirm;
   }
-  const { error } = await usersUC.updateUser(selectedMembership.value.id, payload);
+  const { error } = await usersUC.updateUser(
+    selectedMembership.value.id,
+    payload,
+  );
   savingUser.value = false;
   if (error) {
     alert("Помилка оновлення даних користувача");
@@ -701,7 +704,9 @@ const activateSelected = async () => {
   ) {
     return;
   }
-  const { error } = await usersUC.activateMembership(selectedMembership.value.id);
+  const { error } = await usersUC.activateMembership(
+    selectedMembership.value.id,
+  );
   if (error) {
     alert("Помилка активації користувача");
     return;
@@ -720,7 +725,9 @@ const deactivateSelected = async () => {
   ) {
     return;
   }
-  const { error } = await usersUC.deactivateMembership(selectedMembership.value.id);
+  const { error } = await usersUC.deactivateMembership(
+    selectedMembership.value.id,
+  );
   if (error) {
     alert("Помилка деактивації користувача");
     return;

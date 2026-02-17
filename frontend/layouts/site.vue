@@ -2,7 +2,9 @@
   <div class="min-h-screen flex flex-col">
     <!-- Header -->
     <header class="bg-white shadow-sm">
-      <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+      <div
+        class="container mx-auto px-4 py-4 flex justify-between items-center"
+      >
         <div class="flex items-center">
           <NuxtLink to="/">
             <h1 class="text-2xl font-bold text-gray-900">Bid Open</h1>
@@ -11,7 +13,9 @@
         <div class="flex gap-4">
           <template v-if="isAuthenticated">
             <UButton to="/cabinet/dashboard" color="primary">Кабінет</UButton>
-            <UButton variant="ghost" color="gray" @click="handleLogout">Вийти</UButton>
+            <UButton variant="ghost" color="gray" @click="handleLogout"
+              >Вийти</UButton
+            >
           </template>
           <template v-else>
             <UButton to="/login" variant="ghost" color="gray">Вхід</UButton>
@@ -36,12 +40,12 @@
 </template>
 
 <script setup lang="ts">
-const { isAuthenticated, checkAuth, logout } = useAuth()
+const { isAuthenticated, checkAuth, logout } = useAuth();
 
 // Перевірка автентифікації при завантаженні
-await checkAuth()
+await checkAuth();
 
 const handleLogout = () => {
-  logout()
-}
+  logout();
+};
 </script>

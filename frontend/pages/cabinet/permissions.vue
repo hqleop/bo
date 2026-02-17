@@ -9,23 +9,23 @@
 
 <script setup lang="ts">
 definePageMeta({
-  layout: 'cabinet',
-  middleware: 'auth',
+  layout: "cabinet",
+  middleware: "auth",
   meta: {
-    title: 'Права доступу'
-  }
-})
+    title: "Права доступу",
+  },
+});
 
-const usersUC = useUsersUseCases()
-const permissions = ref<any[]>([])
+const usersUC = useUsersUseCases();
+const permissions = ref<any[]>([]);
 
 const columns = [
-  { key: 'code', label: 'Код' },
-  { key: 'label', label: 'Назва' }
-]
+  { key: "code", label: "Код" },
+  { key: "label", label: "Назва" },
+];
 
 onMounted(async () => {
-  const { data } = await usersUC.getPermissions()
-  permissions.value = data ?? []
-})
+  const { data } = await usersUC.getPermissions();
+  permissions.value = data ?? [];
+});
 </script>

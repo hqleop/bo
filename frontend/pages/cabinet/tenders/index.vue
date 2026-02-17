@@ -2,7 +2,7 @@
   <div class="h-full flex flex-col min-h-0">
     <div class="flex-shrink-0 flex justify-between items-center mb-4">
       <h2 class="text-2xl font-bold">
-        {{ viewType === 'purchase' ? 'Журнал закупівель' : 'Журнал продажів' }}
+        {{ viewType === "purchase" ? "Журнал закупівель" : "Журнал продажів" }}
       </h2>
       <UButton
         icon="i-heroicons-plus"
@@ -27,14 +27,24 @@
             :to="`/cabinet/tenders/${row.original.id}`"
             class="text-primary hover:underline font-medium"
           >
-            №{{ row.original.number }}{{ row.original.tour_number > 1 ? ` (тур ${row.original.tour_number})` : '' }}
+            №{{ row.original.number
+            }}{{
+              row.original.tour_number > 1
+                ? ` (тур ${row.original.tour_number})`
+                : ""
+            }}
           </NuxtLink>
           <NuxtLink
             v-else
             :to="`/cabinet/tenders/sales/${row.original.id}`"
             class="text-primary hover:underline font-medium"
           >
-            №{{ row.original.number }}{{ row.original.tour_number > 1 ? ` (тур ${row.original.tour_number})` : '' }}
+            №{{ row.original.number
+            }}{{
+              row.original.tour_number > 1
+                ? ` (тур ${row.original.tour_number})`
+                : ""
+            }}
           </NuxtLink>
         </template>
         <template #name-cell="{ row }">
@@ -54,11 +64,12 @@
           </NuxtLink>
         </template>
       </UTable>
-      <div
-        v-else
-        class="text-center text-gray-400 py-12"
-      >
-        {{ viewType === 'purchase' ? 'Немає тендерів на закупівлю. Створіть перший.' : 'Немає тендерів на продаж. Створіть перший.' }}
+      <div v-else class="text-center text-gray-400 py-12">
+        {{
+          viewType === "purchase"
+            ? "Немає тендерів на закупівлю. Створіть перший."
+            : "Немає тендерів на продаж. Створіть перший."
+        }}
       </div>
     </div>
 
@@ -69,7 +80,7 @@
     >
       <span class="text-sm text-gray-600">
         Показано {{ tableData.length }} з {{ totalCount }}
-        {{ viewType === 'purchase' ? 'тендерів' : 'тендерів' }}
+        {{ viewType === "purchase" ? "тендерів" : "тендерів" }}
       </span>
       <UPagination
         v-model:page="currentPage"
@@ -84,13 +95,15 @@
 
 <script setup lang="ts">
 definePageMeta({
-  layout: 'cabinet',
-  middleware: 'auth',
-  meta: { title: 'Тендери' },
+  layout: "cabinet",
+  middleware: "auth",
+  meta: { title: "Тендери" },
 });
 
 const route = useRoute();
-const viewType = computed(() => (route.query.view === 'sales' ? 'sales' : 'purchase'));
+const viewType = computed(() =>
+  route.query.view === "sales" ? "sales" : "purchase",
+);
 
 const TENDERS_PAGE_SIZE = 20;
 
@@ -99,11 +112,11 @@ const tenders = ref<any[]>([]);
 const currentPage = ref(1);
 
 const tableColumns = [
-  { accessorKey: 'number', header: 'Номер' },
-  { accessorKey: 'name', header: 'Назва' },
-  { accessorKey: 'stage_label', header: 'Етап' },
-  { accessorKey: 'conduct_type_label', header: 'Тип проведення' },
-  { accessorKey: 'created_at', header: 'Створено' },
+  { accessorKey: "number", header: "Номер" },
+  { accessorKey: "name", header: "Назва" },
+  { accessorKey: "stage_label", header: "Етап" },
+  { accessorKey: "conduct_type_label", header: "Тип проведення" },
+  { accessorKey: "created_at", header: "Створено" },
 ];
 
 const totalCount = computed(() => tenders.value.length);
@@ -115,12 +128,12 @@ const tableData = computed(() => {
 });
 
 const createUrl = computed(() => {
-  const type = viewType.value === 'purchase' ? 'purchase' : 'sales';
+  const type = viewType.value === "purchase" ? "purchase" : "sales";
   return `/cabinet/tenders/create/${type}`;
 });
 
 async function loadTenders() {
-  const { data } = await tendersUC.getTenderList(viewType.value === 'sales');
+  const { data } = await tendersUC.getTenderList(viewType.value === "sales");
   tenders.value = data ?? [];
 }
 

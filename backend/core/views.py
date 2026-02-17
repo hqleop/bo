@@ -1768,15 +1768,19 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
     @extend_schema(responses=[{"type": "array", "items": {"type": "object", "properties": {"id": {"type": "integer"}, "tour_number": {"type": "integer"}}}}])
     @action(detail=True, methods=["get"], url_path="tours")
     def tours_list(self, request, pk=None):
-        """Ланцюжок турів від кореня до поточного тендера (для випадаючого списку)."""
+        """Усі тури сімейства (від кореня + усі наступні) для випадаючого списку."""
         tender = self.get_object()
-        chain = []
-        t = tender
-        while t:
-            chain.append({"id": t.id, "tour_number": t.tour_number})
-            t = t.parent
-        chain.reverse()
-        return Response(chain)
+        root = tender
+        while root.parent_id:
+            root = root.parent
+        collected = [root]
+        stack = list(root.next_tours.all())
+        while stack:
+            t = stack.pop()
+            collected.append(t)
+            stack.extend(t.next_tours.all())
+        collected.sort(key=lambda t: t.tour_number)
+        return Response([{"id": t.id, "tour_number": t.tour_number} for t in collected])
 
     @extend_schema(
         request={
@@ -2016,15 +2020,19 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
     @extend_schema(responses=[{"type": "array", "items": {"type": "object", "properties": {"id": {"type": "integer"}, "tour_number": {"type": "integer"}}}}])
     @action(detail=True, methods=["get"], url_path="tours")
     def tours_list(self, request, pk=None):
-        """Ланцюжок турів від кореня до поточного тендера (для випадаючого списку)."""
+        """Усі тури сімейства (від кореня + усі наступні) для випадаючого списку."""
         tender = self.get_object()
-        chain = []
-        t = tender
-        while t:
-            chain.append({"id": t.id, "tour_number": t.tour_number})
-            t = t.parent
-        chain.reverse()
-        return Response(chain)
+        root = tender
+        while root.parent_id:
+            root = root.parent
+        collected = [root]
+        stack = list(root.next_tours.all())
+        while stack:
+            t = stack.pop()
+            collected.append(t)
+            stack.extend(t.next_tours.all())
+        collected.sort(key=lambda t: t.tour_number)
+        return Response([{"id": t.id, "tour_number": t.tour_number} for t in collected])
 
     @extend_schema(
         request={
