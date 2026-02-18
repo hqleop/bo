@@ -60,6 +60,14 @@ class Company(models.Model):
     goal_participation = models.BooleanField(default=False)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE)
 
+    # CPV-категорії, закріплені за компанією
+    cpv_categories = models.ManyToManyField(
+        "CpvDictionary",
+        related_name="companies_by_cpvs",
+        blank=True,
+        help_text="CPV-категорії, закріплені за компанією",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -376,28 +384,36 @@ class UnitOfMeasure(models.Model):
     company = models.ForeignKey(
         Company, on_delete=models.CASCADE, related_name="units_of_measure", null=True, blank=True
     )
-    name = models.CharField(max_length=100)
+    name_ua = models.CharField(max_length=100)
+    name_en = models.CharField(max_length=100, blank=True, default="")
+    short_name_ua = models.CharField(max_length=50, blank=True, default="")
+    short_name_en = models.CharField(max_length=50, blank=True, default="")
     is_active = models.BooleanField(default=True)
 
     class Meta:
         verbose_name = "Одиниця виміру"
         verbose_name_plural = "Одиниці виміру"
-        ordering = ["name"]
+        ordering = ["name_ua"]
         constraints = [
             models.UniqueConstraint(
-                fields=["name"],
+                fields=["name_ua"],
                 condition=models.Q(company__isnull=True),
                 name="core_unitofmeasure_shared_name_unique",
             ),
             models.UniqueConstraint(
-                fields=["company", "name"],
+                fields=["company", "name_ua"],
                 condition=models.Q(company__isnull=False),
                 name="core_unitofmeasure_company_name_unique",
             ),
         ]
 
+    @property
+    def display_short_ua(self) -> str:
+        """Коротка назва для відображення в номенклатурах (short_name_ua або name_ua)."""
+        return (self.short_name_ua or self.name_ua or "").strip()
+
     def __str__(self) -> str:  # pragma: no cover
-        return self.name
+        return self.name_ua
 
 
 class Nomenclature(models.Model):
@@ -784,6 +800,14 @@ class ProcurementTenderFile(models.Model):
     file = models.FileField(upload_to="tender_files/%Y/%m/")
     name = models.CharField(max_length=255, blank=True, default="")
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    uploaded_by = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    visible_to_participants = models.BooleanField(default=True)
 
     class Meta:
         verbose_name = "Файл тендера"
@@ -1061,6 +1085,14 @@ class SalesTenderFile(models.Model):
     file = models.FileField(upload_to="sales_tender_files/%Y/%m/")
     name = models.CharField(max_length=255, blank=True, default="")
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    uploaded_by = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    visible_to_participants = models.BooleanField(default=True)
 
     class Meta:
         verbose_name = "Файл тендера на продаж"

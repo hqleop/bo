@@ -7,6 +7,8 @@ from .views import (
     registration_step1,
     registration_step2_new_company,
     registration_step2_existing_company,
+    registration_step3_company_cpvs,
+    company_current_cpvs,
     CompanyViewSet,
     CompanySupplierViewSet,
     CompanyUserViewSet,
@@ -29,6 +31,7 @@ from .views import (
     SalesTenderViewSet,
     CpvDictionaryTreeView,
     CpvDictionaryChildrenView,
+    CpvWithCompaniesView,
     me,
     me_avatar_upload,
     password_reset_request,
@@ -71,9 +74,13 @@ urlpatterns = [
     path("registration/step1/", registration_step1, name="registration_step1"),
     path("registration/step2/new/", registration_step2_new_company, name="registration_step2_new"),
     path("registration/step2/existing/", registration_step2_existing_company, name="registration_step2_existing"),
+    path("registration/step3/company-cpvs/", registration_step3_company_cpvs, name="registration_step3_company_cpvs"),
     # CPV довідник
     path("cpv/tree/", CpvDictionaryTreeView.as_view(), name="cpv-tree"),
     path("cpv/children/", CpvDictionaryChildrenView.as_view(), name="cpv-children"),
+    path("cpv/with-companies/", CpvWithCompaniesView.as_view(), name="cpv-with-companies"),
+    # Company CPV settings for current user
+    path("companies/current-cpvs/", company_current_cpvs, name="company_current_cpvs"),
     # Router viewsets
     path("", include(router.urls)),
 ]

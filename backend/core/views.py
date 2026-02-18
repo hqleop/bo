@@ -52,9 +52,11 @@ from .serializers import (
     CompanyListSerializer,
     CompanyCreateSerializer,
     CompanySupplierSerializer,
+    CompanySupplierListSerializer,
     AddCompanySupplierSerializer,
     CompanyRegistrationStep2Serializer,
     ExistingCompanyStep2Serializer,
+    CompanyCpvSerializer,
     PermissionSerializer,
     RoleSerializer,
     CompanyUserSerializer,
@@ -241,6 +243,92 @@ def registration_step2_existing_company(request):
     return Response(CompanyUserSerializer(membership).data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema(
+    summary="Реєстрація - Крок 3 (CPV-категорії компанії)",
+    description=(
+        "Закріплення CPV-категорій за компанією під час реєстрації.\n"
+        "- Якщо це перший підтверджений користувач компанії — список категорій перезаписується.\n"
+        "- Якщо підтверджених користувачів вже більше одного — існуючі категорії не видаляються, "
+        "додаються лише нові (об'єднання списків)."
+    ),
+    request={
+        "application/json": {
+            "type": "object",
+            "properties": {
+                "user_id": {"type": "integer"},
+                "company_id": {"type": "integer"},
+                "cpv_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "Масив ID CPV-кодів для закріплення за компанією",
+                },
+            },
+            "required": ["user_id", "company_id"],
+        }
+    },
+    responses={
+        200: CompanyCpvSerializer,
+        400: OpenApiResponse(description="Помилка валідації"),
+    },
+)
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+def registration_step3_company_cpvs(request):
+    """
+    Step 3: Прив'язка CPV-категорій до компанії під час реєстрації.
+
+    Для першого підтвердженого користувача компанії дозволяємо задати повний список.
+    Для наступних користувачів — лише додаємо нові категорії, не видаляючи існуючі.
+    """
+    user_id = request.data.get("user_id")
+    company_id = request.data.get("company_id")
+    cpv_ids = request.data.get("cpv_ids") or []
+
+    if not user_id:
+        return Response({"user_id": "Поле обов'язкове."}, status=status.HTTP_400_BAD_REQUEST)
+    if not company_id:
+        return Response({"company_id": "Поле обов'язкове."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response({"user_id": "Користувач не знайдений."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        company = Company.objects.get(id=company_id, status=Company.Status.ACTIVE)
+    except Company.DoesNotExist:
+        return Response({"company_id": "Компанію не знайдено або вона неактивна."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not CompanyUser.objects.filter(
+        user=user, company=company, status=CompanyUser.Status.APPROVED
+    ).exists():
+        return Response(
+            {"non_field_errors": "Користувач не має підтвердженого зв'язку з цією компанією."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Визначаємо, чи це перший підтверджений користувач компанії
+    approved_members_qs = CompanyUser.objects.filter(
+        company=company, status=CompanyUser.Status.APPROVED
+    )
+    approved_count = approved_members_qs.count()
+
+    cpv_ids = [int(x) for x in cpv_ids if str(x).isdigit()]
+    existing_ids = set(company.cpv_categories.values_list("id", flat=True))
+
+    if approved_count <= 1:
+        # Перший підтверджений користувач: повна заміна списку
+        company.cpv_categories.set(cpv_ids)
+    else:
+        # Наступні користувачі: не дозволяємо видаляти вже існуючі категорії
+        new_ids = set(cpv_ids)
+        union_ids = sorted(existing_ids.union(new_ids))
+        company.cpv_categories.set(union_ids)
+
+    serializer = CompanyCpvSerializer(company)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
 class CompanyViewSet(viewsets.ModelViewSet):
     """
     Company list/retrieve (for step 2 selection). Create for adding counterparties.
@@ -296,6 +384,46 @@ class CompanyViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
+
+@extend_schema(
+    summary="CPV-категорії поточної компанії",
+    description=(
+        "Отримати або оновити список CPV-категорій, закріплених за компанією поточного користувача.\n"
+        "Компанія визначається за першим підтвердженим членством користувача."
+    ),
+    responses={200: CompanyCpvSerializer},
+)
+@api_view(["GET", "PUT"])
+@permission_classes([permissions.IsAuthenticated])
+def company_current_cpvs(request):
+    """
+    GET: Повертає компанію поточного користувача та її CPV-категорії.
+    PUT: Оновлює список CPV-категорій компанії (повна заміна списку).
+    """
+    user = request.user
+    membership = (
+        CompanyUser.objects.filter(user=user, status=CompanyUser.Status.APPROVED)
+        .select_related("company")
+        .first()
+    )
+    if not membership or not membership.company:
+        return Response(
+            {"detail": "Користувач не має підтвердженого членства ні в одній компанії."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    company = membership.company
+
+    if request.method == "GET":
+        serializer = CompanyCpvSerializer(company)
+        return Response(serializer.data)
+
+    serializer = CompanyCpvSerializer(company, data=request.data, partial=True)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    serializer.save()
+    return Response(CompanyCpvSerializer(company).data)
+
     @action(detail=True, methods=["get"], permission_classes=[permissions.IsAuthenticated])
     def members(self, request, pk=None):
         """Список користувачів (агентів) компанії."""
@@ -334,15 +462,20 @@ class CompanySupplierViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         owner_ids = list(_user_owner_company_ids(self.request))
-        return (
+        qs = (
             CompanySupplier.objects.filter(owner_company_id__in=owner_ids)
             .select_related("supplier_company", "owner_company")
             .order_by("-created_at")
         )
+        if self.action == "list":
+            qs = qs.prefetch_related("supplier_company__cpv_categories")
+        return qs
 
     def get_serializer_class(self):
         if self.action == "create":
             return AddCompanySupplierSerializer
+        if self.action == "list":
+            return CompanySupplierListSerializer
         return CompanySupplierSerializer
 
     def create(self, request, *args, **kwargs):
@@ -1472,6 +1605,36 @@ class CpvDictionaryChildrenView(APIView):
         return Response(data)
 
 
+class CpvWithCompaniesView(APIView):
+    """
+    Список CPV-категорій, за якими є зареєстровані компанії в системі (не в рамках однієї компанії).
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        summary="CPV з зареєстрованими компаніями",
+        description="Повертає плоский список CPV (id, cpv_code, name_ua, label), за якими хоча б одна компанія зареєстрована в системі.",
+        responses={200: OpenApiResponse(description="Список CPV")},
+    )
+    def get(self, request):
+        qs = (
+            CpvDictionary.objects.filter(companies_by_cpvs__isnull=False)
+            .distinct()
+            .order_by("cpv_code")
+        )
+        data = [
+            {
+                "id": item.id,
+                "cpv_code": item.cpv_code,
+                "name_ua": getattr(item, "name_ua", "") or "",
+                "label": f"{getattr(item, 'cpv_code', '')} - {getattr(item, 'name_ua', '')}",
+            }
+            for item in qs
+        ]
+        return Response(data)
+
+
 class ExpenseArticleViewSet(viewsets.ModelViewSet):
     """
     ExpenseArticle management (tree, company-scoped).
@@ -1600,7 +1763,7 @@ class UnitOfMeasureViewSet(viewsets.ReadOnlyModelViewSet):
         """Спільні одиниці (company=null) + одиниці компаній користувача."""
         user = self.request.user
         if user.is_superuser:
-            return UnitOfMeasure.objects.all().select_related("company").order_by("name")
+            return UnitOfMeasure.objects.all().select_related("company").order_by("name_ua")
         user_companies = list(
             CompanyUser.objects.filter(
                 user=user, status=CompanyUser.Status.APPROVED
@@ -1611,7 +1774,7 @@ class UnitOfMeasureViewSet(viewsets.ReadOnlyModelViewSet):
                 Q(company__isnull=True) | Q(company_id__in=user_companies)
             )
             .select_related("company")
-            .order_by("name")
+            .order_by("name_ua")
         )
 
 
@@ -1969,15 +2132,22 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         name = request.data.get("name", "") or file_obj.name
+        visible = request.data.get("visible_to_participants", True)
+        if isinstance(visible, str):
+            visible = visible.lower() in ("true", "1", "yes")
         obj = ProcurementTenderFile.objects.create(
-            tender=tender, file=file_obj, name=name[:255],
+            tender=tender,
+            file=file_obj,
+            name=name[:255],
+            uploaded_by=getattr(request, "user", None),
+            visible_to_participants=bool(visible),
         )
         serializer = ProcurementTenderFileSerializer(
             obj, context={"request": request}
         )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=["delete"], url_path=r"files/(?P<file_id>[^/.]+)")
+    @action(detail=True, methods=["delete"], url_path=r"files/(?P<file_id>\d+)")
     def file_delete(self, request, pk=None, file_id=None):
         """Видалити прикріплений файл."""
         tender = self.get_object()
@@ -1986,6 +2156,19 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Файл не знайдено."}, status=status.HTTP_404_NOT_FOUND)
         obj.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["patch"], url_path=r"files/(?P<file_id>\d+)")
+    def file_patch(self, request, pk=None, file_id=None):
+        """Оновити видимість файлу учасникам."""
+        tender = self.get_object()
+        obj = ProcurementTenderFile.objects.filter(tender=tender, id=file_id).first()
+        if not obj:
+            return Response({"detail": "Файл не знайдено."}, status=status.HTTP_404_NOT_FOUND)
+        if "visible_to_participants" in request.data:
+            obj.visible_to_participants = bool(request.data["visible_to_participants"])
+            obj.save(update_fields=["visible_to_participants"])
+        serializer = ProcurementTenderFileSerializer(obj, context={"request": request})
+        return Response(serializer.data)
 
 
 class SalesTenderViewSet(viewsets.ModelViewSet):
@@ -2218,15 +2401,22 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         name = request.data.get("name", "") or file_obj.name
+        visible = request.data.get("visible_to_participants", True)
+        if isinstance(visible, str):
+            visible = visible.lower() in ("true", "1", "yes")
         obj = SalesTenderFile.objects.create(
-            tender=tender, file=file_obj, name=name[:255],
+            tender=tender,
+            file=file_obj,
+            name=name[:255],
+            uploaded_by=getattr(request, "user", None),
+            visible_to_participants=bool(visible),
         )
         serializer = SalesTenderFileSerializer(
             obj, context={"request": request}
         )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=["delete"], url_path=r"files/(?P<file_id>[^/.]+)")
+    @action(detail=True, methods=["delete"], url_path=r"files/(?P<file_id>\d+)")
     def file_delete(self, request, pk=None, file_id=None):
         """Видалити прикріплений файл."""
         tender = self.get_object()
@@ -2235,3 +2425,16 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Файл не знайдено."}, status=status.HTTP_404_NOT_FOUND)
         obj.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["patch"], url_path=r"files/(?P<file_id>\d+)")
+    def file_patch(self, request, pk=None, file_id=None):
+        """Оновити видимість файлу учасникам."""
+        tender = self.get_object()
+        obj = SalesTenderFile.objects.filter(tender=tender, id=file_id).first()
+        if not obj:
+            return Response({"detail": "Файл не знайдено."}, status=status.HTTP_404_NOT_FOUND)
+        if "visible_to_participants" in request.data:
+            obj.visible_to_participants = bool(request.data["visible_to_participants"])
+            obj.save(update_fields=["visible_to_participants"])
+        serializer = SalesTenderFileSerializer(obj, context={"request": request})
+        return Response(serializer.data)

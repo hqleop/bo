@@ -1,4 +1,5 @@
 from rest_framework import serializers
+import re
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import get_user_model
 from .models import (
@@ -69,6 +70,19 @@ class UserRegistrationStep1Serializer(serializers.Serializer):
         validate_password(value)
         return value
 
+    def validate_phone(self, value):
+        """
+        Очікуваний формат телефона: +380XXXXXXXXX (12 цифр, включно з кодом країни).
+        """
+        if not value:
+            raise serializers.ValidationError("Телефон обов'язковий.")
+        raw = (value or "").strip()
+        # Дозволяємо формати з пробілами/дефісами, але приводимо до цифр
+        digits = re.sub(r"\D", "", raw)
+        if not digits.startswith("380") or len(digits) != 12:
+            raise serializers.ValidationError("Телефон має бути у форматі +380XXXXXXXXX.")
+        return f"+{digits}"
+
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError("Користувач з таким email вже існує.")
@@ -85,8 +99,50 @@ class CompanySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Company
-        fields = ("id", "edrpou", "name", "goal_tenders", "goal_participation", "status", "created_at", "updated_at")
+        fields = (
+            "id",
+            "edrpou",
+            "name",
+            "goal_tenders",
+            "goal_participation",
+            "status",
+            "created_at",
+            "updated_at",
+        )
         read_only_fields = ("id", "created_at", "updated_at")
+
+
+class CompanyCpvSerializer(serializers.ModelSerializer):
+    """
+    Серіалізатор для зв'язку компанії з CPV-категоріями (налаштування компанії).
+    """
+
+    cpv_categories = serializers.SerializerMethodField()
+    cpv_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        write_only=True,
+        required=False,
+        source="cpv_categories",
+        queryset=CpvDictionary.objects.all(),
+        help_text="Масив ID CPV-кодів, закріплених за компанією",
+    )
+
+    class Meta:
+        model = Company
+        fields = ("id", "edrpou", "name", "cpv_categories", "cpv_ids")
+        read_only_fields = ("id", "edrpou", "name", "cpv_categories")
+
+    def get_cpv_categories(self, obj):
+        qs = obj.cpv_categories.all()
+        return [
+            {
+                "id": cpv.id,
+                "cpv_code": cpv.cpv_code,
+                "name_ua": cpv.name_ua,
+                "label": f"{cpv.cpv_code} - {cpv.name_ua}",
+            }
+            for cpv in qs
+        ]
 
 
 class CompanyListSerializer(serializers.ModelSerializer):
@@ -95,6 +151,27 @@ class CompanyListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Company
         fields = ("id", "edrpou", "name", "status")
+
+
+class CompanyWithCpvsSerializer(serializers.ModelSerializer):
+    """Company with cpv_categories for filtering contractors by CPV."""
+
+    cpv_categories = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Company
+        fields = ("id", "edrpou", "name", "status", "cpv_categories")
+
+    def get_cpv_categories(self, obj):
+        qs = getattr(obj, "cpv_categories", None)
+        if qs is None:
+            return []
+        if hasattr(qs, "all"):
+            qs = qs.all()
+        return [
+            {"id": c.id, "cpv_code": getattr(c, "cpv_code", ""), "name_ua": getattr(c, "name_ua", ""), "label": f"{getattr(c, 'cpv_code', '')} - {getattr(c, 'name_ua', '')}"}
+            for c in qs
+        ]
 
 
 class CompanyCreateSerializer(serializers.ModelSerializer):
@@ -121,6 +198,18 @@ class CompanySupplierSerializer(serializers.ModelSerializer):
     """Зв'язок компанія → контрагент. Для списку контрагентів."""
 
     supplier_company = CompanyListSerializer(read_only=True)
+    supplier_company_id = serializers.IntegerField(write_only=True, required=False)
+
+    class Meta:
+        model = CompanySupplier
+        fields = ("id", "owner_company", "supplier_company", "supplier_company_id", "source", "created_at")
+        read_only_fields = ("id", "owner_company", "supplier_company", "source", "created_at")
+
+
+class CompanySupplierListSerializer(serializers.ModelSerializer):
+    """Список контрагентів з CPV категоріями для фільтрації."""
+
+    supplier_company = CompanyWithCpvsSerializer(read_only=True)
     supplier_company_id = serializers.IntegerField(write_only=True, required=False)
 
     class Meta:
@@ -484,14 +573,14 @@ class UnitOfMeasureSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UnitOfMeasure
-        fields = ("id", "company", "name", "is_active")
+        fields = ("id", "company", "name_ua", "name_en", "short_name_ua", "short_name_en", "is_active")
         read_only_fields = ("id",)
 
 
 class NomenclatureSerializer(serializers.ModelSerializer):
     """Серіалізатор номенклатури."""
 
-    unit_name = serializers.CharField(source="unit.name", read_only=True)
+    unit_name = serializers.CharField(source="unit.display_short_ua", read_only=True)
     category_name = serializers.CharField(source="category.name", read_only=True)
     cpv_label = serializers.SerializerMethodField()
     cpv_categories = serializers.SerializerMethodField()
@@ -576,7 +665,7 @@ class ProcurementTenderPositionSerializer(serializers.ModelSerializer):
         queryset=Nomenclature.objects.all(), source="nomenclature"
     )
     name = serializers.CharField(source="nomenclature.name", read_only=True)
-    unit_name = serializers.CharField(source="nomenclature.unit.name", read_only=True)
+    unit_name = serializers.CharField(source="nomenclature.unit.display_short_ua", read_only=True)
     winner_proposal_id = serializers.SerializerMethodField()
     winner_supplier_name = serializers.SerializerMethodField()
     winner_price = serializers.SerializerMethodField()
@@ -804,7 +893,7 @@ class TenderProposalPositionSerializer(serializers.ModelSerializer):
         source="tender_position.quantity", max_digits=18, decimal_places=4, read_only=True
     )
     position_unit = serializers.CharField(
-        source="tender_position.nomenclature.unit.name", read_only=True
+        source="tender_position.nomenclature.unit.display_short_ua", read_only=True
     )
 
     class Meta:
@@ -856,17 +945,26 @@ class ProcurementTenderFileSerializer(serializers.ModelSerializer):
     """Файл, прикріплений до тендера."""
 
     file_url = serializers.SerializerMethodField()
+    uploaded_by_display = serializers.SerializerMethodField()
 
     class Meta:
         model = ProcurementTenderFile
-        fields = ("id", "tender", "file", "file_url", "name", "uploaded_at")
-        read_only_fields = ("id", "tender", "uploaded_at")
+        fields = (
+            "id", "tender", "file", "file_url", "name", "uploaded_at",
+            "uploaded_by", "uploaded_by_display", "visible_to_participants",
+        )
+        read_only_fields = ("id", "tender", "uploaded_at", "uploaded_by")
 
     def get_file_url(self, obj):
         request = self.context.get("request")
         if request and obj.file:
             return request.build_absolute_uri(obj.file.url)
         return obj.file.url if obj.file else ""
+
+    def get_uploaded_by_display(self, obj):
+        if not obj.uploaded_by:
+            return ""
+        return obj.uploaded_by.get_full_name() or obj.uploaded_by.email or str(obj.uploaded_by)
 
 
 class SalesTenderPositionSerializer(serializers.ModelSerializer):
@@ -876,7 +974,7 @@ class SalesTenderPositionSerializer(serializers.ModelSerializer):
         queryset=Nomenclature.objects.all(), source="nomenclature"
     )
     name = serializers.CharField(source="nomenclature.name", read_only=True)
-    unit_name = serializers.CharField(source="nomenclature.unit.name", read_only=True)
+    unit_name = serializers.CharField(source="nomenclature.unit.display_short_ua", read_only=True)
     winner_proposal_id = serializers.SerializerMethodField()
     winner_supplier_name = serializers.SerializerMethodField()
     winner_price = serializers.SerializerMethodField()
@@ -1104,7 +1202,7 @@ class SalesTenderProposalPositionSerializer(serializers.ModelSerializer):
         source="tender_position.quantity", max_digits=18, decimal_places=4, read_only=True
     )
     position_unit = serializers.CharField(
-        source="tender_position.nomenclature.unit.name", read_only=True
+        source="tender_position.nomenclature.unit.display_short_ua", read_only=True
     )
 
     class Meta:
@@ -1147,14 +1245,23 @@ class SalesTenderFileSerializer(serializers.ModelSerializer):
     """Файл, прикріплений до тендера на продаж."""
 
     file_url = serializers.SerializerMethodField()
+    uploaded_by_display = serializers.SerializerMethodField()
 
     class Meta:
         model = SalesTenderFile
-        fields = ("id", "tender", "file", "file_url", "name", "uploaded_at")
-        read_only_fields = ("id", "tender", "uploaded_at")
+        fields = (
+            "id", "tender", "file", "file_url", "name", "uploaded_at",
+            "uploaded_by", "uploaded_by_display", "visible_to_participants",
+        )
+        read_only_fields = ("id", "tender", "uploaded_at", "uploaded_by")
 
     def get_file_url(self, obj):
         request = self.context.get("request")
         if request and obj.file:
             return request.build_absolute_uri(obj.file.url)
         return obj.file.url if obj.file else ""
+
+    def get_uploaded_by_display(self, obj):
+        if not obj.uploaded_by:
+            return ""
+        return obj.uploaded_by.get_full_name() or obj.uploaded_by.email or str(obj.uploaded_by)
