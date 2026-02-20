@@ -163,13 +163,39 @@ export function useUsersUseCases() {
     return { data: data ?? null, error: error ?? null }
   }
 
-  async function registerStep2New(payload: Record<string, unknown>): Promise<{ error: string | null }> {
-    const { error } = await usersApi.registerStep2New(fetch, payload)
-    return { error: error ?? null }
+  async function registerStep2New(payload: Record<string, unknown>): Promise<{
+    data?: unknown
+    error: string | null
+  }> {
+    const { data, error } = await usersApi.registerStep2New(fetch, payload)
+    return { ...(data ? { data } : {}), error: error ?? null }
   }
 
   async function registerStep2Existing(payload: Record<string, unknown>): Promise<{ error: string | null }> {
     const { error } = await usersApi.registerStep2Existing(fetch, payload)
+    return { error: error ?? null }
+  }
+
+  async function registerStep3CompanyCpvs(payload: {
+    user_id: number
+    company_id: number
+    cpv_ids: number[]
+  }): Promise<{ error: string | null }> {
+    const { error } = await usersApi.registerStep3CompanyCpvs(fetch, payload)
+    return { error: error ?? null }
+  }
+
+  async function getCurrentCompanyCpvs(): Promise<{
+    data: { id: number; edrpou: string; name: string; cpv_categories: { id: number; label: string }[] } | null
+    error: string | null
+  }> {
+    const { data, error } = await usersApi.getCurrentCompanyCpvs(fetch)
+    if (error || !data) return { data: null, error: error ?? null }
+    return { data: data as any, error: null }
+  }
+
+  async function updateCurrentCompanyCpvs(cpvIds: number[]): Promise<{ error: string | null }> {
+    const { error } = await usersApi.updateCurrentCompanyCpvs(fetch, { cpv_ids: cpvIds })
     return { error: error ?? null }
   }
 
@@ -208,6 +234,9 @@ export function useUsersUseCases() {
     registerStep1,
     registerStep2New,
     registerStep2Existing,
+    registerStep3CompanyCpvs,
+    getCurrentCompanyCpvs,
+    updateCurrentCompanyCpvs,
     getNotifications,
     getRoles,
     getPermissions

@@ -78,6 +78,21 @@ export async function registerStep2Existing(request: RequestFn, body: Record<str
   return request<unknown>('/registration/step2/existing/', { method: 'POST', body })
 }
 
+export async function registerStep3CompanyCpvs(request: RequestFn, body: Record<string, unknown>) {
+  return request<unknown>('/registration/step3/company-cpvs/', { method: 'POST', body })
+}
+
+export async function getCurrentCompanyCpvs(request: RequestFn) {
+  return request<unknown>('/companies/current-cpvs/')
+}
+
+export async function updateCurrentCompanyCpvs(
+  request: RequestFn,
+  body: { cpv_ids: number[] }
+) {
+  return request<unknown>('/companies/current-cpvs/', { method: 'PUT', body })
+}
+
 export async function getNotifications(request: RequestFn) {
   return request<{ id: number; is_read?: boolean }[]>('/notifications/')
 }

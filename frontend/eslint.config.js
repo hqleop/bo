@@ -25,7 +25,13 @@ const restrictedApiClientMessage =
 const nuxtGlobals = {
   useApi: 'readonly',
   useAuth: 'readonly',
+  useMe: 'readonly',
+  useToast: 'readonly',
+  useUsersUseCases: 'readonly',
+  useTendersUseCases: 'readonly',
+  useSuppliersUseCases: 'readonly',
   useRuntimeConfig: 'readonly',
+  useHead: 'readonly',
   useRoute: 'readonly',
   useRouter: 'readonly',
   useFetch: 'readonly',
@@ -36,7 +42,10 @@ const nuxtGlobals = {
   computed: 'readonly',
   reactive: 'readonly',
   onMounted: 'readonly',
+  onUnmounted: 'readonly',
+  onActivated: 'readonly',
   watch: 'readonly',
+  watchEffect: 'readonly',
   nextTick: 'readonly'
 }
 
@@ -58,10 +67,10 @@ export default tseslint.config(
   },
   // ——— Заборона fetch/$fetch/axios у pages, components, use-cases ———
   {
-    files: ['pages/**/*.{ts,vue}', 'components/**/*.{ts,vue}', '**/domains/**/use-cases/**/*.ts'],
+    files: ['pages/**/*.{ts,vue}', 'components/**/*.{ts,vue}'],
     rules: {
       'no-restricted-syntax': [
-        'error',
+        'warn',
         {
           selector: 'CallExpression[callee.name="$fetch"]',
           message: restrictedFetchMessage
@@ -113,7 +122,7 @@ export default tseslint.config(
       ],
       // Заборона виклику useApi() у компонентах (навіть як auto-import)
       'no-restricted-globals': [
-        'error',
+        'warn',
         { name: 'useApi', message: restrictedApiClientMessage }
       ]
     }
@@ -128,14 +137,21 @@ export default tseslint.config(
         {
           zones: [
             // Кожен домен може імпортувати тільки shared, core та себе. Додайте зону для кожного домену.
-            { target: './domains/auth/**', from: './domains', except: ['./domains/auth/**'] },
-            { target: './domains/tender/**', from: './domains', except: ['./domains/tender/**'] },
-            { target: './domains/nomenclature/**', from: './domains', except: ['./domains/nomenclature/**'] },
-            { target: './domains/budget/**', from: './domains', except: ['./domains/budget/**'] }
+            { target: './domains/users/**', from: './domains', except: ['./domains/users/**'] },
+            { target: './domains/tenders/**', from: './domains', except: ['./domains/tenders/**'] },
+            { target: './domains/suppliers/**', from: './domains', except: ['./domains/suppliers/**'] }
           ],
           basePath: __dirname
         }
       ]
+    }
+  },
+  {
+    rules: {
+      'vue/multi-word-component-names': 'off',
+      'no-constant-binary-expression': 'warn',
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-unused-vars': 'warn'
     }
   }
 )

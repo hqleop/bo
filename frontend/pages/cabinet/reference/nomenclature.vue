@@ -351,9 +351,12 @@ const loadCategories = async () => {
   }
 };
 
-// Опції для селектів
+// Опції для селектів (відображаємо short_name_ua в номенклатурах)
 const unitOptions = computed(() =>
-  units.value.map((u: any) => ({ value: u.id, label: u.name })),
+  units.value.map((u: any) => ({
+    value: u.id,
+    label: u.short_name_ua || u.name_ua || u.name_en || "",
+  })),
 );
 
 // Сплощення дерева категорій для форми

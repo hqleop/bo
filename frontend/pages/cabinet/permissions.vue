@@ -2,7 +2,7 @@
   <div>
     <h2 class="text-2xl font-bold mb-4">Права доступу</h2>
     <div class="bg-white rounded-lg shadow p-6">
-      <UTable :rows="permissions" :columns="columns" />
+      <UTable :data="permissions" :columns="columns" />
     </div>
   </div>
 </template>
@@ -20,8 +20,8 @@ const usersUC = useUsersUseCases();
 const permissions = ref<any[]>([]);
 
 const columns = [
-  { key: "code", label: "Код" },
-  { key: "label", label: "Назва" },
+  { accessorKey: "code", header: "Код" },
+  { accessorKey: "label", header: "Назва" },
 ];
 
 onMounted(async () => {

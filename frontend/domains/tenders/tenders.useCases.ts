@@ -7,6 +7,17 @@ export function useTendersUseCases() {
     return tendersApi.getTenderList(fetch, isSales)
   }
 
+  async function getTendersForParticipation(
+    isSales: boolean,
+    tab: 'active' | 'processing' | 'completed'
+  ) {
+    return tendersApi.getTendersForParticipation(fetch, isSales, tab)
+  }
+
+  async function confirmParticipation(tenderId: number, isSales: boolean) {
+    return tendersApi.confirmParticipation(fetch, tenderId, isSales)
+  }
+
   async function getTender(id: number, isSales: boolean) {
     return tendersApi.getTender(fetch, id, isSales)
   }
@@ -31,6 +42,27 @@ export function useTendersUseCases() {
     return tendersApi.getTenderProposals(fetch, id, isSales)
   }
 
+  async function getTenderFiles(id: number, isSales: boolean) {
+    return tendersApi.getTenderFiles(fetch, id, isSales)
+  }
+
+  async function uploadTenderFile(id: number, isSales: boolean, form: FormData) {
+    return tendersApi.uploadTenderFile(fetch, id, isSales, form)
+  }
+
+  async function deleteTenderFile(id: number, isSales: boolean, fileId: number) {
+    return tendersApi.deleteTenderFile(fetch, id, isSales, fileId)
+  }
+
+  async function patchTenderFile(
+    id: number,
+    isSales: boolean,
+    fileId: number,
+    body: { visible_to_participants: boolean }
+  ) {
+    return tendersApi.patchTenderFile(fetch, id, isSales, fileId, body)
+  }
+
   async function fixTenderDecision(
     id: number,
     isSales: boolean,
@@ -41,6 +73,29 @@ export function useTendersUseCases() {
 
   async function getTenderCriteria() {
     return tendersApi.getTenderCriteria(fetch)
+  }
+
+  async function createTenderCriterion(body: {
+    company: number
+    name: string
+    type: string
+    application?: string
+    options?: Record<string, unknown>
+  }) {
+    return tendersApi.createTenderCriterion(fetch, body)
+  }
+
+  async function getUnits() {
+    return tendersApi.getUnits(fetch)
+  }
+
+  async function createNomenclature(body: {
+    company: number
+    name: string
+    unit: number
+    cpv_ids?: number[]
+  }) {
+    return tendersApi.createNomenclature(fetch, body)
   }
 
   async function getCategories() {
@@ -79,6 +134,10 @@ export function useTendersUseCases() {
     return tendersApi.getCpvChildren(fetch, parentLevelCode)
   }
 
+  async function getCpvWithCompanies() {
+    return tendersApi.getCpvWithCompanies(fetch)
+  }
+
   async function addProposal(
     tenderId: number,
     isSales: boolean,
@@ -115,15 +174,32 @@ export function useTendersUseCases() {
     )
   }
 
+  async function submitProposal(tenderId: number, isSales: boolean) {
+    return tendersApi.submitProposal(fetch, tenderId, isSales)
+  }
+
+  async function withdrawProposal(tenderId: number, isSales: boolean) {
+    return tendersApi.withdrawProposal(fetch, tenderId, isSales)
+  }
+
   return {
     getTenderList,
+    getTendersForParticipation,
+    confirmParticipation,
     getTender,
     patchTender,
     createTender,
     getTenderTours,
     getTenderProposals,
+    getTenderFiles,
+    uploadTenderFile,
+    deleteTenderFile,
+    patchTenderFile,
     fixTenderDecision,
     getTenderCriteria,
+    createTenderCriterion,
+    getUnits,
+    createNomenclature,
     getCategories,
     getExpenses,
     getBranches,
@@ -133,8 +209,11 @@ export function useTendersUseCases() {
     getNomenclaturesByCategory,
     getCategory,
     getCpvChildren,
+    getCpvWithCompanies,
     addProposal,
     getProposalPositionValues,
-    patchProposalPositionValues
+    patchProposalPositionValues,
+    submitProposal,
+    withdrawProposal
   }
 }

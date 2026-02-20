@@ -1,5 +1,5 @@
 from django.contrib.auth.models import AbstractUser, BaseUserManager
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Max
 
 
@@ -501,6 +501,7 @@ class TenderCriterion(models.Model):
     """
     Критерій тендеру — елемент, на який відповідає учасник під час проведення.
     Типи: числовий, текстовий, файловий, булевий.
+    Застосування: загальний (одне значення на весь тендер) чи індивідуальний (по кожній позиції).
     """
 
     class Type(models.TextChoices):
@@ -509,11 +510,21 @@ class TenderCriterion(models.Model):
         FILE = "file", "Файловий"
         BOOLEAN = "boolean", "Булевий (Так/Ні)"
 
+    class Application(models.TextChoices):
+        GENERAL = "general", "Загальний"
+        INDIVIDUAL = "individual", "Індивідуальний"
+
     company = models.ForeignKey(
         Company, on_delete=models.CASCADE, related_name="tender_criteria"
     )
     name = models.CharField(max_length=255)
     type = models.CharField(max_length=20, choices=Type.choices)
+    application = models.CharField(
+        max_length=20,
+        choices=Application.choices,
+        default=Application.INDIVIDUAL,
+        help_text="Загальний — одне значення на тендер; індивідуальний — по кожній позиції.",
+    )
     # Додаткові параметри за типом: range_min/range_max, numeric_choices, text_choices
     options = models.JSONField(default=dict, blank=True)
 
@@ -524,7 +535,7 @@ class TenderCriterion(models.Model):
         verbose_name = "Критерій тендеру"
         verbose_name_plural = "Критерії тендерів"
         ordering = ["name"]
-        unique_together = (("company", "name"),)
+        unique_together = (("company", "name", "type"),)
 
     def __str__(self) -> str:
         return self.name
@@ -654,14 +665,17 @@ class ProcurementTender(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.pk and self.company_id and self.number is None:
-            if self.parent_id:
-                self.number = self.parent.number
-            else:
-                agg = ProcurementTender.objects.filter(
-                    company_id=self.company_id
-                ).aggregate(Max("number"))
-                self.number = (agg["number__max"] or 0) + 1
-        super().save(*args, **kwargs)
+            with transaction.atomic():
+                Company.objects.select_for_update().get(id=self.company_id)
+                if self.parent_id:
+                    self.number = self.parent.number
+                else:
+                    agg = ProcurementTender.objects.filter(
+                        company_id=self.company_id
+                    ).aggregate(Max("number"))
+                    self.number = (agg["number__max"] or 0) + 1
+                return super().save(*args, **kwargs)
+        return super().save(*args, **kwargs)
 
     # Параметри цінового критерія (для процедури реєстрації та інших)
     price_criterion_vat = models.CharField(
@@ -748,6 +762,16 @@ class TenderProposal(models.Model):
         Company,
         on_delete=models.CASCADE,
         related_name="tender_proposals_as_supplier",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        null=True,
+        blank=True,
+    )
+    submitted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Час подачі пропозиції; null — не подано або відкликано",
     )
 
     class Meta:
@@ -958,14 +982,17 @@ class SalesTender(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.pk and self.company_id and self.number is None:
-            if self.parent_id:
-                self.number = self.parent.number
-            else:
-                agg = SalesTender.objects.filter(
-                    company_id=self.company_id
-                ).aggregate(Max("number"))
-                self.number = (agg["number__max"] or 0) + 1
-        super().save(*args, **kwargs)
+            with transaction.atomic():
+                Company.objects.select_for_update().get(id=self.company_id)
+                if self.parent_id:
+                    self.number = self.parent.number
+                else:
+                    agg = SalesTender.objects.filter(
+                        company_id=self.company_id
+                    ).aggregate(Max("number"))
+                    self.number = (agg["number__max"] or 0) + 1
+                return super().save(*args, **kwargs)
+        return super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return f"#{self.number or '?'} {self.name}"
@@ -1034,6 +1061,16 @@ class SalesTenderProposal(models.Model):
         Company,
         on_delete=models.CASCADE,
         related_name="sales_tender_proposals_as_supplier",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        null=True,
+        blank=True,
+    )
+    submitted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Час подачі пропозиції; null — не подано або відкликано",
     )
 
     class Meta:

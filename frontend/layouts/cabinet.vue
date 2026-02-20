@@ -69,7 +69,7 @@
         </header>
 
         <div class="flex-1 min-h-0 overflow-y-auto p-6">
-          <div class="h-full">
+          <div class="h-full border-0 ring-0 outline-none" :key="route.fullPath">
             <slot />
           </div>
         </div>
@@ -191,9 +191,14 @@ const menuLinks = computed(() => {
   // Продажі
   const salesChildren: any[] = [
     {
-      label: "Створити процедуру",
+      label: "Створити тендер",
       to: "/cabinet/tenders/create/sales",
       icon: "i-heroicons-plus-circle",
+    },
+    {
+      label: "Реєстрація продажів",
+      to: "/cabinet/tenders/create/sales?mode=registration",
+      icon: "i-heroicons-clipboard-document-check",
     },
     {
       label: "Журнал продажів",
@@ -210,9 +215,14 @@ const menuLinks = computed(() => {
   // Закупівлі
   const purchaseChildren: any[] = [
     {
-      label: "Створити процедуру",
+      label: "Створити тендер",
       to: "/cabinet/tenders/create/purchase",
       icon: "i-heroicons-plus-circle",
+    },
+    {
+      label: "Реєстрація закупівель",
+      to: "/cabinet/tenders/create/purchase?mode=registration",
+      icon: "i-heroicons-clipboard-document-check",
     },
     {
       label: "Журнал закупівель",
@@ -384,7 +394,12 @@ function logoutUser() {
   logout();
 }
 
-const pageTitle = useRoute().meta.title || "Кабінет";
+const companyName = computed(
+  () => (me.value as { memberships?: Array<{ company?: { name?: string } }> })?.memberships?.[0]?.company?.name ?? "",
+);
+const pageTitle = computed(
+  () => (route.meta.title as string) || companyName.value || "Кабінет",
+);
 
 // Notifications (via users useCases)
 const usersUC = useUsersUseCases();

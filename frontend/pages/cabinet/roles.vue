@@ -7,7 +7,7 @@
       >
     </div>
 
-    <UTable :rows="roles" :columns="columns" />
+    <UTable :data="roles" :columns="columns" />
 
     <!-- Add Role Modal -->
     <UModal v-model:open="showAddModal">
@@ -60,10 +60,10 @@ const roles = ref<any[]>([]);
 const permissions = ref<any[]>([]);
 
 const columns = [
-  { key: "name", label: "Назва" },
-  { key: "is_system", label: "Системна" },
-  { key: "permissions", label: "Права" },
-  { key: "actions", label: "Дії" },
+  { accessorKey: "name", header: "Назва" },
+  { accessorKey: "is_system", header: "Системна" },
+  { accessorKey: "permissions", header: "Права" },
+  { id: "actions", header: "Дії" },
 ];
 
 onMounted(async () => {

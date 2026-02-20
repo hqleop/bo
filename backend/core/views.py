@@ -1,15 +1,19 @@
-from rest_framework import viewsets, status, permissions
+﻿from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Q
+from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from drf_spectacular.types import OpenApiTypes
@@ -90,27 +94,74 @@ from .serializers import (
 User = get_user_model()
 
 
+def _resolve_request_company_id(request):
+    """
+    Resolve an approved company for the current user.
+    If user has multiple approved companies, explicit company_id is required.
+    """
+    explicit_company_id = request.data.get("company_id") if hasattr(request, "data") else None
+    if explicit_company_id is None:
+        query_params = getattr(request, "query_params", None)
+        if query_params is None:
+            query_params = getattr(request, "GET", {})
+        explicit_company_id = query_params.get("company_id")
+
+    user_company_ids = list(
+        CompanyUser.objects.filter(
+            user=request.user, status=CompanyUser.Status.APPROVED
+        ).values_list("company_id", flat=True)
+    )
+    if not user_company_ids:
+        return None, Response(
+            {"detail": "РќРµРјРѕР¶Р»РёРІРѕ РІРёР·РЅР°С‡РёС‚Рё РєРѕРјРїР°РЅС–СЋ РєРѕСЂРёСЃС‚СѓРІР°С‡Р°."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if explicit_company_id is not None:
+        try:
+            company_id = int(explicit_company_id)
+        except (TypeError, ValueError):
+            return None, Response(
+                {"detail": "РќРµРєРѕСЂРµРєС‚РЅРёР№ company_id."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if company_id not in user_company_ids:
+            return None, Response(
+                {"detail": "РљРѕРјРїР°РЅС–СЏ РЅРµ РЅР°Р»РµР¶РёС‚СЊ РїРѕС‚РѕС‡РЅРѕРјСѓ РєРѕСЂРёСЃС‚СѓРІР°С‡Сѓ."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return company_id, None
+
+    if len(user_company_ids) > 1:
+        return None, Response(
+            {"detail": "РћР±РµСЂС–С‚СЊ company_id РґР»СЏ РІРёРєРѕРЅР°РЅРЅСЏ РґС–С—."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    return user_company_ids[0], None
+
+
 class CustomTokenObtainPairView(TokenObtainPairView):
     """
     Custom JWT login endpoint.
     """
 
     @extend_schema(
-        summary="Вхід в систему",
-        description="Отримати JWT токени (access + refresh) для автентифікації.",
-        responses={200: {"description": "Токени успішно отримано"}, 401: {"description": "Невірні облікові дані"}},
+        summary="Р’С…С–Рґ РІ СЃРёСЃС‚РµРјСѓ",
+        description="РћС‚СЂРёРјР°С‚Рё JWT С‚РѕРєРµРЅРё (access + refresh) РґР»СЏ Р°РІС‚РµРЅС‚РёС„С–РєР°С†С–С—.",
+        responses={200: {"description": "РўРѕРєРµРЅРё СѓСЃРїС–С€РЅРѕ РѕС‚СЂРёРјР°РЅРѕ"}, 401: {"description": "РќРµРІС–СЂРЅС– РѕР±Р»С–РєРѕРІС– РґР°РЅС–"}},
     )
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)
 
 
 @extend_schema(
-    summary="Реєстрація - Крок 1",
-    description="Створення користувача. Якщо email вже існує, повертає помилку.",
+    summary="Р РµС”СЃС‚СЂР°С†С–СЏ - РљСЂРѕРє 1",
+    description="РЎС‚РІРѕСЂРµРЅРЅСЏ РєРѕСЂРёСЃС‚СѓРІР°С‡Р°. РЇРєС‰Рѕ email РІР¶Рµ С–СЃРЅСѓС”, РїРѕРІРµСЂС‚Р°С” РїРѕРјРёР»РєСѓ.",
     request=UserRegistrationStep1Serializer,
     responses={
         201: UserSerializer,
-        400: OpenApiResponse(description="Помилка валідації"),
+        400: OpenApiResponse(description="РџРѕРјРёР»РєР° РІР°Р»С–РґР°С†С–С—"),
     },
 )
 @api_view(["POST"])
@@ -125,12 +176,12 @@ def registration_step1(request):
 
 
 @extend_schema(
-    summary="Реєстрація - Крок 2 (Нова компанія)",
-    description="Створення нової компанії та призначення користувача адміністратором.",
+    summary="Р РµС”СЃС‚СЂР°С†С–СЏ - РљСЂРѕРє 2 (РќРѕРІР° РєРѕРјРїР°РЅС–СЏ)",
+    description="РЎС‚РІРѕСЂРµРЅРЅСЏ РЅРѕРІРѕС— РєРѕРјРїР°РЅС–С— С‚Р° РїСЂРёР·РЅР°С‡РµРЅРЅСЏ РєРѕСЂРёСЃС‚СѓРІР°С‡Р° Р°РґРјС–РЅС–СЃС‚СЂР°С‚РѕСЂРѕРј.",
     request=CompanyRegistrationStep2Serializer,
     responses={
         201: CompanySerializer,
-        400: OpenApiResponse(description="Помилка валідації"),
+        400: OpenApiResponse(description="РџРѕРјРёР»РєР° РІР°Р»С–РґР°С†С–С—"),
     },
 )
 @api_view(["POST"])
@@ -145,7 +196,7 @@ def registration_step2_new_company(request):
     try:
         user = User.objects.get(id=user_id)
     except User.DoesNotExist:
-        return Response({"user_id": "Користувач не знайдений."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"user_id": "РљРѕСЂРёСЃС‚СѓРІР°С‡ РЅРµ Р·РЅР°Р№РґРµРЅРёР№."}, status=status.HTTP_400_BAD_REQUEST)
 
     with transaction.atomic():
         company = Company.objects.create(
@@ -157,7 +208,7 @@ def registration_step2_new_company(request):
 
         # Create admin role for company
         admin_role, _ = Role.objects.get_or_create(
-            company=company, name="Адміністратор", defaults={"is_system": True}
+            company=company, name="РђРґРјС–РЅС–СЃС‚СЂР°С‚РѕСЂ", defaults={"is_system": True}
         )
 
         # Assign all permissions to admin role (for MVP)
@@ -172,18 +223,18 @@ def registration_step2_new_company(request):
 
 
 @extend_schema(
-    summary="Реєстрація - Крок 2 (Існуюча компанія)",
-    description="Запит на приєднання до існуючої компанії. Створює сповіщення адміністратору компанії.",
+    summary="Р РµС”СЃС‚СЂР°С†С–СЏ - РљСЂРѕРє 2 (Р†СЃРЅСѓСЋС‡Р° РєРѕРјРїР°РЅС–СЏ)",
+    description="Р—Р°РїРёС‚ РЅР° РїСЂРёС”РґРЅР°РЅРЅСЏ РґРѕ С–СЃРЅСѓСЋС‡РѕС— РєРѕРјРїР°РЅС–С—. РЎС‚РІРѕСЂСЋС” СЃРїРѕРІС–С‰РµРЅРЅСЏ Р°РґРјС–РЅС–СЃС‚СЂР°С‚РѕСЂСѓ РєРѕРјРїР°РЅС–С—.",
     request=ExistingCompanyStep2Serializer,
     responses={
         201: CompanyUserSerializer,
-        400: OpenApiResponse(description="Помилка валідації"),
+        400: OpenApiResponse(description="РџРѕРјРёР»РєР° РІР°Р»С–РґР°С†С–С—"),
     },
 )
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def registration_step2_existing_company(request):
-    """Step 2: Join existing company by code (ЄДРПОУ). Якщо це перший користувач компанії — оновлюємо назву та одразу схвалюємо."""
+    """Step 2: Join existing company by code (Р„Р”Р РџРћРЈ). РЇРєС‰Рѕ С†Рµ РїРµСЂС€РёР№ РєРѕСЂРёСЃС‚СѓРІР°С‡ РєРѕРјРїР°РЅС–С— вЂ” РѕРЅРѕРІР»СЋС”РјРѕ РЅР°Р·РІСѓ С‚Р° РѕРґСЂР°Р·Сѓ СЃС…РІР°Р»СЋС”РјРѕ."""
     serializer = ExistingCompanyStep2Serializer(data=request.data)
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -195,15 +246,15 @@ def registration_step2_existing_company(request):
     try:
         user = User.objects.get(id=user_id)
     except User.DoesNotExist:
-        return Response({"user_id": "Користувач не знайдений."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"user_id": "РљРѕСЂРёСЃС‚СѓРІР°С‡ РЅРµ Р·РЅР°Р№РґРµРЅРёР№."}, status=status.HTTP_400_BAD_REQUEST)
 
     company = Company.objects.filter(edrpou=edrpou, status=Company.Status.ACTIVE).first()
     if not company:
-        return Response({"edrpou": "Компанію з таким кодом не знайдено."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"edrpou": "РљРѕРјРїР°РЅС–СЋ Р· С‚Р°РєРёРј РєРѕРґРѕРј РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_400_BAD_REQUEST)
 
     if CompanyUser.objects.filter(user=user, company=company).exists():
         return Response(
-            {"non_field_errors": "Користувач вже має зв'язок з цією компанією."}, status=status.HTTP_400_BAD_REQUEST
+            {"non_field_errors": "РљРѕСЂРёСЃС‚СѓРІР°С‡ РІР¶Рµ РјР°С” Р·РІ'СЏР·РѕРє Р· С†С–С”СЋ РєРѕРјРїР°РЅС–С”СЋ."}, status=status.HTTP_400_BAD_REQUEST
         )
 
     has_approved = CompanyUser.objects.filter(company=company, status=CompanyUser.Status.APPROVED).exists()
@@ -214,10 +265,10 @@ def registration_step2_existing_company(request):
             company.save(update_fields=["name", "updated_at"])
 
         default_role, _ = Role.objects.get_or_create(
-            company=company, name="Користувач", defaults={"is_system": True}
+            company=company, name="РљРѕСЂРёСЃС‚СѓРІР°С‡", defaults={"is_system": True}
         )
         admin_role, _ = Role.objects.get_or_create(
-            company=company, name="Адміністратор", defaults={"is_system": True}
+            company=company, name="РђРґРјС–РЅС–СЃС‚СЂР°С‚РѕСЂ", defaults={"is_system": True}
         )
 
         if not has_approved:
@@ -229,14 +280,14 @@ def registration_step2_existing_company(request):
                 user=user, company=company, role=default_role, status=CompanyUser.Status.PENDING
             )
             admin_memberships = CompanyUser.objects.filter(
-                company=company, status=CompanyUser.Status.APPROVED, role__name="Адміністратор"
+                company=company, status=CompanyUser.Status.APPROVED, role__name="РђРґРјС–РЅС–СЃС‚СЂР°С‚РѕСЂ"
             )
             for admin_membership in admin_memberships:
                 Notification.objects.create(
                     user=admin_membership.user,
                     type=Notification.Type.MEMBERSHIP_REQUEST,
-                    title=f"Запит на приєднання від {user.get_full_name() or user.email}",
-                    body=f"Користувач {user.get_full_name() or user.email} ({user.email}) хоче приєднатися до компанії {company.name}.",
+                    title=f"Р—Р°РїРёС‚ РЅР° РїСЂРёС”РґРЅР°РЅРЅСЏ РІС–Рґ {user.get_full_name() or user.email}",
+                    body=f"РљРѕСЂРёСЃС‚СѓРІР°С‡ {user.get_full_name() or user.email} ({user.email}) С…РѕС‡Рµ РїСЂРёС”РґРЅР°С‚РёСЃСЏ РґРѕ РєРѕРјРїР°РЅС–С— {company.name}.",
                     meta={"membership_id": membership.id, "user_id": user.id, "company_id": company.id},
                 )
 
@@ -244,12 +295,12 @@ def registration_step2_existing_company(request):
 
 
 @extend_schema(
-    summary="Реєстрація - Крок 3 (CPV-категорії компанії)",
+    summary="Р РµС”СЃС‚СЂР°С†С–СЏ - РљСЂРѕРє 3 (CPV-РєР°С‚РµРіРѕСЂС–С— РєРѕРјРїР°РЅС–С—)",
     description=(
-        "Закріплення CPV-категорій за компанією під час реєстрації.\n"
-        "- Якщо це перший підтверджений користувач компанії — список категорій перезаписується.\n"
-        "- Якщо підтверджених користувачів вже більше одного — існуючі категорії не видаляються, "
-        "додаються лише нові (об'єднання списків)."
+        "Р—Р°РєСЂС–РїР»РµРЅРЅСЏ CPV-РєР°С‚РµРіРѕСЂС–Р№ Р·Р° РєРѕРјРїР°РЅС–С”СЋ РїС–Рґ С‡Р°СЃ СЂРµС”СЃС‚СЂР°С†С–С—.\n"
+        "- РЇРєС‰Рѕ С†Рµ РїРµСЂС€РёР№ РїС–РґС‚РІРµСЂРґР¶РµРЅРёР№ РєРѕСЂРёСЃС‚СѓРІР°С‡ РєРѕРјРїР°РЅС–С— вЂ” СЃРїРёСЃРѕРє РєР°С‚РµРіРѕСЂС–Р№ РїРµСЂРµР·Р°РїРёСЃСѓС”С‚СЊСЃСЏ.\n"
+        "- РЇРєС‰Рѕ РїС–РґС‚РІРµСЂРґР¶РµРЅРёС… РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ РІР¶Рµ Р±С–Р»СЊС€Рµ РѕРґРЅРѕРіРѕ вЂ” С–СЃРЅСѓСЋС‡С– РєР°С‚РµРіРѕСЂС–С— РЅРµ РІРёРґР°Р»СЏСЋС‚СЊСЃСЏ, "
+        "РґРѕРґР°СЋС‚СЊСЃСЏ Р»РёС€Рµ РЅРѕРІС– (РѕР±'С”РґРЅР°РЅРЅСЏ СЃРїРёСЃРєС–РІ)."
     ),
     request={
         "application/json": {
@@ -260,7 +311,7 @@ def registration_step2_existing_company(request):
                 "cpv_ids": {
                     "type": "array",
                     "items": {"type": "integer"},
-                    "description": "Масив ID CPV-кодів для закріплення за компанією",
+                    "description": "РњР°СЃРёРІ ID CPV-РєРѕРґС–РІ РґР»СЏ Р·Р°РєСЂС–РїР»РµРЅРЅСЏ Р·Р° РєРѕРјРїР°РЅС–С”СЋ",
                 },
             },
             "required": ["user_id", "company_id"],
@@ -268,46 +319,46 @@ def registration_step2_existing_company(request):
     },
     responses={
         200: CompanyCpvSerializer,
-        400: OpenApiResponse(description="Помилка валідації"),
+        400: OpenApiResponse(description="РџРѕРјРёР»РєР° РІР°Р»С–РґР°С†С–С—"),
     },
 )
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def registration_step3_company_cpvs(request):
     """
-    Step 3: Прив'язка CPV-категорій до компанії під час реєстрації.
+    Step 3: РџСЂРёРІ'СЏР·РєР° CPV-РєР°С‚РµРіРѕСЂС–Р№ РґРѕ РєРѕРјРїР°РЅС–С— РїС–Рґ С‡Р°СЃ СЂРµС”СЃС‚СЂР°С†С–С—.
 
-    Для першого підтвердженого користувача компанії дозволяємо задати повний список.
-    Для наступних користувачів — лише додаємо нові категорії, не видаляючи існуючі.
+    Р”Р»СЏ РїРµСЂС€РѕРіРѕ РїС–РґС‚РІРµСЂРґР¶РµРЅРѕРіРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р° РєРѕРјРїР°РЅС–С— РґРѕР·РІРѕР»СЏС”РјРѕ Р·Р°РґР°С‚Рё РїРѕРІРЅРёР№ СЃРїРёСЃРѕРє.
+    Р”Р»СЏ РЅР°СЃС‚СѓРїРЅРёС… РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ вЂ” Р»РёС€Рµ РґРѕРґР°С”РјРѕ РЅРѕРІС– РєР°С‚РµРіРѕСЂС–С—, РЅРµ РІРёРґР°Р»СЏСЋС‡Рё С–СЃРЅСѓСЋС‡С–.
     """
     user_id = request.data.get("user_id")
     company_id = request.data.get("company_id")
     cpv_ids = request.data.get("cpv_ids") or []
 
     if not user_id:
-        return Response({"user_id": "Поле обов'язкове."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"user_id": "РџРѕР»Рµ РѕР±РѕРІ'СЏР·РєРѕРІРµ."}, status=status.HTTP_400_BAD_REQUEST)
     if not company_id:
-        return Response({"company_id": "Поле обов'язкове."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"company_id": "РџРѕР»Рµ РѕР±РѕРІ'СЏР·РєРѕРІРµ."}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         user = User.objects.get(id=user_id)
     except User.DoesNotExist:
-        return Response({"user_id": "Користувач не знайдений."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"user_id": "РљРѕСЂРёСЃС‚СѓРІР°С‡ РЅРµ Р·РЅР°Р№РґРµРЅРёР№."}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         company = Company.objects.get(id=company_id, status=Company.Status.ACTIVE)
     except Company.DoesNotExist:
-        return Response({"company_id": "Компанію не знайдено або вона неактивна."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"company_id": "РљРѕРјРїР°РЅС–СЋ РЅРµ Р·РЅР°Р№РґРµРЅРѕ Р°Р±Рѕ РІРѕРЅР° РЅРµР°РєС‚РёРІРЅР°."}, status=status.HTTP_400_BAD_REQUEST)
 
     if not CompanyUser.objects.filter(
         user=user, company=company, status=CompanyUser.Status.APPROVED
     ).exists():
         return Response(
-            {"non_field_errors": "Користувач не має підтвердженого зв'язку з цією компанією."},
+            {"non_field_errors": "РљРѕСЂРёСЃС‚СѓРІР°С‡ РЅРµ РјР°С” РїС–РґС‚РІРµСЂРґР¶РµРЅРѕРіРѕ Р·РІ'СЏР·РєСѓ Р· С†С–С”СЋ РєРѕРјРїР°РЅС–С”СЋ."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Визначаємо, чи це перший підтверджений користувач компанії
+    # Р’РёР·РЅР°С‡Р°С”РјРѕ, С‡Рё С†Рµ РїРµСЂС€РёР№ РїС–РґС‚РІРµСЂРґР¶РµРЅРёР№ РєРѕСЂРёСЃС‚СѓРІР°С‡ РєРѕРјРїР°РЅС–С—
     approved_members_qs = CompanyUser.objects.filter(
         company=company, status=CompanyUser.Status.APPROVED
     )
@@ -317,10 +368,10 @@ def registration_step3_company_cpvs(request):
     existing_ids = set(company.cpv_categories.values_list("id", flat=True))
 
     if approved_count <= 1:
-        # Перший підтверджений користувач: повна заміна списку
+        # РџРµСЂС€РёР№ РїС–РґС‚РІРµСЂРґР¶РµРЅРёР№ РєРѕСЂРёСЃС‚СѓРІР°С‡: РїРѕРІРЅР° Р·Р°РјС–РЅР° СЃРїРёСЃРєСѓ
         company.cpv_categories.set(cpv_ids)
     else:
-        # Наступні користувачі: не дозволяємо видаляти вже існуючі категорії
+        # РќР°СЃС‚СѓРїРЅС– РєРѕСЂРёСЃС‚СѓРІР°С‡С–: РЅРµ РґРѕР·РІРѕР»СЏС”РјРѕ РІРёРґР°Р»СЏС‚Рё РІР¶Рµ С–СЃРЅСѓСЋС‡С– РєР°С‚РµРіРѕСЂС–С—
         new_ids = set(cpv_ids)
         union_ids = sorted(existing_ids.union(new_ids))
         company.cpv_categories.set(union_ids)
@@ -364,32 +415,32 @@ class CompanyViewSet(viewsets.ModelViewSet):
         )
 
     @extend_schema(
-        summary="Список активних компаній",
-        description="Отримати список активних компаній для вибору при реєстрації.",
+        summary="РЎРїРёСЃРѕРє Р°РєС‚РёРІРЅРёС… РєРѕРјРїР°РЅС–Р№",
+        description="РћС‚СЂРёРјР°С‚Рё СЃРїРёСЃРѕРє Р°РєС‚РёРІРЅРёС… РєРѕРјРїР°РЅС–Р№ РґР»СЏ РІРёР±РѕСЂСѓ РїСЂРё СЂРµС”СЃС‚СЂР°С†С–С—.",
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Деталі компанії",
-        description="Отримати детальну інформацію про компанію.",
+        summary="Р”РµС‚Р°Р»С– РєРѕРјРїР°РЅС–С—",
+        description="РћС‚СЂРёРјР°С‚Рё РґРµС‚Р°Р»СЊРЅСѓ С–РЅС„РѕСЂРјР°С†С–СЋ РїСЂРѕ РєРѕРјРїР°РЅС–СЋ.",
     )
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Створити компанію (контрагента)",
-        description="Додати компанію вручну (код та назва). Для списку контрагентів.",
+        summary="РЎС‚РІРѕСЂРёС‚Рё РєРѕРјРїР°РЅС–СЋ (РєРѕРЅС‚СЂР°РіРµРЅС‚Р°)",
+        description="Р”РѕРґР°С‚Рё РєРѕРјРїР°РЅС–СЋ РІСЂСѓС‡РЅСѓ (РєРѕРґ С‚Р° РЅР°Р·РІР°). Р”Р»СЏ СЃРїРёСЃРєСѓ РєРѕРЅС‚СЂР°РіРµРЅС‚С–РІ.",
     )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
 
 @extend_schema(
-    summary="CPV-категорії поточної компанії",
+    summary="CPV-РєР°С‚РµРіРѕСЂС–С— РїРѕС‚РѕС‡РЅРѕС— РєРѕРјРїР°РЅС–С—",
     description=(
-        "Отримати або оновити список CPV-категорій, закріплених за компанією поточного користувача.\n"
-        "Компанія визначається за першим підтвердженим членством користувача."
+        "РћС‚СЂРёРјР°С‚Рё Р°Р±Рѕ РѕРЅРѕРІРёС‚Рё СЃРїРёСЃРѕРє CPV-РєР°С‚РµРіРѕСЂС–Р№, Р·Р°РєСЂС–РїР»РµРЅРёС… Р·Р° РєРѕРјРїР°РЅС–С”СЋ РїРѕС‚РѕС‡РЅРѕРіРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р°.\n"
+        "РљРѕРјРїР°РЅС–СЏ РІРёР·РЅР°С‡Р°С”С‚СЊСЃСЏ Р·Р° РїРµСЂС€РёРј РїС–РґС‚РІРµСЂРґР¶РµРЅРёРј С‡Р»РµРЅСЃС‚РІРѕРј РєРѕСЂРёСЃС‚СѓРІР°С‡Р°."
     ),
     responses={200: CompanyCpvSerializer},
 )
@@ -397,8 +448,8 @@ class CompanyViewSet(viewsets.ModelViewSet):
 @permission_classes([permissions.IsAuthenticated])
 def company_current_cpvs(request):
     """
-    GET: Повертає компанію поточного користувача та її CPV-категорії.
-    PUT: Оновлює список CPV-категорій компанії (повна заміна списку).
+    GET: РџРѕРІРµСЂС‚Р°С” РєРѕРјРїР°РЅС–СЋ РїРѕС‚РѕС‡РЅРѕРіРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р° С‚Р° С—С— CPV-РєР°С‚РµРіРѕСЂС–С—.
+    PUT: РћРЅРѕРІР»СЋС” СЃРїРёСЃРѕРє CPV-РєР°С‚РµРіРѕСЂС–Р№ РєРѕРјРїР°РЅС–С— (РїРѕРІРЅР° Р·Р°РјС–РЅР° СЃРїРёСЃРєСѓ).
     """
     user = request.user
     membership = (
@@ -408,7 +459,7 @@ def company_current_cpvs(request):
     )
     if not membership or not membership.company:
         return Response(
-            {"detail": "Користувач не має підтвердженого членства ні в одній компанії."},
+            {"detail": "РљРѕСЂРёСЃС‚СѓРІР°С‡ РЅРµ РјР°С” РїС–РґС‚РІРµСЂРґР¶РµРЅРѕРіРѕ С‡Р»РµРЅСЃС‚РІР° РЅС– РІ РѕРґРЅС–Р№ РєРѕРјРїР°РЅС–С—."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -426,7 +477,7 @@ def company_current_cpvs(request):
 
     @action(detail=True, methods=["get"], permission_classes=[permissions.IsAuthenticated])
     def members(self, request, pk=None):
-        """Список користувачів (агентів) компанії."""
+        """РЎРїРёСЃРѕРє РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ (Р°РіРµРЅС‚С–РІ) РєРѕРјРїР°РЅС–С—."""
         company = self.get_object()
         memberships = CompanyUser.objects.filter(company=company).select_related(
             "user", "role"
@@ -452,8 +503,8 @@ def _user_owner_company_ids(request):
 
 class CompanySupplierViewSet(viewsets.ModelViewSet):
     """
-    Список контрагентів компанії: додані вручну та (згодом) ті, хто підтвердив участь у тендерах.
-    Додавання: або supplier_company_id, або edrpou (якщо компанія є — лише зв'язок; якщо немає — name обов'язкова, створюється компанія).
+    РЎРїРёСЃРѕРє РєРѕРЅС‚СЂР°РіРµРЅС‚С–РІ РєРѕРјРїР°РЅС–С—: РґРѕРґР°РЅС– РІСЂСѓС‡РЅСѓ С‚Р° (Р·РіРѕРґРѕРј) С‚С–, С…С‚Рѕ РїС–РґС‚РІРµСЂРґРёРІ СѓС‡Р°СЃС‚СЊ Сѓ С‚РµРЅРґРµСЂР°С….
+    Р”РѕРґР°РІР°РЅРЅСЏ: Р°Р±Рѕ supplier_company_id, Р°Р±Рѕ edrpou (СЏРєС‰Рѕ РєРѕРјРїР°РЅС–СЏ С” вЂ” Р»РёС€Рµ Р·РІ'СЏР·РѕРє; СЏРєС‰Рѕ РЅРµРјР°С” вЂ” name РѕР±РѕРІ'СЏР·РєРѕРІР°, СЃС‚РІРѕСЂСЋС”С‚СЊСЃСЏ РєРѕРјРїР°РЅС–СЏ).
     """
 
     serializer_class = CompanySupplierSerializer
@@ -481,7 +532,7 @@ class CompanySupplierViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         owner_ids = list(_user_owner_company_ids(request))
         if not owner_ids:
-            raise permissions.exceptions.PermissionDenied("Немає доступу до жодної компанії.")
+            raise permissions.exceptions.PermissionDenied("РќРµРјР°С” РґРѕСЃС‚СѓРїСѓ РґРѕ Р¶РѕРґРЅРѕС— РєРѕРјРїР°РЅС–С—.")
         owner_id = owner_ids[0]
 
         serializer = AddCompanySupplierSerializer(data=request.data)
@@ -491,11 +542,11 @@ class CompanySupplierViewSet(viewsets.ModelViewSet):
         supplier_id = data.get("supplier_company_id")
         if supplier_id is not None:
             if supplier_id == owner_id:
-                raise DRFValidationError({"supplier_company_id": "Не можна додати власну компанію як контрагента."})
+                raise DRFValidationError({"supplier_company_id": "РќРµ РјРѕР¶РЅР° РґРѕРґР°С‚Рё РІР»Р°СЃРЅСѓ РєРѕРјРїР°РЅС–СЋ СЏРє РєРѕРЅС‚СЂР°РіРµРЅС‚Р°."})
             if not Company.objects.filter(id=supplier_id, status=Company.Status.ACTIVE).exists():
-                raise DRFValidationError({"supplier_company_id": "Компанію не знайдено або вона неактивна."})
+                raise DRFValidationError({"supplier_company_id": "РљРѕРјРїР°РЅС–СЋ РЅРµ Р·РЅР°Р№РґРµРЅРѕ Р°Р±Рѕ РІРѕРЅР° РЅРµР°РєС‚РёРІРЅР°."})
             if CompanySupplier.objects.filter(owner_company_id=owner_id, supplier_company_id=supplier_id).exists():
-                raise DRFValidationError({"supplier_company_id": "Ця компанія вже є у списку контрагентів."})
+                raise DRFValidationError({"supplier_company_id": "Р¦СЏ РєРѕРјРїР°РЅС–СЏ РІР¶Рµ С” Сѓ СЃРїРёСЃРєСѓ РєРѕРЅС‚СЂР°РіРµРЅС‚С–РІ."})
             obj = CompanySupplier.objects.create(
                 owner_company_id=owner_id,
                 supplier_company_id=supplier_id,
@@ -512,9 +563,9 @@ class CompanySupplierViewSet(viewsets.ModelViewSet):
         company = Company.objects.filter(edrpou=edrpou, status=Company.Status.ACTIVE).first()
         if company:
             if CompanySupplier.objects.filter(owner_company_id=owner_id, supplier_company_id=company.id).exists():
-                raise DRFValidationError({"edrpou": "Ця компанія вже є у списку контрагентів."})
+                raise DRFValidationError({"edrpou": "Р¦СЏ РєРѕРјРїР°РЅС–СЏ РІР¶Рµ С” Сѓ СЃРїРёСЃРєСѓ РєРѕРЅС‚СЂР°РіРµРЅС‚С–РІ."})
             if company.id == owner_id:
-                raise DRFValidationError({"edrpou": "Не можна додати власну компанію як контрагента."})
+                raise DRFValidationError({"edrpou": "РќРµ РјРѕР¶РЅР° РґРѕРґР°С‚Рё РІР»Р°СЃРЅСѓ РєРѕРјРїР°РЅС–СЋ СЏРє РєРѕРЅС‚СЂР°РіРµРЅС‚Р°."})
             obj = CompanySupplier.objects.create(
                 owner_company_id=owner_id,
                 supplier_company_id=company.id,
@@ -526,7 +577,7 @@ class CompanySupplierViewSet(viewsets.ModelViewSet):
             )
 
         if not name:
-            raise DRFValidationError({"name": "Компанії з таким кодом немає. Введіть назву для створення контрагента (попередня назва)."})
+            raise DRFValidationError({"name": "РљРѕРјРїР°РЅС–С— Р· С‚Р°РєРёРј РєРѕРґРѕРј РЅРµРјР°С”. Р’РІРµРґС–С‚СЊ РЅР°Р·РІСѓ РґР»СЏ СЃС‚РІРѕСЂРµРЅРЅСЏ РєРѕРЅС‚СЂР°РіРµРЅС‚Р° (РїРѕРїРµСЂРµРґРЅСЏ РЅР°Р·РІР°)."})
         with transaction.atomic():
             new_company = Company.objects.create(
                 edrpou=edrpou,
@@ -545,11 +596,11 @@ class CompanySupplierViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
-    @extend_schema(summary="Додати контрагента", request=AddCompanySupplierSerializer)
+    @extend_schema(summary="Р”РѕРґР°С‚Рё РєРѕРЅС‚СЂР°РіРµРЅС‚Р°", request=AddCompanySupplierSerializer)
     def create(self, request, *args, **kwargs):
         owner_ids = list(_user_owner_company_ids(request))
         if not owner_ids:
-            raise permissions.exceptions.PermissionDenied("Немає доступу до жодної компанії.")
+            raise permissions.exceptions.PermissionDenied("РќРµРјР°С” РґРѕСЃС‚СѓРїСѓ РґРѕ Р¶РѕРґРЅРѕС— РєРѕРјРїР°РЅС–С—.")
         owner_id = owner_ids[0]
 
         serializer = AddCompanySupplierSerializer(data=request.data)
@@ -559,11 +610,11 @@ class CompanySupplierViewSet(viewsets.ModelViewSet):
         supplier_id = data.get("supplier_company_id")
         if supplier_id is not None:
             if supplier_id == owner_id:
-                raise DRFValidationError({"supplier_company_id": "Не можна додати власну компанію як контрагента."})
+                raise DRFValidationError({"supplier_company_id": "РќРµ РјРѕР¶РЅР° РґРѕРґР°С‚Рё РІР»Р°СЃРЅСѓ РєРѕРјРїР°РЅС–СЋ СЏРє РєРѕРЅС‚СЂР°РіРµРЅС‚Р°."})
             if not Company.objects.filter(id=supplier_id, status=Company.Status.ACTIVE).exists():
-                raise DRFValidationError({"supplier_company_id": "Компанію не знайдено або вона неактивна."})
+                raise DRFValidationError({"supplier_company_id": "РљРѕРјРїР°РЅС–СЋ РЅРµ Р·РЅР°Р№РґРµРЅРѕ Р°Р±Рѕ РІРѕРЅР° РЅРµР°РєС‚РёРІРЅР°."})
             if CompanySupplier.objects.filter(owner_company_id=owner_id, supplier_company_id=supplier_id).exists():
-                raise DRFValidationError({"supplier_company_id": "Ця компанія вже є у списку контрагентів."})
+                raise DRFValidationError({"supplier_company_id": "Р¦СЏ РєРѕРјРїР°РЅС–СЏ РІР¶Рµ С” Сѓ СЃРїРёСЃРєСѓ РєРѕРЅС‚СЂР°РіРµРЅС‚С–РІ."})
             obj = CompanySupplier.objects.create(
                 owner_company_id=owner_id,
                 supplier_company_id=supplier_id,
@@ -580,9 +631,9 @@ class CompanySupplierViewSet(viewsets.ModelViewSet):
         company = Company.objects.filter(edrpou=edrpou, status=Company.Status.ACTIVE).first()
         if company:
             if CompanySupplier.objects.filter(owner_company_id=owner_id, supplier_company_id=company.id).exists():
-                raise DRFValidationError({"edrpou": "Ця компанія вже є у списку контрагентів."})
+                raise DRFValidationError({"edrpou": "Р¦СЏ РєРѕРјРїР°РЅС–СЏ РІР¶Рµ С” Сѓ СЃРїРёСЃРєСѓ РєРѕРЅС‚СЂР°РіРµРЅС‚С–РІ."})
             if company.id == owner_id:
-                raise DRFValidationError({"edrpou": "Не можна додати власну компанію як контрагента."})
+                raise DRFValidationError({"edrpou": "РќРµ РјРѕР¶РЅР° РґРѕРґР°С‚Рё РІР»Р°СЃРЅСѓ РєРѕРјРїР°РЅС–СЋ СЏРє РєРѕРЅС‚СЂР°РіРµРЅС‚Р°."})
             obj = CompanySupplier.objects.create(
                 owner_company_id=owner_id,
                 supplier_company_id=company.id,
@@ -594,7 +645,7 @@ class CompanySupplierViewSet(viewsets.ModelViewSet):
             )
 
         if not name:
-            raise DRFValidationError({"name": "Компанії з таким кодом немає. Введіть назву для створення контрагента (попередня назва)."})
+            raise DRFValidationError({"name": "РљРѕРјРїР°РЅС–С— Р· С‚Р°РєРёРј РєРѕРґРѕРј РЅРµРјР°С”. Р’РІРµРґС–С‚СЊ РЅР°Р·РІСѓ РґР»СЏ СЃС‚РІРѕСЂРµРЅРЅСЏ РєРѕРЅС‚СЂР°РіРµРЅС‚Р° (РїРѕРїРµСЂРµРґРЅСЏ РЅР°Р·РІР°)."})
         with transaction.atomic():
             new_company = Company.objects.create(
                 edrpou=edrpou,
@@ -613,7 +664,7 @@ class CompanySupplierViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
-    @extend_schema(summary="Список контрагентів", description="Контрагенти: додані вручну та з участі в тендерах.")
+    @extend_schema(summary="РЎРїРёСЃРѕРє РєРѕРЅС‚СЂР°РіРµРЅС‚С–РІ", description="РљРѕРЅС‚СЂР°РіРµРЅС‚Рё: РґРѕРґР°РЅС– РІСЂСѓС‡РЅСѓ С‚Р° Р· СѓС‡Р°СЃС‚С– РІ С‚РµРЅРґРµСЂР°С….")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
@@ -622,8 +673,8 @@ class CompanyUserViewSet(viewsets.ModelViewSet):
     """
     CompanyUser membership management.
 
-    В рамках поточного MVP всі підтверджені учасники компанії мають однакові права
-    доступу в межах своїх компаній (без поділу на адміністраторів та користувачів).
+    Р’ СЂР°РјРєР°С… РїРѕС‚РѕС‡РЅРѕРіРѕ MVP РІСЃС– РїС–РґС‚РІРµСЂРґР¶РµРЅС– СѓС‡Р°СЃРЅРёРєРё РєРѕРјРїР°РЅС–С— РјР°СЋС‚СЊ РѕРґРЅР°РєРѕРІС– РїСЂР°РІР°
+    РґРѕСЃС‚СѓРїСѓ РІ РјРµР¶Р°С… СЃРІРѕС—С… РєРѕРјРїР°РЅС–Р№ (Р±РµР· РїРѕРґС–Р»Сѓ РЅР° Р°РґРјС–РЅС–СЃС‚СЂР°С‚РѕСЂС–РІ С‚Р° РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ).
     """
 
     serializer_class = CompanyUserSerializer
@@ -631,8 +682,8 @@ class CompanyUserViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """
-        Повертаємо всі членства компаній, в яких поточний користувач має
-        підтверджений статус. Ролі не враховуються.
+        РџРѕРІРµСЂС‚Р°С”РјРѕ РІСЃС– С‡Р»РµРЅСЃС‚РІР° РєРѕРјРїР°РЅС–Р№, РІ СЏРєРёС… РїРѕС‚РѕС‡РЅРёР№ РєРѕСЂРёСЃС‚СѓРІР°С‡ РјР°С”
+        РїС–РґС‚РІРµСЂРґР¶РµРЅРёР№ СЃС‚Р°С‚СѓСЃ. Р РѕР»С– РЅРµ РІСЂР°С…РѕРІСѓСЋС‚СЊСЃСЏ.
         """
         user = self.request.user
         if user.is_superuser:
@@ -645,38 +696,38 @@ class CompanyUserViewSet(viewsets.ModelViewSet):
         return CompanyUser.objects.filter(company_id__in=user_companies)
 
     @extend_schema(
-        summary="Список членів компанії",
-        description="Отримати список користувачів компаній, в яких поточний користувач має підтверджене членство.",
+        summary="РЎРїРёСЃРѕРє С‡Р»РµРЅС–РІ РєРѕРјРїР°РЅС–С—",
+        description="РћС‚СЂРёРјР°С‚Рё СЃРїРёСЃРѕРє РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ РєРѕРјРїР°РЅС–Р№, РІ СЏРєРёС… РїРѕС‚РѕС‡РЅРёР№ РєРѕСЂРёСЃС‚СѓРІР°С‡ РјР°С” РїС–РґС‚РІРµСЂРґР¶РµРЅРµ С‡Р»РµРЅСЃС‚РІРѕ.",
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Деталі членства",
-        description="Отримати детальну інформацію про членство.",
+        summary="Р”РµС‚Р°Р»С– С‡Р»РµРЅСЃС‚РІР°",
+        description="РћС‚СЂРёРјР°С‚Рё РґРµС‚Р°Р»СЊРЅСѓ С–РЅС„РѕСЂРјР°С†С–СЋ РїСЂРѕ С‡Р»РµРЅСЃС‚РІРѕ.",
     )
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Додати користувача до компанії",
-        description="Додати користувача до компанії вручну (будь-який підтверджений учасник компанії).",
+        summary="Р”РѕРґР°С‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡Р° РґРѕ РєРѕРјРїР°РЅС–С—",
+        description="Р”РѕРґР°С‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡Р° РґРѕ РєРѕРјРїР°РЅС–С— РІСЂСѓС‡РЅСѓ (Р±СѓРґСЊ-СЏРєРёР№ РїС–РґС‚РІРµСЂРґР¶РµРЅРёР№ СѓС‡Р°СЃРЅРёРє РєРѕРјРїР°РЅС–С—).",
         request=CompanyUserSerializer,
     )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Підтвердити членство",
-        description="Підтвердити запит на приєднання до компанії.",
-        responses={200: CompanyUserSerializer, 400: OpenApiResponse(description="Помилка")},
+        summary="РџС–РґС‚РІРµСЂРґРёС‚Рё С‡Р»РµРЅСЃС‚РІРѕ",
+        description="РџС–РґС‚РІРµСЂРґРёС‚Рё Р·Р°РїРёС‚ РЅР° РїСЂРёС”РґРЅР°РЅРЅСЏ РґРѕ РєРѕРјРїР°РЅС–С—.",
+        responses={200: CompanyUserSerializer, 400: OpenApiResponse(description="РџРѕРјРёР»РєР°")},
     )
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
         """Approve membership request."""
         membership = self.get_object()
         if membership.status != CompanyUser.Status.PENDING:
-            return Response({"error": "Можна підтвердити тільки запити зі статусом 'Очікує'."}, status=400)
+            return Response({"error": "РњРѕР¶РЅР° РїС–РґС‚РІРµСЂРґРёС‚Рё С‚С–Р»СЊРєРё Р·Р°РїРёС‚Рё Р·С– СЃС‚Р°С‚СѓСЃРѕРј 'РћС‡С–РєСѓС”'."}, status=400)
 
         membership.status = CompanyUser.Status.APPROVED
         membership.save()
@@ -685,24 +736,24 @@ class CompanyUserViewSet(viewsets.ModelViewSet):
         Notification.objects.create(
             user=membership.user,
             type=Notification.Type.MEMBERSHIP_REQUEST,
-            title=f"Ваш запит підтверджено",
-            body=f"Ваш запит на приєднання до компанії {membership.company.name} було підтверджено.",
+            title=f"Р’Р°С€ Р·Р°РїРёС‚ РїС–РґС‚РІРµСЂРґР¶РµРЅРѕ",
+            body=f"Р’Р°С€ Р·Р°РїРёС‚ РЅР° РїСЂРёС”РґРЅР°РЅРЅСЏ РґРѕ РєРѕРјРїР°РЅС–С— {membership.company.name} Р±СѓР»Рѕ РїС–РґС‚РІРµСЂРґР¶РµРЅРѕ.",
             meta={"membership_id": membership.id, "company_id": membership.company.id},
         )
 
         return Response(CompanyUserSerializer(membership).data)
 
     @extend_schema(
-        summary="Відхилити членство",
-        description="Відхилити запит на приєднання до компанії.",
-        responses={200: CompanyUserSerializer, 400: OpenApiResponse(description="Помилка")},
+        summary="Р’С–РґС…РёР»РёС‚Рё С‡Р»РµРЅСЃС‚РІРѕ",
+        description="Р’С–РґС…РёР»РёС‚Рё Р·Р°РїРёС‚ РЅР° РїСЂРёС”РґРЅР°РЅРЅСЏ РґРѕ РєРѕРјРїР°РЅС–С—.",
+        responses={200: CompanyUserSerializer, 400: OpenApiResponse(description="РџРѕРјРёР»РєР°")},
     )
     @action(detail=True, methods=["post"])
     def reject(self, request, pk=None):
         """Reject membership request."""
         membership = self.get_object()
         if membership.status != CompanyUser.Status.PENDING:
-            return Response({"error": "Можна відхилити тільки запити зі статусом 'Очікує'."}, status=400)
+            return Response({"error": "РњРѕР¶РЅР° РІС–РґС…РёР»РёС‚Рё С‚С–Р»СЊРєРё Р·Р°РїРёС‚Рё Р·С– СЃС‚Р°С‚СѓСЃРѕРј 'РћС‡С–РєСѓС”'."}, status=400)
 
         membership.status = CompanyUser.Status.REJECTED
         membership.save()
@@ -711,50 +762,50 @@ class CompanyUserViewSet(viewsets.ModelViewSet):
         Notification.objects.create(
             user=membership.user,
             type=Notification.Type.MEMBERSHIP_REQUEST,
-            title=f"Ваш запит відхилено",
-            body=f"Ваш запит на приєднання до компанії {membership.company.name} було відхилено.",
+            title=f"Р’Р°С€ Р·Р°РїРёС‚ РІС–РґС…РёР»РµРЅРѕ",
+            body=f"Р’Р°С€ Р·Р°РїРёС‚ РЅР° РїСЂРёС”РґРЅР°РЅРЅСЏ РґРѕ РєРѕРјРїР°РЅС–С— {membership.company.name} Р±СѓР»Рѕ РІС–РґС…РёР»РµРЅРѕ.",
             meta={"membership_id": membership.id, "company_id": membership.company.id},
         )
 
         return Response(CompanyUserSerializer(membership).data)
 
     @extend_schema(
-        summary="Створити нового користувача компанії",
-        description="Створити нового користувача (User) і одразу додати його до компанії зі статусом 'Підтверджено' (будь-який підтверджений учасник компанії).",
+        summary="РЎС‚РІРѕСЂРёС‚Рё РЅРѕРІРѕРіРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р° РєРѕРјРїР°РЅС–С—",
+        description="РЎС‚РІРѕСЂРёС‚Рё РЅРѕРІРѕРіРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р° (User) С– РѕРґСЂР°Р·Сѓ РґРѕРґР°С‚Рё Р№РѕРіРѕ РґРѕ РєРѕРјРїР°РЅС–С— Р·С– СЃС‚Р°С‚СѓСЃРѕРј 'РџС–РґС‚РІРµСЂРґР¶РµРЅРѕ' (Р±СѓРґСЊ-СЏРєРёР№ РїС–РґС‚РІРµСЂРґР¶РµРЅРёР№ СѓС‡Р°СЃРЅРёРє РєРѕРјРїР°РЅС–С—).",
         request=UserRegistrationStep1Serializer,
-        responses={201: CompanyUserSerializer, 400: OpenApiResponse(description="Помилка валідації")},
+        responses={201: CompanyUserSerializer, 400: OpenApiResponse(description="РџРѕРјРёР»РєР° РІР°Р»С–РґР°С†С–С—")},
     )
     @action(detail=False, methods=["post"], url_path="create-user")
     def create_user(self, request):
         """
-        Створити нового користувача та прив'язати його до першої компанії,
-        в якій поточний користувач має підтверджене членство.
+        РЎС‚РІРѕСЂРёС‚Рё РЅРѕРІРѕРіРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р° С‚Р° РїСЂРёРІ'СЏР·Р°С‚Рё Р№РѕРіРѕ РґРѕ РїРµСЂС€РѕС— РєРѕРјРїР°РЅС–С—,
+        РІ СЏРєС–Р№ РїРѕС‚РѕС‡РЅРёР№ РєРѕСЂРёСЃС‚СѓРІР°С‡ РјР°С” РїС–РґС‚РІРµСЂРґР¶РµРЅРµ С‡Р»РµРЅСЃС‚РІРѕ.
         """
         user = request.user
 
-        # Знаходимо компанії, де користувач має підтверджене членство
+        # Р—РЅР°С…РѕРґРёРјРѕ РєРѕРјРїР°РЅС–С—, РґРµ РєРѕСЂРёСЃС‚СѓРІР°С‡ РјР°С” РїС–РґС‚РІРµСЂРґР¶РµРЅРµ С‡Р»РµРЅСЃС‚РІРѕ
         memberships = CompanyUser.objects.filter(
             user=user,
             status=CompanyUser.Status.APPROVED,
         )
         if not memberships.exists() and not user.is_superuser:
             return Response(
-                {"error": "Користувач не має підтвердженого членства ні в одній компанії."},
+                {"error": "РљРѕСЂРёСЃС‚СѓРІР°С‡ РЅРµ РјР°С” РїС–РґС‚РІРµСЂРґР¶РµРЅРѕРіРѕ С‡Р»РµРЅСЃС‚РІР° РЅС– РІ РѕРґРЅС–Р№ РєРѕРјРїР°РЅС–С—."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
         company = memberships.first().company if memberships.exists() else None
 
-        # Створюємо користувача через існуючий серіалізатор реєстрації (крок 1)
+        # РЎС‚РІРѕСЂСЋС”РјРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р° С‡РµСЂРµР· С–СЃРЅСѓСЋС‡РёР№ СЃРµСЂС–Р°Р»С–Р·Р°С‚РѕСЂ СЂРµС”СЃС‚СЂР°С†С–С— (РєСЂРѕРє 1)
         serializer = UserRegistrationStep1Serializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         new_user = serializer.save()
 
-        # Отримуємо / створюємо роль "Користувач" для компанії
+        # РћС‚СЂРёРјСѓС”РјРѕ / СЃС‚РІРѕСЂСЋС”РјРѕ СЂРѕР»СЊ "РљРѕСЂРёСЃС‚СѓРІР°С‡" РґР»СЏ РєРѕРјРїР°РЅС–С—
         default_role, _ = Role.objects.get_or_create(
-            company=company, name="Користувач", defaults={"is_system": True}
+            company=company, name="РљРѕСЂРёСЃС‚СѓРІР°С‡", defaults={"is_system": True}
         )
 
         membership = CompanyUser.objects.create(
@@ -767,9 +818,9 @@ class CompanyUserViewSet(viewsets.ModelViewSet):
         return Response(CompanyUserSerializer(membership).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(
-        summary="Оновити дані користувача компанії",
-        description="Адміністратор може відредагувати ім'я, прізвище, email, телефон та пароль користувача компанії.",
-        responses={200: CompanyUserSerializer, 400: OpenApiResponse(description="Помилка валідації")},
+        summary="РћРЅРѕРІРёС‚Рё РґР°РЅС– РєРѕСЂРёСЃС‚СѓРІР°С‡Р° РєРѕРјРїР°РЅС–С—",
+        description="РђРґРјС–РЅС–СЃС‚СЂР°С‚РѕСЂ РјРѕР¶Рµ РІС–РґСЂРµРґР°РіСѓРІР°С‚Рё С–Рј'СЏ, РїСЂС–Р·РІРёС‰Рµ, email, С‚РµР»РµС„РѕРЅ С‚Р° РїР°СЂРѕР»СЊ РєРѕСЂРёСЃС‚СѓРІР°С‡Р° РєРѕРјРїР°РЅС–С—.",
+        responses={200: CompanyUserSerializer, 400: OpenApiResponse(description="РџРѕРјРёР»РєР° РІР°Р»С–РґР°С†С–С—")},
     )
     @action(detail=True, methods=["patch"], url_path="update-user")
     def update_user(self, request, pk=None):
@@ -788,9 +839,9 @@ class CompanyUserViewSet(viewsets.ModelViewSet):
         if last_name is not None:
             user.last_name = last_name
         if email is not None:
-            # Перевірка на унікальність email
+            # РџРµСЂРµРІС–СЂРєР° РЅР° СѓРЅС–РєР°Р»СЊРЅС–СЃС‚СЊ email
             if User.objects.filter(email=email).exclude(pk=user.pk).exists():
-                return Response({"email": ["Користувач з таким email вже існує."]}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"email": ["РљРѕСЂРёСЃС‚СѓРІР°С‡ Р· С‚Р°РєРёРј email РІР¶Рµ С–СЃРЅСѓС”."]}, status=status.HTTP_400_BAD_REQUEST)
             user.email = email
         if phone is not None:
             user.phone = phone
@@ -798,7 +849,7 @@ class CompanyUserViewSet(viewsets.ModelViewSet):
         if password is not None and password != "":
             if password != password_confirm:
                 return Response(
-                    {"password_confirm": ["Паролі не співпадають."]},
+                    {"password_confirm": ["РџР°СЂРѕР»С– РЅРµ СЃРїС–РІРїР°РґР°СЋС‚СЊ."]},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             try:
@@ -814,8 +865,8 @@ class CompanyUserViewSet(viewsets.ModelViewSet):
         return Response(CompanyUserSerializer(membership).data)
 
     @extend_schema(
-        summary="Деактивувати користувача компанії",
-        description="Адміністратор може вимкнути активність користувача (is_active = False), після чого він не зможе входити в систему.",
+        summary="Р”РµР°РєС‚РёРІСѓРІР°С‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡Р° РєРѕРјРїР°РЅС–С—",
+        description="РђРґРјС–РЅС–СЃС‚СЂР°С‚РѕСЂ РјРѕР¶Рµ РІРёРјРєРЅСѓС‚Рё Р°РєС‚РёРІРЅС–СЃС‚СЊ РєРѕСЂРёСЃС‚СѓРІР°С‡Р° (is_active = False), РїС–СЃР»СЏ С‡РѕРіРѕ РІС–РЅ РЅРµ Р·РјРѕР¶Рµ РІС…РѕРґРёС‚Рё РІ СЃРёСЃС‚РµРјСѓ.",
         responses={200: CompanyUserSerializer},
     )
     @action(detail=True, methods=["post"])
@@ -823,14 +874,14 @@ class CompanyUserViewSet(viewsets.ModelViewSet):
         membership = self.get_object()
         user = membership.user
         if not user.is_active:
-            return Response({"detail": "Користувач вже деактивований."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "РљРѕСЂРёСЃС‚СѓРІР°С‡ РІР¶Рµ РґРµР°РєС‚РёРІРѕРІР°РЅРёР№."}, status=status.HTTP_400_BAD_REQUEST)
         user.is_active = False
         user.save(update_fields=["is_active"])
         return Response(CompanyUserSerializer(membership).data)
 
     @extend_schema(
-        summary="Активувати користувача компанії",
-        description="Адміністратор може увімкнути активність користувача (is_active = True), після чого він зможе входити в систему.",
+        summary="РђРєС‚РёРІСѓРІР°С‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡Р° РєРѕРјРїР°РЅС–С—",
+        description="РђРґРјС–РЅС–СЃС‚СЂР°С‚РѕСЂ РјРѕР¶Рµ СѓРІС–РјРєРЅСѓС‚Рё Р°РєС‚РёРІРЅС–СЃС‚СЊ РєРѕСЂРёСЃС‚СѓРІР°С‡Р° (is_active = True), РїС–СЃР»СЏ С‡РѕРіРѕ РІС–РЅ Р·РјРѕР¶Рµ РІС…РѕРґРёС‚Рё РІ СЃРёСЃС‚РµРјСѓ.",
         responses={200: CompanyUserSerializer},
     )
     @action(detail=True, methods=["post"])
@@ -838,7 +889,7 @@ class CompanyUserViewSet(viewsets.ModelViewSet):
         membership = self.get_object()
         user = membership.user
         if user.is_active:
-            return Response({"detail": "Користувач вже активований."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "РљРѕСЂРёСЃС‚СѓРІР°С‡ РІР¶Рµ Р°РєС‚РёРІРѕРІР°РЅРёР№."}, status=status.HTTP_400_BAD_REQUEST)
         user.is_active = True
         user.save(update_fields=["is_active"])
         return Response(CompanyUserSerializer(membership).data)
@@ -859,39 +910,39 @@ class RoleViewSet(viewsets.ModelViewSet):
             return Role.objects.all()
         # Only show roles for companies where user is admin
         admin_companies = CompanyUser.objects.filter(
-            user=user, status=CompanyUser.Status.APPROVED, role__name="Адміністратор"
+            user=user, status=CompanyUser.Status.APPROVED, role__name="РђРґРјС–РЅС–СЃС‚СЂР°С‚РѕСЂ"
         ).values_list("company_id", flat=True)
         return Role.objects.filter(company_id__in=admin_companies)
 
     @extend_schema(
-        summary="Список ролей",
-        description="Отримати список ролей компанії (тільки для адміністраторів).",
+        summary="РЎРїРёСЃРѕРє СЂРѕР»РµР№",
+        description="РћС‚СЂРёРјР°С‚Рё СЃРїРёСЃРѕРє СЂРѕР»РµР№ РєРѕРјРїР°РЅС–С— (С‚С–Р»СЊРєРё РґР»СЏ Р°РґРјС–РЅС–СЃС‚СЂР°С‚РѕСЂС–РІ).",
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Створити роль",
-        description="Створити нову роль для компанії.",
+        summary="РЎС‚РІРѕСЂРёС‚Рё СЂРѕР»СЊ",
+        description="РЎС‚РІРѕСЂРёС‚Рё РЅРѕРІСѓ СЂРѕР»СЊ РґР»СЏ РєРѕРјРїР°РЅС–С—.",
     )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Оновити роль",
-        description="Оновити роль та її права доступу.",
+        summary="РћРЅРѕРІРёС‚Рё СЂРѕР»СЊ",
+        description="РћРЅРѕРІРёС‚Рё СЂРѕР»СЊ С‚Р° С—С— РїСЂР°РІР° РґРѕСЃС‚СѓРїСѓ.",
     )
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Видалити роль",
-        description="Видалити роль (системні ролі видалити неможливо).",
+        summary="Р’РёРґР°Р»РёС‚Рё СЂРѕР»СЊ",
+        description="Р’РёРґР°Р»РёС‚Рё СЂРѕР»СЊ (СЃРёСЃС‚РµРјРЅС– СЂРѕР»С– РІРёРґР°Р»РёС‚Рё РЅРµРјРѕР¶Р»РёРІРѕ).",
     )
     def destroy(self, request, *args, **kwargs):
         role = self.get_object()
         if role.is_system:
-            return Response({"error": "Системні ролі не можна видаляти."}, status=400)
+            return Response({"error": "РЎРёСЃС‚РµРјРЅС– СЂРѕР»С– РЅРµ РјРѕР¶РЅР° РІРёРґР°Р»СЏС‚Рё."}, status=400)
         return super().destroy(request, *args, **kwargs)
 
 
@@ -905,8 +956,8 @@ class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
-        summary="Список прав доступу",
-        description="Отримати каталог доступних прав доступу для призначення ролям.",
+        summary="РЎРїРёСЃРѕРє РїСЂР°РІ РґРѕСЃС‚СѓРїСѓ",
+        description="РћС‚СЂРёРјР°С‚Рё РєР°С‚Р°Р»РѕРі РґРѕСЃС‚СѓРїРЅРёС… РїСЂР°РІ РґРѕСЃС‚СѓРїСѓ РґР»СЏ РїСЂРёР·РЅР°С‡РµРЅРЅСЏ СЂРѕР»СЏРј.",
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -925,15 +976,15 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
         return Notification.objects.filter(user=self.request.user).order_by("-created_at")
 
     @extend_schema(
-        summary="Список сповіщень",
-        description="Отримати список сповіщень поточного користувача.",
+        summary="РЎРїРёСЃРѕРє СЃРїРѕРІС–С‰РµРЅСЊ",
+        description="РћС‚СЂРёРјР°С‚Рё СЃРїРёСЃРѕРє СЃРїРѕРІС–С‰РµРЅСЊ РїРѕС‚РѕС‡РЅРѕРіРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р°.",
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Позначити як прочитане",
-        description="Позначити сповіщення як прочитане.",
+        summary="РџРѕР·РЅР°С‡РёС‚Рё СЏРє РїСЂРѕС‡РёС‚Р°РЅРµ",
+        description="РџРѕР·РЅР°С‡РёС‚Рё СЃРїРѕРІС–С‰РµРЅРЅСЏ СЏРє РїСЂРѕС‡РёС‚Р°РЅРµ.",
         responses={200: NotificationSerializer},
     )
     @action(detail=True, methods=["post"])
@@ -945,9 +996,9 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(NotificationSerializer(notification).data)
 
     @extend_schema(
-        summary="Позначити всі як прочитані",
-        description="Позначити всі сповіщення користувача як прочитані.",
-        responses={200: {"description": "Кількість оновлених сповіщень"}},
+        summary="РџРѕР·РЅР°С‡РёС‚Рё РІСЃС– СЏРє РїСЂРѕС‡РёС‚Р°РЅС–",
+        description="РџРѕР·РЅР°С‡РёС‚Рё РІСЃС– СЃРїРѕРІС–С‰РµРЅРЅСЏ РєРѕСЂРёСЃС‚СѓРІР°С‡Р° СЏРє РїСЂРѕС‡РёС‚Р°РЅС–.",
+        responses={200: {"description": "РљС–Р»СЊРєС–СЃС‚СЊ РѕРЅРѕРІР»РµРЅРёС… СЃРїРѕРІС–С‰РµРЅСЊ"}},
     )
     @action(detail=False, methods=["post"])
     def mark_all_read(self, request):
@@ -957,14 +1008,14 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 @extend_schema(
-    summary="Поточний користувач",
-    description="Отримати або оновити профіль поточного користувача.",
+    summary="РџРѕС‚РѕС‡РЅРёР№ РєРѕСЂРёСЃС‚СѓРІР°С‡",
+    description="РћС‚СЂРёРјР°С‚Рё Р°Р±Рѕ РѕРЅРѕРІРёС‚Рё РїСЂРѕС„С–Р»СЊ РїРѕС‚РѕС‡РЅРѕРіРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р°.",
     responses={200: MeSerializer},
 )
 @api_view(["GET", "PATCH"])
 @permission_classes([permissions.IsAuthenticated])
 def me(request):
-    """GET: поточний користувач, членства, права. PATCH: оновлення профілю (first_name, last_name, middle_name, phone)."""
+    """GET: РїРѕС‚РѕС‡РЅРёР№ РєРѕСЂРёСЃС‚СѓРІР°С‡, С‡Р»РµРЅСЃС‚РІР°, РїСЂР°РІР°. PATCH: РѕРЅРѕРІР»РµРЅРЅСЏ РїСЂРѕС„С–Р»СЋ (first_name, last_name, middle_name, phone)."""
     if request.method == "PATCH":
         serializer = ProfileUpdateSerializer(data=request.data, partial=True)
         if not serializer.is_valid():
@@ -998,10 +1049,10 @@ def _is_allowed_avatar_content_type(content_type):
 
 
 @extend_schema(
-    summary="Завантажити аватар",
-    description="Завантажити фото для аватара поточного користувача (JPEG, PNG, GIF, WebP; макс. 5 МБ).",
+    summary="Р—Р°РІР°РЅС‚Р°Р¶РёС‚Рё Р°РІР°С‚Р°СЂ",
+    description="Р—Р°РІР°РЅС‚Р°Р¶РёС‚Рё С„РѕС‚Рѕ РґР»СЏ Р°РІР°С‚Р°СЂР° РїРѕС‚РѕС‡РЅРѕРіРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р° (JPEG, PNG, GIF, WebP; РјР°РєСЃ. 5 РњР‘).",
     request={"multipart/form-data": {"type": "object", "properties": {"avatar": {"type": "string", "format": "binary"}}}},
-    responses={200: {"description": "URL нового аватара"}},
+    responses={200: {"description": "URL РЅРѕРІРѕРіРѕ Р°РІР°С‚Р°СЂР°"}},
 )
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated])
@@ -1009,14 +1060,14 @@ def me_avatar_upload(request):
     """Upload avatar for current user."""
     file = request.FILES.get("avatar") or request.FILES.get("file")
     if not file:
-        return Response({"detail": "Файл не надіслано. Використовуйте поле avatar або file."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"detail": "Р¤Р°Р№Р» РЅРµ РЅР°РґС–СЃР»Р°РЅРѕ. Р’РёРєРѕСЂРёСЃС‚РѕРІСѓР№С‚Рµ РїРѕР»Рµ avatar Р°Р±Рѕ file."}, status=status.HTTP_400_BAD_REQUEST)
     if not _is_allowed_avatar_content_type(getattr(file, "content_type", "")):
         return Response(
-            {"detail": "Дозволені формати: JPEG, PNG, GIF, WebP."},
+            {"detail": "Р”РѕР·РІРѕР»РµРЅС– С„РѕСЂРјР°С‚Рё: JPEG, PNG, GIF, WebP."},
             status=status.HTTP_400_BAD_REQUEST,
         )
     if file.size > AVATAR_MAX_SIZE_BYTES:
-        return Response({"detail": "Розмір файлу не повинен перевищувати 5 МБ."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"detail": "Р РѕР·РјС–СЂ С„Р°Р№Р»Сѓ РЅРµ РїРѕРІРёРЅРµРЅ РїРµСЂРµРІРёС‰СѓРІР°С‚Рё 5 РњР‘."}, status=status.HTTP_400_BAD_REQUEST)
     user = request.user
     if user.avatar:
         try:
@@ -1032,46 +1083,78 @@ def me_avatar_upload(request):
 
 
 @extend_schema(
-    summary="Запит на відновлення пароля",
-    description="Надіслати запит на відновлення пароля (email з посиланням).",
+    summary="Р—Р°РїРёС‚ РЅР° РІС–РґРЅРѕРІР»РµРЅРЅСЏ РїР°СЂРѕР»СЏ",
+    description="РќР°РґС–СЃР»Р°С‚Рё Р·Р°РїРёС‚ РЅР° РІС–РґРЅРѕРІР»РµРЅРЅСЏ РїР°СЂРѕР»СЏ (email Р· РїРѕСЃРёР»Р°РЅРЅСЏРј).",
     request=PasswordResetRequestSerializer,
-    responses={200: {"description": "Якщо email існує, надіслано лист"}},
+    responses={200: {"description": "РЇРєС‰Рѕ email С–СЃРЅСѓС”, РЅР°РґС–СЃР»Р°РЅРѕ Р»РёСЃС‚"}},
 )
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def password_reset_request(request):
-    """Request password reset (MVP: just return success, no email sending yet)."""
+    """Request password reset. Returns generic response to avoid email enumeration."""
     serializer = PasswordResetRequestSerializer(data=request.data)
-    if serializer.is_valid():
-        email = serializer.validated_data["email"]
-        # In MVP, we don't send emails yet
-        # TODO: Implement email sending with reset token
-        return Response({"message": "Якщо email існує, надіслано лист з інструкціями."})
-    return Response(serializer.errors, status=400)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    email = serializer.validated_data["email"]
+    response_data = {"message": "Якщо email існує, надіслано лист з інструкціями."}
+
+    user = User.objects.filter(email=email).first()
+    if user:
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        reset_token = f"{uid}:{token}"
+        # MVP/dev convenience: frontend can complete flow without email transport.
+        if settings.DEBUG:
+            response_data["reset_token"] = reset_token
+        # TODO: integrate real email sending transport.
+
+    return Response(response_data, status=status.HTTP_200_OK)
 
 
 @extend_schema(
-    summary="Підтвердження відновлення пароля",
-    description="Підтвердити відновлення пароля за токеном.",
+    summary="РџС–РґС‚РІРµСЂРґР¶РµРЅРЅСЏ РІС–РґРЅРѕРІР»РµРЅРЅСЏ РїР°СЂРѕР»СЏ",
+    description="РџС–РґС‚РІРµСЂРґРёС‚Рё РІС–РґРЅРѕРІР»РµРЅРЅСЏ РїР°СЂРѕР»СЏ Р·Р° С‚РѕРєРµРЅРѕРј.",
     request=PasswordResetConfirmSerializer,
-    responses={200: {"description": "Пароль успішно змінено"}},
+    responses={200: {"description": "РџР°СЂРѕР»СЊ СѓСЃРїС–С€РЅРѕ Р·РјС–РЅРµРЅРѕ"}},
 )
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def password_reset_confirm(request):
-    """Confirm password reset (MVP: placeholder)."""
+    """Confirm password reset using reset token from request step."""
     serializer = PasswordResetConfirmSerializer(data=request.data)
-    if serializer.is_valid():
-        # TODO: Implement token validation and password reset
-        return Response({"message": "Пароль успішно змінено."})
-    return Response(serializer.errors, status=400)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    token_payload = serializer.validated_data["token"]
+    new_password = serializer.validated_data["new_password"]
+
+    try:
+        uidb64, token = token_payload.split(":", 1)
+        user_id = force_str(urlsafe_base64_decode(uidb64))
+        user = User.objects.get(pk=user_id)
+    except (ValueError, TypeError, OverflowError, User.DoesNotExist):
+        return Response(
+            {"token": "Невірний або прострочений токен."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if not default_token_generator.check_token(user, token):
+        return Response(
+            {"token": "Невірний або прострочений токен."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    user.set_password(new_password)
+    user.save(update_fields=["password"])
+    return Response({"message": "Пароль успішно змінено."}, status=status.HTTP_200_OK)
 
 
 @extend_schema(
-    summary="Зміна пароля",
-    description="Змінити пароль для автентифікованого користувача.",
+    summary="Р—РјС–РЅР° РїР°СЂРѕР»СЏ",
+    description="Р—РјС–РЅРёС‚Рё РїР°СЂРѕР»СЊ РґР»СЏ Р°РІС‚РµРЅС‚РёС„С–РєРѕРІР°РЅРѕРіРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р°.",
     request=PasswordChangeSerializer,
-    responses={200: {"description": "Пароль успішно змінено"}},
+    responses={200: {"description": "РџР°СЂРѕР»СЊ СѓСЃРїС–С€РЅРѕ Р·РјС–РЅРµРЅРѕ"}},
 )
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated])
@@ -1081,10 +1164,10 @@ def password_change(request):
     if serializer.is_valid():
         user = request.user
         if not user.check_password(serializer.validated_data["old_password"]):
-            return Response({"old_password": "Невірний поточний пароль."}, status=400)
+            return Response({"old_password": "РќРµРІС–СЂРЅРёР№ РїРѕС‚РѕС‡РЅРёР№ РїР°СЂРѕР»СЊ."}, status=400)
         user.set_password(serializer.validated_data["new_password"])
         user.save()
-        return Response({"message": "Пароль успішно змінено."})
+        return Response({"message": "РџР°СЂРѕР»СЊ СѓСЃРїС–С€РЅРѕ Р·РјС–РЅРµРЅРѕ."})
     return Response(serializer.errors, status=400)
 
 
@@ -1108,8 +1191,8 @@ class BranchViewSet(viewsets.ModelViewSet):
         return Branch.objects.filter(company_id__in=user_companies).select_related("parent", "company")
 
     @extend_schema(
-        summary="Список філіалів",
-        description="Отримати дерево філіалів компанії (тільки кореневі елементи, діти вкладено).",
+        summary="РЎРїРёСЃРѕРє С„С–Р»С–Р°Р»С–РІ",
+        description="РћС‚СЂРёРјР°С‚Рё РґРµСЂРµРІРѕ С„С–Р»С–Р°Р»С–РІ РєРѕРјРїР°РЅС–С— (С‚С–Р»СЊРєРё РєРѕСЂРµРЅРµРІС– РµР»РµРјРµРЅС‚Рё, РґС–С‚Рё РІРєР»Р°РґРµРЅРѕ).",
     )
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset().filter(parent__isnull=True)
@@ -1117,22 +1200,22 @@ class BranchViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @extend_schema(
-        summary="Створити філіал",
-        description="Створити новий філіал.",
+        summary="РЎС‚РІРѕСЂРёС‚Рё С„С–Р»С–Р°Р»",
+        description="РЎС‚РІРѕСЂРёС‚Рё РЅРѕРІРёР№ С„С–Р»С–Р°Р».",
     )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Оновити філіал",
-        description="Оновити інформацію про філіал.",
+        summary="РћРЅРѕРІРёС‚Рё С„С–Р»С–Р°Р»",
+        description="РћРЅРѕРІРёС‚Рё С–РЅС„РѕСЂРјР°С†С–СЋ РїСЂРѕ С„С–Р»С–Р°Р».",
     )
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Видалити філіал",
-        description="Видалити філіал (також видаляться дочірні філіали та підрозділи).",
+        summary="Р’РёРґР°Р»РёС‚Рё С„С–Р»С–Р°Р»",
+        description="Р’РёРґР°Р»РёС‚Рё С„С–Р»С–Р°Р» (С‚Р°РєРѕР¶ РІРёРґР°Р»СЏС‚СЊСЃСЏ РґРѕС‡С–СЂРЅС– С„С–Р»С–Р°Р»Рё С‚Р° РїС–РґСЂРѕР·РґС–Р»Рё).",
     )
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
@@ -1148,12 +1231,12 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """
-        Повертає підрозділи, обмежені компаніями поточного користувача.
+        РџРѕРІРµСЂС‚Р°С” РїС–РґСЂРѕР·РґС–Р»Рё, РѕР±РјРµР¶РµРЅС– РєРѕРјРїР°РЅС–СЏРјРё РїРѕС‚РѕС‡РЅРѕРіРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р°.
 
-        - Для superuser: всі підрозділи.
-        - Для звичайного користувача: лише підрозділи філіалів компаній,
-          де в нього є підтверджене членство.
-        - Додатково можна обмежити результат параметром branch_id.
+        - Р”Р»СЏ superuser: РІСЃС– РїС–РґСЂРѕР·РґС–Р»Рё.
+        - Р”Р»СЏ Р·РІРёС‡Р°Р№РЅРѕРіРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р°: Р»РёС€Рµ РїС–РґСЂРѕР·РґС–Р»Рё С„С–Р»С–Р°Р»С–РІ РєРѕРјРїР°РЅС–Р№,
+          РґРµ РІ РЅСЊРѕРіРѕ С” РїС–РґС‚РІРµСЂРґР¶РµРЅРµ С‡Р»РµРЅСЃС‚РІРѕ.
+        - Р”РѕРґР°С‚РєРѕРІРѕ РјРѕР¶РЅР° РѕР±РјРµР¶РёС‚Рё СЂРµР·СѓР»СЊС‚Р°С‚ РїР°СЂР°РјРµС‚СЂРѕРј branch_id.
         """
         user = self.request.user
         if user.is_superuser:
@@ -1174,8 +1257,8 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         return queryset.select_related("parent", "branch")
 
     @extend_schema(
-        summary="Список підрозділів",
-        description="Отримати дерево підрозділів для філіалу (потрібен параметр branch_id).",
+        summary="РЎРїРёСЃРѕРє РїС–РґСЂРѕР·РґС–Р»С–РІ",
+        description="РћС‚СЂРёРјР°С‚Рё РґРµСЂРµРІРѕ РїС–РґСЂРѕР·РґС–Р»С–РІ РґР»СЏ С„С–Р»С–Р°Р»Сѓ (РїРѕС‚СЂС–Р±РµРЅ РїР°СЂР°РјРµС‚СЂ branch_id).",
         parameters=[
             OpenApiParameter(name="branch_id", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY, required=True)
         ],
@@ -1183,29 +1266,29 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         branch_id = request.query_params.get("branch_id")
         if not branch_id:
-            return Response({"error": "Параметр branch_id обов'язковий"}, status=400)
-        # get_queryset вже відфільтрує за branch_id, тут лише беремо корені
+            return Response({"error": "РџР°СЂР°РјРµС‚СЂ branch_id РѕР±РѕРІ'СЏР·РєРѕРІРёР№"}, status=400)
+        # get_queryset РІР¶Рµ РІС–РґС„С–Р»СЊС‚СЂСѓС” Р·Р° branch_id, С‚СѓС‚ Р»РёС€Рµ Р±РµСЂРµРјРѕ РєРѕСЂРµРЅС–
         queryset = self.get_queryset().filter(parent__isnull=True)
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
     @extend_schema(
-        summary="Створити підрозділ",
-        description="Створити новий підрозділ.",
+        summary="РЎС‚РІРѕСЂРёС‚Рё РїС–РґСЂРѕР·РґС–Р»",
+        description="РЎС‚РІРѕСЂРёС‚Рё РЅРѕРІРёР№ РїС–РґСЂРѕР·РґС–Р».",
     )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Оновити підрозділ",
-        description="Оновити інформацію про підрозділ.",
+        summary="РћРЅРѕРІРёС‚Рё РїС–РґСЂРѕР·РґС–Р»",
+        description="РћРЅРѕРІРёС‚Рё С–РЅС„РѕСЂРјР°С†С–СЋ РїСЂРѕ РїС–РґСЂРѕР·РґС–Р».",
     )
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Видалити підрозділ",
-        description="Видалити підрозділ (також видаляться дочірні підрозділи).",
+        summary="Р’РёРґР°Р»РёС‚Рё РїС–РґСЂРѕР·РґС–Р»",
+        description="Р’РёРґР°Р»РёС‚Рё РїС–РґСЂРѕР·РґС–Р» (С‚Р°РєРѕР¶ РІРёРґР°Р»СЏС‚СЊСЃСЏ РґРѕС‡С–СЂРЅС– РїС–РґСЂРѕР·РґС–Р»Рё).",
     )
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
@@ -1239,8 +1322,8 @@ class BranchUserViewSet(viewsets.ModelViewSet):
         return queryset.select_related("user", "branch")
 
     @extend_schema(
-        summary="Список користувачів філіалу",
-        description="Отримати список користувачів філіалу (потрібен параметр branch_id).",
+        summary="РЎРїРёСЃРѕРє РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ С„С–Р»С–Р°Р»Сѓ",
+        description="РћС‚СЂРёРјР°С‚Рё СЃРїРёСЃРѕРє РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ С„С–Р»С–Р°Р»Сѓ (РїРѕС‚СЂС–Р±РµРЅ РїР°СЂР°РјРµС‚СЂ branch_id).",
         parameters=[
             OpenApiParameter(name="branch_id", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY, required=True)
         ],
@@ -1249,14 +1332,14 @@ class BranchUserViewSet(viewsets.ModelViewSet):
         return super().list(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Додати користувачів до філіалу",
-        description="Додати одного або кілька користувачів до філіалу (масив user_ids).",
+        summary="Р”РѕРґР°С‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ РґРѕ С„С–Р»С–Р°Р»Сѓ",
+        description="Р”РѕРґР°С‚Рё РѕРґРЅРѕРіРѕ Р°Р±Рѕ РєС–Р»СЊРєР° РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ РґРѕ С„С–Р»С–Р°Р»Сѓ (РјР°СЃРёРІ user_ids).",
     )
     def create(self, request, *args, **kwargs):
         branch_id = request.data.get("branch")
         user_ids = request.data.get("user_ids", [])
         if not isinstance(user_ids, list):
-            return Response({"error": "user_ids повинен бути масивом"}, status=400)
+            return Response({"error": "user_ids РїРѕРІРёРЅРµРЅ Р±СѓС‚Рё РјР°СЃРёРІРѕРј"}, status=400)
 
         created = []
         for user_id in user_ids:
@@ -1270,8 +1353,8 @@ class BranchUserViewSet(viewsets.ModelViewSet):
         return Response(created, status=201)
 
     @extend_schema(
-        summary="Видалити користувача з філіалу",
-        description="Видалити користувача з філіалу.",
+        summary="Р’РёРґР°Р»РёС‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡Р° Р· С„С–Р»С–Р°Р»Сѓ",
+        description="Р’РёРґР°Р»РёС‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡Р° Р· С„С–Р»С–Р°Р»Сѓ.",
     )
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
@@ -1305,8 +1388,8 @@ class DepartmentUserViewSet(viewsets.ModelViewSet):
         return queryset.select_related("user", "department")
 
     @extend_schema(
-        summary="Список користувачів підрозділу",
-        description="Отримати список користувачів підрозділу (потрібен параметр department_id).",
+        summary="РЎРїРёСЃРѕРє РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ РїС–РґСЂРѕР·РґС–Р»Сѓ",
+        description="РћС‚СЂРёРјР°С‚Рё СЃРїРёСЃРѕРє РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ РїС–РґСЂРѕР·РґС–Р»Сѓ (РїРѕС‚СЂС–Р±РµРЅ РїР°СЂР°РјРµС‚СЂ department_id).",
         parameters=[
             OpenApiParameter(name="department_id", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY, required=True)
         ],
@@ -1315,14 +1398,14 @@ class DepartmentUserViewSet(viewsets.ModelViewSet):
         return super().list(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Додати користувачів до підрозділу",
-        description="Додати одного або кілька користувачів до підрозділу (масив user_ids).",
+        summary="Р”РѕРґР°С‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ РґРѕ РїС–РґСЂРѕР·РґС–Р»Сѓ",
+        description="Р”РѕРґР°С‚Рё РѕРґРЅРѕРіРѕ Р°Р±Рѕ РєС–Р»СЊРєР° РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ РґРѕ РїС–РґСЂРѕР·РґС–Р»Сѓ (РјР°СЃРёРІ user_ids).",
     )
     def create(self, request, *args, **kwargs):
         department_id = request.data.get("department")
         user_ids = request.data.get("user_ids", [])
         if not isinstance(user_ids, list):
-            return Response({"error": "user_ids повинен бути масивом"}, status=400)
+            return Response({"error": "user_ids РїРѕРІРёРЅРµРЅ Р±СѓС‚Рё РјР°СЃРёРІРѕРј"}, status=400)
 
         created = []
         for user_id in user_ids:
@@ -1336,24 +1419,24 @@ class DepartmentUserViewSet(viewsets.ModelViewSet):
         return Response(created, status=201)
 
     @extend_schema(
-        summary="Видалити користувача з підрозділу",
-        description="Видалити користувача з підрозділу.",
+        summary="Р’РёРґР°Р»РёС‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡Р° Р· РїС–РґСЂРѕР·РґС–Р»Сѓ",
+        description="Р’РёРґР°Р»РёС‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡Р° Р· РїС–РґСЂРѕР·РґС–Р»Сѓ.",
     )
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Масово видалити користувачів з підрозділу",
-        description="Видалити одного або кількох користувачів з підрозділу (масив user_ids).",
+        summary="РњР°СЃРѕРІРѕ РІРёРґР°Р»РёС‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ Р· РїС–РґСЂРѕР·РґС–Р»Сѓ",
+        description="Р’РёРґР°Р»РёС‚Рё РѕРґРЅРѕРіРѕ Р°Р±Рѕ РєС–Р»СЊРєРѕС… РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ Р· РїС–РґСЂРѕР·РґС–Р»Сѓ (РјР°СЃРёРІ user_ids).",
     )
     @action(detail=False, methods=["post"], url_path="bulk-delete")
     def bulk_delete(self, request):
         department_id = request.data.get("department")
         user_ids = request.data.get("user_ids", [])
         if not department_id:
-            return Response({"error": "Параметр department обов'язковий"}, status=400)
+            return Response({"error": "РџР°СЂР°РјРµС‚СЂ department РѕР±РѕРІ'СЏР·РєРѕРІРёР№"}, status=400)
         if not isinstance(user_ids, list):
-            return Response({"error": "user_ids повинен бути масивом"}, status=400)
+            return Response({"error": "user_ids РїРѕРІРёРЅРµРЅ Р±СѓС‚Рё РјР°СЃРёРІРѕРј"}, status=400)
 
         user = request.user
         if user.is_superuser:
@@ -1389,8 +1472,8 @@ class CategoryViewSet(viewsets.ModelViewSet):
         return Category.objects.filter(company_id__in=user_companies).select_related("parent", "company")
 
     @extend_schema(
-        summary="Список категорій",
-        description="Отримати дерево категорій компанії (тільки кореневі елементи, діти вкладено).",
+        summary="РЎРїРёСЃРѕРє РєР°С‚РµРіРѕСЂС–Р№",
+        description="РћС‚СЂРёРјР°С‚Рё РґРµСЂРµРІРѕ РєР°С‚РµРіРѕСЂС–Р№ РєРѕРјРїР°РЅС–С— (С‚С–Р»СЊРєРё РєРѕСЂРµРЅРµРІС– РµР»РµРјРµРЅС‚Рё, РґС–С‚Рё РІРєР»Р°РґРµРЅРѕ).",
     )
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset().filter(parent__isnull=True)
@@ -1398,22 +1481,22 @@ class CategoryViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @extend_schema(
-        summary="Створити категорію",
-        description="Створити нову категорію.",
+        summary="РЎС‚РІРѕСЂРёС‚Рё РєР°С‚РµРіРѕСЂС–СЋ",
+        description="РЎС‚РІРѕСЂРёС‚Рё РЅРѕРІСѓ РєР°С‚РµРіРѕСЂС–СЋ.",
     )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Оновити категорію",
-        description="Оновити інформацію про категорію.",
+        summary="РћРЅРѕРІРёС‚Рё РєР°С‚РµРіРѕСЂС–СЋ",
+        description="РћРЅРѕРІРёС‚Рё С–РЅС„РѕСЂРјР°С†С–СЋ РїСЂРѕ РєР°С‚РµРіРѕСЂС–СЋ.",
     )
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Видалити категорію",
-        description="Видалити категорію.",
+        summary="Р’РёРґР°Р»РёС‚Рё РєР°С‚РµРіРѕСЂС–СЋ",
+        description="Р’РёРґР°Р»РёС‚Рё РєР°С‚РµРіРѕСЂС–СЋ.",
     )
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
@@ -1447,8 +1530,8 @@ class CategoryUserViewSet(viewsets.ModelViewSet):
         return queryset.select_related("user", "category")
 
     @extend_schema(
-        summary="Список користувачів категорії",
-        description="Отримати список користувачів категорії (потрібен параметр category_id).",
+        summary="РЎРїРёСЃРѕРє РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ РєР°С‚РµРіРѕСЂС–С—",
+        description="РћС‚СЂРёРјР°С‚Рё СЃРїРёСЃРѕРє РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ РєР°С‚РµРіРѕСЂС–С— (РїРѕС‚СЂС–Р±РµРЅ РїР°СЂР°РјРµС‚СЂ category_id).",
         parameters=[
             OpenApiParameter(name="category_id", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY, required=True)
         ],
@@ -1457,14 +1540,14 @@ class CategoryUserViewSet(viewsets.ModelViewSet):
         return super().list(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Додати користувачів до категорії",
-        description="Додати одного або кілька користувачів до категорії (масив user_ids).",
+        summary="Р”РѕРґР°С‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ РґРѕ РєР°С‚РµРіРѕСЂС–С—",
+        description="Р”РѕРґР°С‚Рё РѕРґРЅРѕРіРѕ Р°Р±Рѕ РєС–Р»СЊРєР° РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ РґРѕ РєР°С‚РµРіРѕСЂС–С— (РјР°СЃРёРІ user_ids).",
     )
     def create(self, request, *args, **kwargs):
         category_id = request.data.get("category")
         user_ids = request.data.get("user_ids", [])
         if not isinstance(user_ids, list):
-            return Response({"error": "user_ids повинен бути масивом"}, status=400)
+            return Response({"error": "user_ids РїРѕРІРёРЅРµРЅ Р±СѓС‚Рё РјР°СЃРёРІРѕРј"}, status=400)
 
         result = []
         for user_id in user_ids:
@@ -1478,8 +1561,8 @@ class CategoryUserViewSet(viewsets.ModelViewSet):
         return Response(result, status=201)
 
     @extend_schema(
-        summary="Видалити користувача з категорії",
-        description="Видалити користувача з категорії.",
+        summary="Р’РёРґР°Р»РёС‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡Р° Р· РєР°С‚РµРіРѕСЂС–С—",
+        description="Р’РёРґР°Р»РёС‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡Р° Р· РєР°С‚РµРіРѕСЂС–С—.",
     )
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
@@ -1487,31 +1570,31 @@ class CategoryUserViewSet(viewsets.ModelViewSet):
 
 class CpvDictionaryTreeView(APIView):
     """
-    Повертає дерево CPV-кодів для вибору у довіднику.
+    РџРѕРІРµСЂС‚Р°С” РґРµСЂРµРІРѕ CPV-РєРѕРґС–РІ РґР»СЏ РІРёР±РѕСЂСѓ Сѓ РґРѕРІС–РґРЅРёРєСѓ.
     """
 
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
-        summary="Дерево CPV-кодів",
+        summary="Р”РµСЂРµРІРѕ CPV-РєРѕРґС–РІ",
         description=(
-            "Повертає повний перелік CPV-кодів у вигляді дерева. "
-            "Деревоподібна структура будується за полями cpv_parent_code / cpv_level_code. "
-            "Кожен елемент містить id, cpv_code, name_ua, name_en, cpv_parent_code, cpv_level_code та children."
+            "РџРѕРІРµСЂС‚Р°С” РїРѕРІРЅРёР№ РїРµСЂРµР»С–Рє CPV-РєРѕРґС–РІ Сѓ РІРёРіР»СЏРґС– РґРµСЂРµРІР°. "
+            "Р”РµСЂРµРІРѕРїРѕРґС–Р±РЅР° СЃС‚СЂСѓРєС‚СѓСЂР° Р±СѓРґСѓС”С‚СЊСЃСЏ Р·Р° РїРѕР»СЏРјРё cpv_parent_code / cpv_level_code. "
+            "РљРѕР¶РµРЅ РµР»РµРјРµРЅС‚ РјС–СЃС‚РёС‚СЊ id, cpv_code, name_ua, name_en, cpv_parent_code, cpv_level_code С‚Р° children."
         ),
-        responses={200: OpenApiResponse(description="Список кореневих CPV-елементів з вкладеними дітьми")},
+        responses={200: OpenApiResponse(description="РЎРїРёСЃРѕРє РєРѕСЂРµРЅРµРІРёС… CPV-РµР»РµРјРµРЅС‚С–РІ Р· РІРєР»Р°РґРµРЅРёРјРё РґС–С‚СЊРјРё")},
     )
     def get(self, request):
-        # Отримуємо усі записи
+        # РћС‚СЂРёРјСѓС”РјРѕ СѓСЃС– Р·Р°РїРёСЃРё
         items = list(CpvDictionary.objects.all())
 
-        # Індекс за внутрішнім кодом рівня
+        # Р†РЅРґРµРєСЃ Р·Р° РІРЅСѓС‚СЂС–С€РЅС–Рј РєРѕРґРѕРј СЂС–РІРЅСЏ
         by_level_code = {i.cpv_level_code: i for i in items}
 
-        # Підготуємо список коренів
+        # РџС–РґРіРѕС‚СѓС”РјРѕ СЃРїРёСЃРѕРє РєРѕСЂРµРЅС–РІ
         roots: list[CpvDictionary] = []
 
-        # Тимчасово додаємо атрибут _children до об'єктів
+        # РўРёРјС‡Р°СЃРѕРІРѕ РґРѕРґР°С”РјРѕ Р°С‚СЂРёР±СѓС‚ _children РґРѕ РѕР±'С”РєС‚С–РІ
         for item in items:
             parent_code = (item.cpv_parent_code or "").strip()
             if not parent_code or parent_code == "0":
@@ -1519,7 +1602,7 @@ class CpvDictionaryTreeView(APIView):
             else:
                 parent = by_level_code.get(parent_code)
                 if parent is None:
-                    # Якщо батько не знайдений, вважаємо елемент коренем
+                    # РЇРєС‰Рѕ Р±Р°С‚СЊРєРѕ РЅРµ Р·РЅР°Р№РґРµРЅРёР№, РІРІР°Р¶Р°С”РјРѕ РµР»РµРјРµРЅС‚ РєРѕСЂРµРЅРµРј
                     roots.append(item)
                 else:
                     children = getattr(parent, "_children", [])
@@ -1545,17 +1628,17 @@ class CpvDictionaryTreeView(APIView):
 
 class CpvDictionaryChildrenView(APIView):
     """
-    Ліниве завантаження CPV-вузлів: корені або діти конкретного вузла.
+    Р›С–РЅРёРІРµ Р·Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ CPV-РІСѓР·Р»С–РІ: РєРѕСЂРµРЅС– Р°Р±Рѕ РґС–С‚Рё РєРѕРЅРєСЂРµС‚РЅРѕРіРѕ РІСѓР·Р»Р°.
     """
 
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
-        summary="CPV вузли (ліниво)",
+        summary="CPV РІСѓР·Р»Рё (Р»С–РЅРёРІРѕ)",
         description=(
-            "Повертає CPV-вузли для lazy-tree.\n"
-            "- Без параметра `parent_level_code`: повертає тільки кореневі вузли.\n"
-            "- З параметром `parent_level_code`: повертає лише прямих дітей для цього вузла."
+            "РџРѕРІРµСЂС‚Р°С” CPV-РІСѓР·Р»Рё РґР»СЏ lazy-tree.\n"
+            "- Р‘РµР· РїР°СЂР°РјРµС‚СЂР° `parent_level_code`: РїРѕРІРµСЂС‚Р°С” С‚С–Р»СЊРєРё РєРѕСЂРµРЅРµРІС– РІСѓР·Р»Рё.\n"
+            "- Р— РїР°СЂР°РјРµС‚СЂРѕРј `parent_level_code`: РїРѕРІРµСЂС‚Р°С” Р»РёС€Рµ РїСЂСЏРјРёС… РґС–С‚РµР№ РґР»СЏ С†СЊРѕРіРѕ РІСѓР·Р»Р°."
         ),
         parameters=[
             OpenApiParameter(
@@ -1563,10 +1646,10 @@ class CpvDictionaryChildrenView(APIView):
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="Внутрішній код батьківського вузла (cpv_level_code).",
+                description="Р’РЅСѓС‚СЂС–С€РЅС–Р№ РєРѕРґ Р±Р°С‚СЊРєС–РІСЃСЊРєРѕРіРѕ РІСѓР·Р»Р° (cpv_level_code).",
             )
         ],
-        responses={200: OpenApiResponse(description="Список вузлів")},
+        responses={200: OpenApiResponse(description="РЎРїРёСЃРѕРє РІСѓР·Р»С–РІ")},
     )
     def get(self, request):
         parent_level_code = (request.query_params.get("parent_level_code") or "").strip()
@@ -1607,15 +1690,15 @@ class CpvDictionaryChildrenView(APIView):
 
 class CpvWithCompaniesView(APIView):
     """
-    Список CPV-категорій, за якими є зареєстровані компанії в системі (не в рамках однієї компанії).
+    РЎРїРёСЃРѕРє CPV-РєР°С‚РµРіРѕСЂС–Р№, Р·Р° СЏРєРёРјРё С” Р·Р°СЂРµС”СЃС‚СЂРѕРІР°РЅС– РєРѕРјРїР°РЅС–С— РІ СЃРёСЃС‚РµРјС– (РЅРµ РІ СЂР°РјРєР°С… РѕРґРЅС–С”С— РєРѕРјРїР°РЅС–С—).
     """
 
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
-        summary="CPV з зареєстрованими компаніями",
-        description="Повертає плоский список CPV (id, cpv_code, name_ua, label), за якими хоча б одна компанія зареєстрована в системі.",
-        responses={200: OpenApiResponse(description="Список CPV")},
+        summary="CPV Р· Р·Р°СЂРµС”СЃС‚СЂРѕРІР°РЅРёРјРё РєРѕРјРїР°РЅС–СЏРјРё",
+        description="РџРѕРІРµСЂС‚Р°С” РїР»РѕСЃРєРёР№ СЃРїРёСЃРѕРє CPV (id, cpv_code, name_ua, label), Р·Р° СЏРєРёРјРё С…РѕС‡Р° Р± РѕРґРЅР° РєРѕРјРїР°РЅС–СЏ Р·Р°СЂРµС”СЃС‚СЂРѕРІР°РЅР° РІ СЃРёСЃС‚РµРјС–.",
+        responses={200: OpenApiResponse(description="РЎРїРёСЃРѕРє CPV")},
     )
     def get(self, request):
         qs = (
@@ -1654,8 +1737,8 @@ class ExpenseArticleViewSet(viewsets.ModelViewSet):
         return ExpenseArticle.objects.filter(company_id__in=user_companies).select_related("parent", "company")
 
     @extend_schema(
-        summary="Список статей витрат",
-        description="Отримати дерево статей витрат компанії (тільки кореневі елементи, діти вкладено).",
+        summary="РЎРїРёСЃРѕРє СЃС‚Р°С‚РµР№ РІРёС‚СЂР°С‚",
+        description="РћС‚СЂРёРјР°С‚Рё РґРµСЂРµРІРѕ СЃС‚Р°С‚РµР№ РІРёС‚СЂР°С‚ РєРѕРјРїР°РЅС–С— (С‚С–Р»СЊРєРё РєРѕСЂРµРЅРµРІС– РµР»РµРјРµРЅС‚Рё, РґС–С‚Рё РІРєР»Р°РґРµРЅРѕ).",
     )
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset().filter(parent__isnull=True)
@@ -1663,22 +1746,22 @@ class ExpenseArticleViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @extend_schema(
-        summary="Створити статтю витрат",
-        description="Створити нову статтю витрат.",
+        summary="РЎС‚РІРѕСЂРёС‚Рё СЃС‚Р°С‚С‚СЋ РІРёС‚СЂР°С‚",
+        description="РЎС‚РІРѕСЂРёС‚Рё РЅРѕРІСѓ СЃС‚Р°С‚С‚СЋ РІРёС‚СЂР°С‚.",
     )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Оновити статтю витрат",
-        description="Оновити інформацію про статтю витрат.",
+        summary="РћРЅРѕРІРёС‚Рё СЃС‚Р°С‚С‚СЋ РІРёС‚СЂР°С‚",
+        description="РћРЅРѕРІРёС‚Рё С–РЅС„РѕСЂРјР°С†С–СЋ РїСЂРѕ СЃС‚Р°С‚С‚СЋ РІРёС‚СЂР°С‚.",
     )
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Видалити статтю витрат",
-        description="Видалити статтю витрат.",
+        summary="Р’РёРґР°Р»РёС‚Рё СЃС‚Р°С‚С‚СЋ РІРёС‚СЂР°С‚",
+        description="Р’РёРґР°Р»РёС‚Рё СЃС‚Р°С‚С‚СЋ РІРёС‚СЂР°С‚.",
     )
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
@@ -1710,8 +1793,8 @@ class ExpenseArticleUserViewSet(viewsets.ModelViewSet):
         return queryset.select_related("user", "expense")
 
     @extend_schema(
-        summary="Список користувачів статті витрат",
-        description="Отримати список користувачів статті витрат (потрібен параметр expense_id).",
+        summary="РЎРїРёСЃРѕРє РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ СЃС‚Р°С‚С‚С– РІРёС‚СЂР°С‚",
+        description="РћС‚СЂРёРјР°С‚Рё СЃРїРёСЃРѕРє РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ СЃС‚Р°С‚С‚С– РІРёС‚СЂР°С‚ (РїРѕС‚СЂС–Р±РµРЅ РїР°СЂР°РјРµС‚СЂ expense_id).",
         parameters=[
             OpenApiParameter(name="expense_id", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY, required=True)
         ],
@@ -1720,14 +1803,14 @@ class ExpenseArticleUserViewSet(viewsets.ModelViewSet):
         return super().list(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Додати користувачів до статті витрат",
-        description="Додати одного або кілька користувачів до статті витрат (масив user_ids).",
+        summary="Р”РѕРґР°С‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ РґРѕ СЃС‚Р°С‚С‚С– РІРёС‚СЂР°С‚",
+        description="Р”РѕРґР°С‚Рё РѕРґРЅРѕРіРѕ Р°Р±Рѕ РєС–Р»СЊРєР° РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ РґРѕ СЃС‚Р°С‚С‚С– РІРёС‚СЂР°С‚ (РјР°СЃРёРІ user_ids).",
     )
     def create(self, request, *args, **kwargs):
         expense_id = request.data.get("expense")
         user_ids = request.data.get("user_ids", [])
         if not isinstance(user_ids, list):
-            return Response({"error": "user_ids повинен бути масивом"}, status=400)
+            return Response({"error": "user_ids РїРѕРІРёРЅРµРЅ Р±СѓС‚Рё РјР°СЃРёРІРѕРј"}, status=400)
 
         result = []
         for user_id in user_ids:
@@ -1741,8 +1824,8 @@ class ExpenseArticleUserViewSet(viewsets.ModelViewSet):
         return Response(result, status=201)
 
     @extend_schema(
-        summary="Видалити користувача зі статті витрат",
-        description="Видалити користувача зі статті витрат.",
+        summary="Р’РёРґР°Р»РёС‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡Р° Р·С– СЃС‚Р°С‚С‚С– РІРёС‚СЂР°С‚",
+        description="Р’РёРґР°Р»РёС‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡Р° Р·С– СЃС‚Р°С‚С‚С– РІРёС‚СЂР°С‚.",
     )
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
@@ -1750,9 +1833,9 @@ class ExpenseArticleUserViewSet(viewsets.ModelViewSet):
 
 class UnitOfMeasureViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    Довідник одиниць виміру — спільний для всіх компаній.
-    Список одиниць (спільні company=null + одиниці компаній користувача).
-    Наповнення — через БД; створення/редагування через API вимкнено.
+    Р”РѕРІС–РґРЅРёРє РѕРґРёРЅРёС†СЊ РІРёРјС–СЂСѓ вЂ” СЃРїС–Р»СЊРЅРёР№ РґР»СЏ РІСЃС–С… РєРѕРјРїР°РЅС–Р№.
+    РЎРїРёСЃРѕРє РѕРґРёРЅРёС†СЊ (СЃРїС–Р»СЊРЅС– company=null + РѕРґРёРЅРёС†С– РєРѕРјРїР°РЅС–Р№ РєРѕСЂРёСЃС‚СѓРІР°С‡Р°).
+    РќР°РїРѕРІРЅРµРЅРЅСЏ вЂ” С‡РµСЂРµР· Р‘Р”; СЃС‚РІРѕСЂРµРЅРЅСЏ/СЂРµРґР°РіСѓРІР°РЅРЅСЏ С‡РµСЂРµР· API РІРёРјРєРЅРµРЅРѕ.
     """
 
     serializer_class = UnitOfMeasureSerializer
@@ -1760,7 +1843,7 @@ class UnitOfMeasureViewSet(viewsets.ReadOnlyModelViewSet):
     http_method_names = ["get", "head", "options"]
 
     def get_queryset(self):
-        """Спільні одиниці (company=null) + одиниці компаній користувача."""
+        """РЎРїС–Р»СЊРЅС– РѕРґРёРЅРёС†С– (company=null) + РѕРґРёРЅРёС†С– РєРѕРјРїР°РЅС–Р№ РєРѕСЂРёСЃС‚СѓРІР°С‡Р°."""
         user = self.request.user
         if user.is_superuser:
             return UnitOfMeasure.objects.all().select_related("company").order_by("name_ua")
@@ -1780,14 +1863,14 @@ class UnitOfMeasureViewSet(viewsets.ReadOnlyModelViewSet):
 
 class NomenclatureViewSet(viewsets.ModelViewSet):
     """
-    Номенклатура (company-scoped).
+    РќРѕРјРµРЅРєР»Р°С‚СѓСЂР° (company-scoped).
     """
 
     serializer_class = NomenclatureSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        """Фільтрує номенклатуру за компаніями користувача та параметрами."""
+        """Р¤С–Р»СЊС‚СЂСѓС” РЅРѕРјРµРЅРєР»Р°С‚СѓСЂСѓ Р·Р° РєРѕРјРїР°РЅС–СЏРјРё РєРѕСЂРёСЃС‚СѓРІР°С‡Р° С‚Р° РїР°СЂР°РјРµС‚СЂР°РјРё."""
         user = self.request.user
         if user.is_superuser:
             qs = Nomenclature.objects.all().select_related(
@@ -1801,7 +1884,7 @@ class NomenclatureViewSet(viewsets.ModelViewSet):
                 company_id__in=user_companies
             ).select_related("company", "unit", "category", "cpv_category")
 
-        # Фільтри
+        # Р¤С–Р»СЊС‚СЂРё
         name = self.request.query_params.get("name")
         category_id = self.request.query_params.get("category_id")
         cpv_id = self.request.query_params.get("cpv_id")
@@ -1818,36 +1901,36 @@ class NomenclatureViewSet(viewsets.ModelViewSet):
         return qs
 
     @extend_schema(
-        summary="Список номенклатури",
-        description="Отримати список номенклатури компанії з можливими фільтрами (name, category_id, cpv_id).",
+        summary="РЎРїРёСЃРѕРє РЅРѕРјРµРЅРєР»Р°С‚СѓСЂРё",
+        description="РћС‚СЂРёРјР°С‚Рё СЃРїРёСЃРѕРє РЅРѕРјРµРЅРєР»Р°С‚СѓСЂРё РєРѕРјРїР°РЅС–С— Р· РјРѕР¶Р»РёРІРёРјРё С„С–Р»СЊС‚СЂР°РјРё (name, category_id, cpv_id).",
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Створити номенклатуру",
-        description="Створити новий елемент номенклатури.",
+        summary="РЎС‚РІРѕСЂРёС‚Рё РЅРѕРјРµРЅРєР»Р°С‚СѓСЂСѓ",
+        description="РЎС‚РІРѕСЂРёС‚Рё РЅРѕРІРёР№ РµР»РµРјРµРЅС‚ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂРё.",
     )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Оновити номенклатуру",
-        description="Оновити дані номенклатури.",
+        summary="РћРЅРѕРІРёС‚Рё РЅРѕРјРµРЅРєР»Р°С‚СѓСЂСѓ",
+        description="РћРЅРѕРІРёС‚Рё РґР°РЅС– РЅРѕРјРµРЅРєР»Р°С‚СѓСЂРё.",
     )
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Видалити номенклатуру",
-        description="Видалити елемент номенклатури.",
+        summary="Р’РёРґР°Р»РёС‚Рё РЅРѕРјРµРЅРєР»Р°С‚СѓСЂСѓ",
+        description="Р’РёРґР°Р»РёС‚Рё РµР»РµРјРµРЅС‚ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂРё.",
     )
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
     @extend_schema(
-        summary="Деактивувати номенклатуру",
-        description="Позначити номенклатуру як неактивну (is_active = False).",
+        summary="Р”РµР°РєС‚РёРІСѓРІР°С‚Рё РЅРѕРјРµРЅРєР»Р°С‚СѓСЂСѓ",
+        description="РџРѕР·РЅР°С‡РёС‚Рё РЅРѕРјРµРЅРєР»Р°С‚СѓСЂСѓ СЏРє РЅРµР°РєС‚РёРІРЅСѓ (is_active = False).",
     )
     @action(detail=True, methods=["post"])
     def deactivate(self, request, pk=None):
@@ -1857,8 +1940,8 @@ class NomenclatureViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(obj).data)
 
     @extend_schema(
-        summary="Активувати номенклатуру",
-        description="Позначити номенклатуру як активну (is_active = True).",
+        summary="РђРєС‚РёРІСѓРІР°С‚Рё РЅРѕРјРµРЅРєР»Р°С‚СѓСЂСѓ",
+        description="РџРѕР·РЅР°С‡РёС‚Рё РЅРѕРјРµРЅРєР»Р°С‚СѓСЂСѓ СЏРє Р°РєС‚РёРІРЅСѓ (is_active = True).",
     )
     @action(detail=True, methods=["post"])
     def activate(self, request, pk=None):
@@ -1870,7 +1953,7 @@ class NomenclatureViewSet(viewsets.ModelViewSet):
 
 class CurrencyViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    Довідник валют (системний, тільки читання).
+    Р”РѕРІС–РґРЅРёРє РІР°Р»СЋС‚ (СЃРёСЃС‚РµРјРЅРёР№, С‚С–Р»СЊРєРё С‡РёС‚Р°РЅРЅСЏ).
     """
 
     queryset = Currency.objects.all().order_by("code")
@@ -1880,7 +1963,7 @@ class CurrencyViewSet(viewsets.ReadOnlyModelViewSet):
 
 class TenderCriterionViewSet(viewsets.ModelViewSet):
     """
-    Довідник критеріїв тендерів (company-scoped).
+    Р”РѕРІС–РґРЅРёРє РєСЂРёС‚РµСЂС–С—РІ С‚РµРЅРґРµСЂС–РІ (company-scoped).
     """
 
     serializer_class = TenderCriterionSerializer
@@ -1900,9 +1983,9 @@ class TenderCriterionViewSet(viewsets.ModelViewSet):
 
 class ProcurementTenderViewSet(viewsets.ModelViewSet):
     """
-    Тендери на закупівлю (company-scoped). Номер присвоюється при першому збереженні.
-    Доступ: будь-який авторизований користувач з підтвердженим членством у компанії.
-    Права доступу (tenders.create тощо) не перевіряються — обмеження знято за бажанням замовника.
+    РўРµРЅРґРµСЂРё РЅР° Р·Р°РєСѓРїС–РІР»СЋ (company-scoped). РќРѕРјРµСЂ РїСЂРёСЃРІРѕСЋС”С‚СЊСЃСЏ РїСЂРё РїРµСЂС€РѕРјСѓ Р·Р±РµСЂРµР¶РµРЅРЅС–.
+    Р”РѕСЃС‚СѓРї: Р±СѓРґСЊ-СЏРєРёР№ Р°РІС‚РѕСЂРёР·РѕРІР°РЅРёР№ РєРѕСЂРёСЃС‚СѓРІР°С‡ Р· РїС–РґС‚РІРµСЂРґР¶РµРЅРёРј С‡Р»РµРЅСЃС‚РІРѕРј Сѓ РєРѕРјРїР°РЅС–С—.
+    РџСЂР°РІР° РґРѕСЃС‚СѓРїСѓ (tenders.create С‚РѕС‰Рѕ) РЅРµ РїРµСЂРµРІС–СЂСЏСЋС‚СЊСЃСЏ вЂ” РѕР±РјРµР¶РµРЅРЅСЏ Р·РЅСЏС‚Рѕ Р·Р° Р±Р°Р¶Р°РЅРЅСЏРј Р·Р°РјРѕРІРЅРёРєР°.
     """
 
     serializer_class = ProcurementTenderSerializer
@@ -1928,10 +2011,220 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
+    def get_object(self):
+        """Р”РѕР·РІРѕР»РёС‚Рё РґРѕСЃС‚СѓРї РґРѕ С‚РµРЅРґРµСЂР° РѕСЂРіР°РЅС–Р·Р°С‚РѕСЂР° Р°Р±Рѕ РґРѕ С‚РµРЅРґРµСЂР°, РґРµ РєРѕРјРїР°РЅС–СЏ РєРѕСЂРёСЃС‚СѓРІР°С‡Р° РјР°С” РїСЂРѕРїРѕР·РёС†С–СЋ (СѓС‡Р°СЃРЅРёРє)."""
+        queryset = self.filter_queryset(self.get_queryset())
+        pk = self.kwargs.get("pk")
+        obj = queryset.filter(pk=pk).first()
+        if obj:
+            return obj
+        from django.http import Http404
+        user_company_ids = list(
+            CompanyUser.objects.filter(
+                user=self.request.user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+        )
+        if user_company_ids:
+            obj = ProcurementTender.objects.filter(
+                pk=pk,
+                proposals__supplier_company_id__in=user_company_ids,
+            ).select_related(
+                "company", "category", "cpv_category", "expense_article",
+                "branch", "department", "currency", "created_by", "parent",
+            ).prefetch_related("positions__nomenclature__unit", "tender_criteria").first()
+            if obj:
+                return obj
+            # Дозволяємо перегляд деталей тендера, доступного для участі, ще до підтвердження участі.
+            obj = ProcurementTender.objects.filter(
+                ~Q(company_id__in=user_company_ids),
+                pk=pk,
+                conduct_type__in=["rfx", "online_auction"],
+                stage__in=["acceptance", "decision", "approval", "completed"],
+            ).select_related(
+                "company", "category", "cpv_category", "expense_article",
+                "branch", "department", "currency", "created_by", "parent",
+            ).prefetch_related("positions__nomenclature__unit", "tender_criteria").first()
+            if obj:
+                return obj
+        raise Http404("РўРµРЅРґРµСЂ РЅРµ Р·РЅР°Р№РґРµРЅРѕ.")
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="tab", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="active | processing | completed"),
+        ],
+        responses=ProcurementTenderSerializer(many=True),
+    )
+    @action(detail=False, methods=["get"], url_path="for-participation")
+    def for_participation(self, request):
+        """РЎРїРёСЃРѕРє С‚РµРЅРґРµСЂС–РІ РґР»СЏ СѓС‡Р°СЃС‚С– (С–РЅС€РёС… РєРѕРјРїР°РЅС–Р№): РђРєС‚РёРІРЅС– / РћРїСЂР°С†СЊРѕРІСѓСЋС‚СЊСЃСЏ / Р—Р°РІРµСЂС€РµРЅС–."""
+        user = request.user
+        user_company_ids = list(
+            CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+        )
+        if not user_company_ids:
+            return Response([])
+        tab = (request.query_params.get("tab") or "active").strip().lower()
+        qs = (
+            ProcurementTender.objects.filter(
+                ~Q(company_id__in=user_company_ids),
+                conduct_type__in=["rfx", "online_auction"],
+                stage__in=["acceptance", "decision", "approval", "completed"],
+            )
+            .select_related(
+                "company", "currency", "parent",
+            )
+            .prefetch_related("positions__nomenclature__unit", "tender_criteria")
+            .order_by("-updated_at")
+        )
+        if tab == "active":
+            qs = qs.filter(stage="acceptance")
+        elif tab == "processing":
+            qs = qs.filter(
+                Q(stage="decision") | Q(stage="approval")
+                | (Q(stage="preparation") & Q(tour_number__gt=1))
+            )
+        elif tab == "completed":
+            qs = qs.filter(stage="completed")
+        serializer = ProcurementTenderSerializer(
+            qs, many=True, context={"request": request}
+        )
+        return Response(serializer.data)
+
+    @extend_schema(responses=TenderProposalSerializer)
+    @action(detail=True, methods=["post"], url_path="confirm-participation")
+    def confirm_participation(self, request, pk=None):
+        """РџС–РґС‚РІРµСЂРґРёС‚Рё СѓС‡Р°СЃС‚СЊ: СЃС‚РІРѕСЂСЋС” РїСЂРѕРїРѕР·РёС†С–СЋ С‚Р° РґРѕРґР°С” РєРѕРЅС‚СЂР°РіРµРЅС‚Р° РІ РґРѕРІС–РґРЅРёРє РѕСЂРіР°РЅС–Р·Р°С‚РѕСЂР°."""
+        tender = ProcurementTender.objects.filter(pk=pk).select_related("company").first()
+        if not tender:
+            return Response({"detail": "РўРµРЅРґРµСЂ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
+        if tender.stage not in ("acceptance", "preparation"):
+            return Response(
+                {"detail": "РЈС‡Р°СЃС‚СЊ РјРѕР¶РЅР° РїС–РґС‚РІРµСЂРґРёС‚Рё Р»РёС€Рµ РґР»СЏ С‚РµРЅРґРµСЂР° РЅР° РїСЂРёР№РѕРј РїСЂРѕРїРѕР·РёС†С–Р№ Р°Р±Рѕ РїС–РґРіРѕС‚РѕРІРєСѓ."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user_company_ids = list(
+            CompanyUser.objects.filter(
+                user=request.user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+        )
+        if not user_company_ids:
+            return Response(
+                {"detail": "РќРµРјРѕР¶Р»РёРІРѕ РІРёР·РЅР°С‡РёС‚Рё РєРѕРјРїР°РЅС–СЋ СѓС‡Р°СЃРЅРёРєР°."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        supplier_company_id, error_response = _resolve_request_company_id(request)
+        if error_response:
+            return error_response
+        if tender.company_id == supplier_company_id:
+            return Response(
+                {"detail": "РћСЂРіР°РЅС–Р·Р°С‚РѕСЂ РЅРµ РјРѕР¶Рµ РїС–РґС‚РІРµСЂРґРёС‚Рё СѓС‡Р°СЃС‚СЊ Сѓ РІР»Р°СЃРЅРѕРјСѓ С‚РµРЅРґРµСЂС–."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        with transaction.atomic():
+            proposal, created = TenderProposal.objects.get_or_create(
+                tender=tender,
+                supplier_company_id=supplier_company_id,
+            )
+            CompanySupplier.objects.get_or_create(
+                owner_company_id=tender.company_id,
+                supplier_company_id=supplier_company_id,
+                defaults={"source": CompanySupplier.Source.PARTICIPATION},
+            )
+        serializer = TenderProposalSerializer(proposal)
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @extend_schema(responses=TenderProposalSerializer)
+    @action(detail=True, methods=["post"], url_path="submit-proposal")
+    def submit_proposal(self, request, pk=None):
+        """РџРѕРґР°С‚Рё РїСЂРѕРїРѕР·РёС†С–СЋ (С„С–РєСЃСѓС” РїРѕРґР°С‡Сѓ РґР»СЏ РєРѕРјРїР°РЅС–С— РїРѕС‚РѕС‡РЅРѕРіРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р°)."""
+        tender = ProcurementTender.objects.filter(pk=pk).first()
+        if not tender:
+            return Response({"detail": "РўРµРЅРґРµСЂ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
+        if tender.stage != "acceptance":
+            return Response(
+                {"detail": "РџРѕРґР°С‚Рё РїСЂРѕРїРѕР·РёС†С–СЋ РјРѕР¶РЅР° Р»РёС€Рµ РїС–Рґ С‡Р°СЃ РµС‚Р°РїСѓ РїСЂРёР№РѕРјСѓ РїСЂРѕРїРѕР·РёС†С–Р№."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if tender.end_at and timezone.now() > tender.end_at:
+            return Response(
+                {"detail": "РўРµСЂРјС–РЅ РїСЂРёР№РѕРјСѓ РїСЂРѕРїРѕР·РёС†С–Р№ Р·Р°РІРµСЂС€РµРЅРѕ."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user_company_ids = list(
+            CompanyUser.objects.filter(
+                user=request.user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+        )
+        if not user_company_ids:
+            return Response(
+                {"detail": "РќРµРјРѕР¶Р»РёРІРѕ РІРёР·РЅР°С‡РёС‚Рё РєРѕРјРїР°РЅС–СЋ."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        supplier_company_id, error_response = _resolve_request_company_id(request)
+        if error_response:
+            return error_response
+        proposal = TenderProposal.objects.filter(
+            tender=tender, supplier_company_id=supplier_company_id
+        ).first()
+        if not proposal:
+            return Response(
+                {"detail": "РџСЂРѕРїРѕР·РёС†С–СЋ РЅРµ Р·РЅР°Р№РґРµРЅРѕ. РЎРїРѕС‡Р°С‚РєСѓ РїС–РґС‚РІРµСЂРґС–С‚СЊ СѓС‡Р°СЃС‚СЊ."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        proposal.submitted_at = timezone.now()
+        proposal.save(update_fields=["submitted_at"])
+        serializer = TenderProposalSerializer(proposal)
+        return Response(serializer.data)
+
+    @extend_schema(responses=TenderProposalSerializer)
+    @action(detail=True, methods=["post"], url_path="withdraw-proposal")
+    def withdraw_proposal(self, request, pk=None):
+        """Р’С–РґРєР»РёРєР°С‚Рё РїСЂРѕРїРѕР·РёС†С–СЋ (РєРѕРјРїР°РЅС–СЏ РїРѕС‚РѕС‡РЅРѕРіРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р°)."""
+        tender = ProcurementTender.objects.filter(pk=pk).first()
+        if not tender:
+            return Response({"detail": "РўРµРЅРґРµСЂ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
+        if tender.stage != "acceptance":
+            return Response(
+                {"detail": "Р’С–РґРєР»РёРєР°С‚Рё РїСЂРѕРїРѕР·РёС†С–СЋ РјРѕР¶РЅР° Р»РёС€Рµ РїС–Рґ С‡Р°СЃ РµС‚Р°РїСѓ РїСЂРёР№РѕРјСѓ РїСЂРѕРїРѕР·РёС†С–Р№."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if tender.end_at and timezone.now() > tender.end_at:
+            return Response(
+                {"detail": "РўРµСЂРјС–РЅ РїСЂРёР№РѕРјСѓ РїСЂРѕРїРѕР·РёС†С–Р№ Р·Р°РІРµСЂС€РµРЅРѕ."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user_company_ids = list(
+            CompanyUser.objects.filter(
+                user=request.user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+        )
+        if not user_company_ids:
+            return Response(
+                {"detail": "РќРµРјРѕР¶Р»РёРІРѕ РІРёР·РЅР°С‡РёС‚Рё РєРѕРјРїР°РЅС–СЋ."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        supplier_company_id, error_response = _resolve_request_company_id(request)
+        if error_response:
+            return error_response
+        proposal = TenderProposal.objects.filter(
+            tender=tender, supplier_company_id=supplier_company_id
+        ).first()
+        if not proposal:
+            return Response(
+                {"detail": "РџСЂРѕРїРѕР·РёС†С–СЋ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        proposal.submitted_at = None
+        proposal.save(update_fields=["submitted_at"])
+        serializer = TenderProposalSerializer(proposal)
+        return Response(serializer.data)
+
     @extend_schema(responses=[{"type": "array", "items": {"type": "object", "properties": {"id": {"type": "integer"}, "tour_number": {"type": "integer"}}}}])
     @action(detail=True, methods=["get"], url_path="tours")
     def tours_list(self, request, pk=None):
-        """Усі тури сімейства (від кореня + усі наступні) для випадаючого списку."""
+        """РЈСЃС– С‚СѓСЂРё СЃС–РјРµР№СЃС‚РІР° (РІС–Рґ РєРѕСЂРµРЅСЏ + СѓСЃС– РЅР°СЃС‚СѓРїРЅС–) РґР»СЏ РІРёРїР°РґР°СЋС‡РѕРіРѕ СЃРїРёСЃРєСѓ."""
         tender = self.get_object()
         root = tender
         while root.parent_id:
@@ -1963,19 +2256,19 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="fix-decision")
     def fix_decision(self, request, pk=None):
         """
-        Зафіксувати рішення: winner — з переможцями по позиціях, cancel — без переможців,
-        next_round — створити наступний тур на етапі підготовки.
+        Р—Р°С„С–РєСЃСѓРІР°С‚Рё СЂС–С€РµРЅРЅСЏ: winner вЂ” Р· РїРµСЂРµРјРѕР¶С†СЏРјРё РїРѕ РїРѕР·РёС†С–СЏС…, cancel вЂ” Р±РµР· РїРµСЂРµРјРѕР¶С†С–РІ,
+        next_round вЂ” СЃС‚РІРѕСЂРёС‚Рё РЅР°СЃС‚СѓРїРЅРёР№ С‚СѓСЂ РЅР° РµС‚Р°РїС– РїС–РґРіРѕС‚РѕРІРєРё.
         """
         tender = self.get_object()
         mode = request.data.get("mode")
         if mode not in ("winner", "cancel", "next_round"):
             return Response(
-                {"detail": "mode має бути: winner, cancel або next_round."},
+                {"detail": "mode РјР°С” Р±СѓС‚Рё: winner, cancel Р°Р±Рѕ next_round."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if mode == "winner":
             position_winners = request.data.get("position_winners") or []
-            # Скинути всі переможці по цьому тендеру, потім встановити тільки передані
+            # РЎРєРёРЅСѓС‚Рё РІСЃС– РїРµСЂРµРјРѕР¶С†С– РїРѕ С†СЊРѕРјСѓ С‚РµРЅРґРµСЂСѓ, РїРѕС‚С–Рј РІСЃС‚Р°РЅРѕРІРёС‚Рё С‚С–Р»СЊРєРё РїРµСЂРµРґР°РЅС–
             ProcurementTenderPosition.objects.filter(tender=tender).update(winner_proposal=None)
             for item in position_winners:
                 pos_id = item.get("position_id")
@@ -2028,7 +2321,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
     @extend_schema(responses=TenderProposalSerializer(many=True))
     @action(detail=True, methods=["get"], url_path="proposals")
     def proposals_list(self, request, pk=None):
-        """Список пропозицій по тендеру."""
+        """РЎРїРёСЃРѕРє РїСЂРѕРїРѕР·РёС†С–Р№ РїРѕ С‚РµРЅРґРµСЂСѓ."""
         tender = self.get_object()
         qs = TenderProposal.objects.filter(tender=tender).select_related(
             "supplier_company"
@@ -2041,12 +2334,12 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
     @extend_schema(request=TenderProposalSerializer, responses=TenderProposalSerializer)
     @action(detail=True, methods=["post"], url_path="proposals/add")
     def proposal_add(self, request, pk=None):
-        """Додати пропозицію (обрати контрагента)."""
+        """Р”РѕРґР°С‚Рё РїСЂРѕРїРѕР·РёС†С–СЋ (РѕР±СЂР°С‚Рё РєРѕРЅС‚СЂР°РіРµРЅС‚Р°)."""
         tender = self.get_object()
         supplier_company_id = request.data.get("supplier_company_id") or request.data.get("supplier_company")
         if not supplier_company_id:
             return Response(
-                {"detail": "Потрібно вказати supplier_company_id."},
+                {"detail": "РџРѕС‚СЂС–Р±РЅРѕ РІРєР°Р·Р°С‚Рё supplier_company_id."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         proposal, created = TenderProposal.objects.get_or_create(
@@ -2059,13 +2352,13 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
     @extend_schema(request=TenderProposalPositionUpdateSerializer)
     @action(detail=True, methods=["post", "patch"], url_path=r"proposals/(?P<proposal_id>[^/.]+)/position-values")
     def proposal_position_values(self, request, pk=None, proposal_id=None):
-        """Оновити значення по позиціях пропозиції (ціна + критерії)."""
+        """РћРЅРѕРІРёС‚Рё Р·РЅР°С‡РµРЅРЅСЏ РїРѕ РїРѕР·РёС†С–СЏС… РїСЂРѕРїРѕР·РёС†С–С— (С†С–РЅР° + РєСЂРёС‚РµСЂС–С—)."""
         tender = self.get_object()
         proposal = TenderProposal.objects.filter(
             tender=tender, id=proposal_id
         ).prefetch_related("position_values__tender_position").first()
         if not proposal:
-            return Response({"detail": "Пропозицію не знайдено."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "РџСЂРѕРїРѕР·РёС†С–СЋ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
         payload = TenderProposalPositionUpdateSerializer(data=request.data)
         if not payload.is_valid():
             return Response(payload.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -2097,7 +2390,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
     @extend_schema(responses=TenderProposalSerializer(many=True))
     @action(detail=True, methods=["get"], url_path=r"proposals/(?P<proposal_id>[^/.]+)")
     def proposal_detail(self, request, pk=None, proposal_id=None):
-        """Деталі пропозиції (з позиціями та значеннями)."""
+        """Р”РµС‚Р°Р»С– РїСЂРѕРїРѕР·РёС†С–С— (Р· РїРѕР·РёС†С–СЏРјРё С‚Р° Р·РЅР°С‡РµРЅРЅСЏРјРё)."""
         tender = self.get_object()
         proposal = TenderProposal.objects.filter(
             tender=tender, id=proposal_id
@@ -2105,14 +2398,14 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             "position_values__tender_position__nomenclature__unit",
         ).first()
         if not proposal:
-            return Response({"detail": "Пропозицію не знайдено."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "РџСЂРѕРїРѕР·РёС†С–СЋ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
         serializer = TenderProposalSerializer(proposal)
         return Response(serializer.data)
 
     @extend_schema(responses=ProcurementTenderFileSerializer(many=True))
     @action(detail=True, methods=["get"], url_path="files")
     def files_list(self, request, pk=None):
-        """Список прикріплених файлів."""
+        """РЎРїРёСЃРѕРє РїСЂРёРєСЂС–РїР»РµРЅРёС… С„Р°Р№Р»С–РІ."""
         tender = self.get_object()
         qs = ProcurementTenderFile.objects.filter(tender=tender)
         serializer = ProcurementTenderFileSerializer(
@@ -2123,12 +2416,12 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
     @extend_schema(request=OpenApiTypes.BINARY, responses=ProcurementTenderFileSerializer)
     @action(detail=True, methods=["post"], url_path="files/upload")
     def file_upload(self, request, pk=None):
-        """Прикріпити файл до тендера."""
+        """РџСЂРёРєСЂС–РїРёС‚Рё С„Р°Р№Р» РґРѕ С‚РµРЅРґРµСЂР°."""
         tender = self.get_object()
         file_obj = request.FILES.get("file") or request.FILES.get("file_upload")
         if not file_obj:
             return Response(
-                {"detail": "Надішліть файл у полі file або file_upload."},
+                {"detail": "РќР°РґС–С€Р»С–С‚СЊ С„Р°Р№Р» Сѓ РїРѕР»С– file Р°Р±Рѕ file_upload."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         name = request.data.get("name", "") or file_obj.name
@@ -2149,21 +2442,21 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["delete"], url_path=r"files/(?P<file_id>\d+)")
     def file_delete(self, request, pk=None, file_id=None):
-        """Видалити прикріплений файл."""
+        """Р’РёРґР°Р»РёС‚Рё РїСЂРёРєСЂС–РїР»РµРЅРёР№ С„Р°Р№Р»."""
         tender = self.get_object()
         obj = ProcurementTenderFile.objects.filter(tender=tender, id=file_id).first()
         if not obj:
-            return Response({"detail": "Файл не знайдено."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Р¤Р°Р№Р» РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
         obj.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["patch"], url_path=r"files/(?P<file_id>\d+)")
     def file_patch(self, request, pk=None, file_id=None):
-        """Оновити видимість файлу учасникам."""
+        """РћРЅРѕРІРёС‚Рё РІРёРґРёРјС–СЃС‚СЊ С„Р°Р№Р»Сѓ СѓС‡Р°СЃРЅРёРєР°Рј."""
         tender = self.get_object()
         obj = ProcurementTenderFile.objects.filter(tender=tender, id=file_id).first()
         if not obj:
-            return Response({"detail": "Файл не знайдено."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Р¤Р°Р№Р» РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
         if "visible_to_participants" in request.data:
             obj.visible_to_participants = bool(request.data["visible_to_participants"])
             obj.save(update_fields=["visible_to_participants"])
@@ -2173,8 +2466,8 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
 
 class SalesTenderViewSet(viewsets.ModelViewSet):
     """
-    Тендери на продаж (company-scoped). Та сама процедура що й закупівля;
-    переможець рекомендується за найбільшою ціною.
+    РўРµРЅРґРµСЂРё РЅР° РїСЂРѕРґР°Р¶ (company-scoped). РўР° СЃР°РјР° РїСЂРѕС†РµРґСѓСЂР° С‰Рѕ Р№ Р·Р°РєСѓРїС–РІР»СЏ;
+    РїРµСЂРµРјРѕР¶РµС†СЊ СЂРµРєРѕРјРµРЅРґСѓС”С‚СЊСЃСЏ Р·Р° РЅР°Р№Р±С–Р»СЊС€РѕСЋ С†С–РЅРѕСЋ.
     """
 
     serializer_class = SalesTenderSerializer
@@ -2197,13 +2490,223 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             "branch", "department", "currency", "created_by", "parent",
         ).prefetch_related("positions__nomenclature__unit", "tender_criteria")
 
+    def get_object(self):
+        """Р”РѕР·РІРѕР»РёС‚Рё РґРѕСЃС‚СѓРї РґРѕ С‚РµРЅРґРµСЂР° РѕСЂРіР°РЅС–Р·Р°С‚РѕСЂР° Р°Р±Рѕ РґРѕ С‚РµРЅРґРµСЂР°, РґРµ РєРѕРјРїР°РЅС–СЏ РєРѕСЂРёСЃС‚СѓРІР°С‡Р° РјР°С” РїСЂРѕРїРѕР·РёС†С–СЋ (СѓС‡Р°СЃРЅРёРє)."""
+        queryset = self.filter_queryset(self.get_queryset())
+        pk = self.kwargs.get("pk")
+        obj = queryset.filter(pk=pk).first()
+        if obj:
+            return obj
+        from django.http import Http404
+        user_company_ids = list(
+            CompanyUser.objects.filter(
+                user=self.request.user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+        )
+        if user_company_ids:
+            obj = SalesTender.objects.filter(
+                pk=pk,
+                proposals__supplier_company_id__in=user_company_ids,
+            ).select_related(
+                "company", "category", "cpv_category", "expense_article",
+                "branch", "department", "currency", "created_by", "parent",
+            ).prefetch_related("positions__nomenclature__unit", "tender_criteria").first()
+            if obj:
+                return obj
+            # Дозволяємо перегляд деталей тендера, доступного для участі, ще до підтвердження участі.
+            obj = SalesTender.objects.filter(
+                ~Q(company_id__in=user_company_ids),
+                pk=pk,
+                conduct_type__in=["rfx", "online_auction"],
+                stage__in=["acceptance", "decision", "approval", "completed"],
+            ).select_related(
+                "company", "category", "cpv_category", "expense_article",
+                "branch", "department", "currency", "created_by", "parent",
+            ).prefetch_related("positions__nomenclature__unit", "tender_criteria").first()
+            if obj:
+                return obj
+        raise Http404("РўРµРЅРґРµСЂ РЅРµ Р·РЅР°Р№РґРµРЅРѕ.")
+
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="tab", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="active | processing | completed"),
+        ],
+        responses=SalesTenderSerializer(many=True),
+    )
+    @action(detail=False, methods=["get"], url_path="for-participation")
+    def for_participation(self, request):
+        """РЎРїРёСЃРѕРє С‚РµРЅРґРµСЂС–РІ РЅР° РїСЂРѕРґР°Р¶ РґР»СЏ СѓС‡Р°СЃС‚С– (С–РЅС€РёС… РєРѕРјРїР°РЅС–Р№): РђРєС‚РёРІРЅС– / РћРїСЂР°С†СЊРѕРІСѓСЋС‚СЊСЃСЏ / Р—Р°РІРµСЂС€РµРЅС–."""
+        user = request.user
+        user_company_ids = list(
+            CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+        )
+        if not user_company_ids:
+            return Response([])
+        tab = (request.query_params.get("tab") or "active").strip().lower()
+        qs = (
+            SalesTender.objects.filter(
+                ~Q(company_id__in=user_company_ids),
+                conduct_type__in=["rfx", "online_auction"],
+                stage__in=["acceptance", "decision", "approval", "completed"],
+            )
+            .select_related(
+                "company", "currency", "parent",
+            )
+            .prefetch_related("positions__nomenclature__unit", "tender_criteria")
+            .order_by("-updated_at")
+        )
+        if tab == "active":
+            qs = qs.filter(stage="acceptance")
+        elif tab == "processing":
+            qs = qs.filter(
+                Q(stage="decision") | Q(stage="approval")
+                | (Q(stage="preparation") & Q(tour_number__gt=1))
+            )
+        elif tab == "completed":
+            qs = qs.filter(stage="completed")
+        serializer = SalesTenderSerializer(
+            qs, many=True, context={"request": request}
+        )
+        return Response(serializer.data)
+
+    @extend_schema(responses=SalesTenderProposalSerializer)
+    @action(detail=True, methods=["post"], url_path="confirm-participation")
+    def confirm_participation(self, request, pk=None):
+        """РџС–РґС‚РІРµСЂРґРёС‚Рё СѓС‡Р°СЃС‚СЊ: СЃС‚РІРѕСЂСЋС” РїСЂРѕРїРѕР·РёС†С–СЋ С‚Р° РґРѕРґР°С” РєРѕРЅС‚СЂР°РіРµРЅС‚Р° РІ РґРѕРІС–РґРЅРёРє РѕСЂРіР°РЅС–Р·Р°С‚РѕСЂР°."""
+        tender = SalesTender.objects.filter(pk=pk).select_related("company").first()
+        if not tender:
+            return Response({"detail": "РўРµРЅРґРµСЂ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
+        if tender.stage not in ("acceptance", "preparation"):
+            return Response(
+                {"detail": "РЈС‡Р°СЃС‚СЊ РјРѕР¶РЅР° РїС–РґС‚РІРµСЂРґРёС‚Рё Р»РёС€Рµ РґР»СЏ С‚РµРЅРґРµСЂР° РЅР° РїСЂРёР№РѕРј РїСЂРѕРїРѕР·РёС†С–Р№ Р°Р±Рѕ РїС–РґРіРѕС‚РѕРІРєСѓ."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user_company_ids = list(
+            CompanyUser.objects.filter(
+                user=request.user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+        )
+        if not user_company_ids:
+            return Response(
+                {"detail": "РќРµРјРѕР¶Р»РёРІРѕ РІРёР·РЅР°С‡РёС‚Рё РєРѕРјРїР°РЅС–СЋ СѓС‡Р°СЃРЅРёРєР°."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        supplier_company_id, error_response = _resolve_request_company_id(request)
+        if error_response:
+            return error_response
+        if tender.company_id == supplier_company_id:
+            return Response(
+                {"detail": "РћСЂРіР°РЅС–Р·Р°С‚РѕСЂ РЅРµ РјРѕР¶Рµ РїС–РґС‚РІРµСЂРґРёС‚Рё СѓС‡Р°СЃС‚СЊ Сѓ РІР»Р°СЃРЅРѕРјСѓ С‚РµРЅРґРµСЂС–."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        with transaction.atomic():
+            proposal, created = SalesTenderProposal.objects.get_or_create(
+                tender=tender,
+                supplier_company_id=supplier_company_id,
+            )
+            CompanySupplier.objects.get_or_create(
+                owner_company_id=tender.company_id,
+                supplier_company_id=supplier_company_id,
+                defaults={"source": CompanySupplier.Source.PARTICIPATION},
+            )
+        serializer = SalesTenderProposalSerializer(proposal)
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @extend_schema(responses=SalesTenderProposalSerializer)
+    @action(detail=True, methods=["post"], url_path="submit-proposal")
+    def submit_proposal(self, request, pk=None):
+        """РџРѕРґР°С‚Рё РїСЂРѕРїРѕР·РёС†С–СЋ (С„С–РєСЃСѓС” РїРѕРґР°С‡Сѓ РґР»СЏ РєРѕРјРїР°РЅС–С— РїРѕС‚РѕС‡РЅРѕРіРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р°)."""
+        tender = SalesTender.objects.filter(pk=pk).first()
+        if not tender:
+            return Response({"detail": "РўРµРЅРґРµСЂ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
+        if tender.stage != "acceptance":
+            return Response(
+                {"detail": "РџРѕРґР°С‚Рё РїСЂРѕРїРѕР·РёС†С–СЋ РјРѕР¶РЅР° Р»РёС€Рµ РїС–Рґ С‡Р°СЃ РµС‚Р°РїСѓ РїСЂРёР№РѕРјСѓ РїСЂРѕРїРѕР·РёС†С–Р№."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if tender.end_at and timezone.now() > tender.end_at:
+            return Response(
+                {"detail": "РўРµСЂРјС–РЅ РїСЂРёР№РѕРјСѓ РїСЂРѕРїРѕР·РёС†С–Р№ Р·Р°РІРµСЂС€РµРЅРѕ."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user_company_ids = list(
+            CompanyUser.objects.filter(
+                user=request.user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+        )
+        if not user_company_ids:
+            return Response(
+                {"detail": "РќРµРјРѕР¶Р»РёРІРѕ РІРёР·РЅР°С‡РёС‚Рё РєРѕРјРїР°РЅС–СЋ."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        supplier_company_id, error_response = _resolve_request_company_id(request)
+        if error_response:
+            return error_response
+        proposal = SalesTenderProposal.objects.filter(
+            tender=tender, supplier_company_id=supplier_company_id
+        ).first()
+        if not proposal:
+            return Response(
+                {"detail": "РџСЂРѕРїРѕР·РёС†С–СЋ РЅРµ Р·РЅР°Р№РґРµРЅРѕ. РЎРїРѕС‡Р°С‚РєСѓ РїС–РґС‚РІРµСЂРґС–С‚СЊ СѓС‡Р°СЃС‚СЊ."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        proposal.submitted_at = timezone.now()
+        proposal.save(update_fields=["submitted_at"])
+        serializer = SalesTenderProposalSerializer(proposal)
+        return Response(serializer.data)
+
+    @extend_schema(responses=SalesTenderProposalSerializer)
+    @action(detail=True, methods=["post"], url_path="withdraw-proposal")
+    def withdraw_proposal(self, request, pk=None):
+        """Р’С–РґРєР»РёРєР°С‚Рё РїСЂРѕРїРѕР·РёС†С–СЋ (РєРѕРјРїР°РЅС–СЏ РїРѕС‚РѕС‡РЅРѕРіРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р°)."""
+        tender = SalesTender.objects.filter(pk=pk).first()
+        if not tender:
+            return Response({"detail": "РўРµРЅРґРµСЂ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
+        if tender.stage != "acceptance":
+            return Response(
+                {"detail": "Р’С–РґРєР»РёРєР°С‚Рё РїСЂРѕРїРѕР·РёС†С–СЋ РјРѕР¶РЅР° Р»РёС€Рµ РїС–Рґ С‡Р°СЃ РµС‚Р°РїСѓ РїСЂРёР№РѕРјСѓ РїСЂРѕРїРѕР·РёС†С–Р№."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if tender.end_at and timezone.now() > tender.end_at:
+            return Response(
+                {"detail": "РўРµСЂРјС–РЅ РїСЂРёР№РѕРјСѓ РїСЂРѕРїРѕР·РёС†С–Р№ Р·Р°РІРµСЂС€РµРЅРѕ."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user_company_ids = list(
+            CompanyUser.objects.filter(
+                user=request.user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+        )
+        if not user_company_ids:
+            return Response(
+                {"detail": "РќРµРјРѕР¶Р»РёРІРѕ РІРёР·РЅР°С‡РёС‚Рё РєРѕРјРїР°РЅС–СЋ."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        supplier_company_id, error_response = _resolve_request_company_id(request)
+        if error_response:
+            return error_response
+        proposal = SalesTenderProposal.objects.filter(
+            tender=tender, supplier_company_id=supplier_company_id
+        ).first()
+        if not proposal:
+            return Response(
+                {"detail": "РџСЂРѕРїРѕР·РёС†С–СЋ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        proposal.submitted_at = None
+        proposal.save(update_fields=["submitted_at"])
+        serializer = SalesTenderProposalSerializer(proposal)
+        return Response(serializer.data)
 
     @extend_schema(responses=[{"type": "array", "items": {"type": "object", "properties": {"id": {"type": "integer"}, "tour_number": {"type": "integer"}}}}])
     @action(detail=True, methods=["get"], url_path="tours")
     def tours_list(self, request, pk=None):
-        """Усі тури сімейства (від кореня + усі наступні) для випадаючого списку."""
+        """РЈСЃС– С‚СѓСЂРё СЃС–РјРµР№СЃС‚РІР° (РІС–Рґ РєРѕСЂРµРЅСЏ + СѓСЃС– РЅР°СЃС‚СѓРїРЅС–) РґР»СЏ РІРёРїР°РґР°СЋС‡РѕРіРѕ СЃРїРёСЃРєСѓ."""
         tender = self.get_object()
         root = tender
         while root.parent_id:
@@ -2235,14 +2738,14 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="fix-decision")
     def fix_decision(self, request, pk=None):
         """
-        Зафіксувати рішення: winner — з переможцями по позиціях, cancel — без переможців,
-        next_round — створити наступний тур на етапі підготовки.
+        Р—Р°С„С–РєСЃСѓРІР°С‚Рё СЂС–С€РµРЅРЅСЏ: winner вЂ” Р· РїРµСЂРµРјРѕР¶С†СЏРјРё РїРѕ РїРѕР·РёС†С–СЏС…, cancel вЂ” Р±РµР· РїРµСЂРµРјРѕР¶С†С–РІ,
+        next_round вЂ” СЃС‚РІРѕСЂРёС‚Рё РЅР°СЃС‚СѓРїРЅРёР№ С‚СѓСЂ РЅР° РµС‚Р°РїС– РїС–РґРіРѕС‚РѕРІРєРё.
         """
         tender = self.get_object()
         mode = request.data.get("mode")
         if mode not in ("winner", "cancel", "next_round"):
             return Response(
-                {"detail": "mode має бути: winner, cancel або next_round."},
+                {"detail": "mode РјР°С” Р±СѓС‚Рё: winner, cancel Р°Р±Рѕ next_round."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if mode == "winner":
@@ -2299,7 +2802,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
     @extend_schema(responses=SalesTenderProposalSerializer(many=True))
     @action(detail=True, methods=["get"], url_path="proposals")
     def proposals_list(self, request, pk=None):
-        """Список пропозицій по тендеру на продаж."""
+        """РЎРїРёСЃРѕРє РїСЂРѕРїРѕР·РёС†С–Р№ РїРѕ С‚РµРЅРґРµСЂСѓ РЅР° РїСЂРѕРґР°Р¶."""
         tender = self.get_object()
         qs = SalesTenderProposal.objects.filter(tender=tender).select_related(
             "supplier_company"
@@ -2312,12 +2815,12 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
     @extend_schema(request=SalesTenderProposalSerializer, responses=SalesTenderProposalSerializer)
     @action(detail=True, methods=["post"], url_path="proposals/add")
     def proposal_add(self, request, pk=None):
-        """Додати пропозицію (обрати контрагента)."""
+        """Р”РѕРґР°С‚Рё РїСЂРѕРїРѕР·РёС†С–СЋ (РѕР±СЂР°С‚Рё РєРѕРЅС‚СЂР°РіРµРЅС‚Р°)."""
         tender = self.get_object()
         supplier_company_id = request.data.get("supplier_company_id") or request.data.get("supplier_company")
         if not supplier_company_id:
             return Response(
-                {"detail": "Потрібно вказати supplier_company_id."},
+                {"detail": "РџРѕС‚СЂС–Р±РЅРѕ РІРєР°Р·Р°С‚Рё supplier_company_id."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         proposal, created = SalesTenderProposal.objects.get_or_create(
@@ -2330,13 +2833,13 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
     @extend_schema(request=TenderProposalPositionUpdateSerializer)
     @action(detail=True, methods=["post", "patch"], url_path=r"proposals/(?P<proposal_id>[^/.]+)/position-values")
     def proposal_position_values(self, request, pk=None, proposal_id=None):
-        """Оновити значення по позиціях пропозиції."""
+        """РћРЅРѕРІРёС‚Рё Р·РЅР°С‡РµРЅРЅСЏ РїРѕ РїРѕР·РёС†С–СЏС… РїСЂРѕРїРѕР·РёС†С–С—."""
         tender = self.get_object()
         proposal = SalesTenderProposal.objects.filter(
             tender=tender, id=proposal_id
         ).prefetch_related("position_values__tender_position").first()
         if not proposal:
-            return Response({"detail": "Пропозицію не знайдено."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "РџСЂРѕРїРѕР·РёС†С–СЋ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
         payload = TenderProposalPositionUpdateSerializer(data=request.data)
         if not payload.is_valid():
             return Response(payload.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -2366,7 +2869,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
     @extend_schema(responses=SalesTenderProposalSerializer(many=True))
     @action(detail=True, methods=["get"], url_path=r"proposals/(?P<proposal_id>[^/.]+)")
     def proposal_detail(self, request, pk=None, proposal_id=None):
-        """Деталі пропозиції."""
+        """Р”РµС‚Р°Р»С– РїСЂРѕРїРѕР·РёС†С–С—."""
         tender = self.get_object()
         proposal = SalesTenderProposal.objects.filter(
             tender=tender, id=proposal_id
@@ -2374,14 +2877,14 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             "position_values__tender_position__nomenclature__unit",
         ).first()
         if not proposal:
-            return Response({"detail": "Пропозицію не знайдено."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "РџСЂРѕРїРѕР·РёС†С–СЋ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
         serializer = SalesTenderProposalSerializer(proposal)
         return Response(serializer.data)
 
     @extend_schema(responses=SalesTenderFileSerializer(many=True))
     @action(detail=True, methods=["get"], url_path="files")
     def files_list(self, request, pk=None):
-        """Список прикріплених файлів."""
+        """РЎРїРёСЃРѕРє РїСЂРёРєСЂС–РїР»РµРЅРёС… С„Р°Р№Р»С–РІ."""
         tender = self.get_object()
         qs = SalesTenderFile.objects.filter(tender=tender)
         serializer = SalesTenderFileSerializer(
@@ -2392,12 +2895,12 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
     @extend_schema(request=OpenApiTypes.BINARY, responses=SalesTenderFileSerializer)
     @action(detail=True, methods=["post"], url_path="files/upload")
     def file_upload(self, request, pk=None):
-        """Прикріпити файл до тендера на продаж."""
+        """РџСЂРёРєСЂС–РїРёС‚Рё С„Р°Р№Р» РґРѕ С‚РµРЅРґРµСЂР° РЅР° РїСЂРѕРґР°Р¶."""
         tender = self.get_object()
         file_obj = request.FILES.get("file") or request.FILES.get("file_upload")
         if not file_obj:
             return Response(
-                {"detail": "Надішліть файл у полі file або file_upload."},
+                {"detail": "РќР°РґС–С€Р»С–С‚СЊ С„Р°Р№Р» Сѓ РїРѕР»С– file Р°Р±Рѕ file_upload."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         name = request.data.get("name", "") or file_obj.name
@@ -2418,21 +2921,21 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["delete"], url_path=r"files/(?P<file_id>\d+)")
     def file_delete(self, request, pk=None, file_id=None):
-        """Видалити прикріплений файл."""
+        """Р’РёРґР°Р»РёС‚Рё РїСЂРёРєСЂС–РїР»РµРЅРёР№ С„Р°Р№Р»."""
         tender = self.get_object()
         obj = SalesTenderFile.objects.filter(tender=tender, id=file_id).first()
         if not obj:
-            return Response({"detail": "Файл не знайдено."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Р¤Р°Р№Р» РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
         obj.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["patch"], url_path=r"files/(?P<file_id>\d+)")
     def file_patch(self, request, pk=None, file_id=None):
-        """Оновити видимість файлу учасникам."""
+        """РћРЅРѕРІРёС‚Рё РІРёРґРёРјС–СЃС‚СЊ С„Р°Р№Р»Сѓ СѓС‡Р°СЃРЅРёРєР°Рј."""
         tender = self.get_object()
         obj = SalesTenderFile.objects.filter(tender=tender, id=file_id).first()
         if not obj:
-            return Response({"detail": "Файл не знайдено."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Р¤Р°Р№Р» РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
         if "visible_to_participants" in request.data:
             obj.visible_to_participants = bool(request.data["visible_to_participants"])
             obj.save(update_fields=["visible_to_participants"])

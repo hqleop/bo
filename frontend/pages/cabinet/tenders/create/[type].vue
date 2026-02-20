@@ -19,128 +19,175 @@
             <div class="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-6 lg:gap-8">
               <div class="space-y-6">
                 <UFormField label="Назва тендера" required class="mb-0 w-full">
-                  <UInput v-model="form.name" placeholder="Введіть назву тендера" size="md" class="w-full" />
+                  <UInput
+                    v-model="form.name"
+                    placeholder="Введіть назву тендера"
+                    size="md"
+                    class="w-full"
+                  />
                 </UFormField>
 
                 <div>
-                  <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Категорізація</p>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <ContentSearch
-                  label="Категорія"
-                  placeholder="Оберіть категорію"
-                  search-placeholder="Пошук категорії"
-                  :disabled="(form.cpv_ids?.length ?? 0) > 0"
-                  :tree="categoryTree"
-                  :selected-ids="selectedCategoryIds"
-                  :search-term="categorySearch"
-                  @toggle="toggleCategory"
-                  @update:search-term="categorySearch = $event"
-                />
-                <CpvLazyMultiSearch
-                  label="Категорія CPV"
-                  placeholder="Оберіть CPV"
-                  :disabled="!!form.category"
-                  :selected-ids="form.cpv_ids"
-                  :selected-labels="createCpvLabels"
-                  @update:selected-ids="form.cpv_ids = $event"
-                  @update:selected-labels="createCpvLabels = $event"
-                />
-              </div>
-            </div>
+                  <p
+                    class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
+                  >
+                    Категорізація
+                  </p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <ContentSearch
+                      label="Категорія"
+                      placeholder="Оберіть категорію"
+                      search-placeholder="Пошук категорії"
+                      :disabled="(form.cpv_ids?.length ?? 0) > 0"
+                      :tree="categoryTree"
+                      :selected-ids="selectedCategoryIds"
+                      :search-term="categorySearch"
+                      @toggle="toggleCategory"
+                      @update:search-term="categorySearch = $event"
+                    />
+                    <CpvLazyMultiSearch
+                      label="Категорія CPV"
+                      placeholder="Оберіть CPV"
+                      required
+                      :disabled="!!form.category"
+                      :selected-ids="form.cpv_ids"
+                      :selected-labels="createCpvLabels"
+                      @update:selected-ids="form.cpv_ids = $event"
+                      @update:selected-labels="createCpvLabels = $event"
+                    />
+                  </div>
+                </div>
 
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Бюджет і валюта</p>
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <UFormField label="Стаття бюджету">
-                  <USelectMenu
-                    v-model="form.expense_article"
-                    :items="expenseOptions"
-                    value-key="value"
-                    placeholder="Оберіть статтю"
-                    size="sm"
-                  />
-                </UFormField>
-                <UFormField label="Орієнтовний бюджет">
-                  <UInput
-                    v-model.number="form.estimated_budget"
-                    type="number"
-                    step="0.01"
-                    placeholder="0"
-                    size="sm"
-                  />
-                </UFormField>
-                <UFormField label="Валюта" required>
-                  <USelectMenu
-                    v-model="form.currency"
-                    :items="currencyOptions"
-                    value-key="value"
-                    placeholder="Валюту"
-                    size="sm"
-                  />
-                </UFormField>
-              </div>
-            </div>
+                <div>
+                  <p
+                    class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
+                  >
+                    Бюджет і валюта
+                  </p>
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <UFormField label="Стаття бюджету">
+                      <USelectMenu
+                        v-model="form.expense_article"
+                        :items="expenseOptions"
+                        value-key="value"
+                        placeholder="Оберіть статтю"
+                        size="sm"
+                      />
+                    </UFormField>
+                    <UFormField label="Орієнтовний бюджет">
+                      <UInput
+                        v-model.number="form.estimated_budget"
+                        type="number"
+                        step="0.01"
+                        placeholder="0"
+                        size="sm"
+                      />
+                    </UFormField>
+                    <UFormField label="Валюта" required>
+                      <USelectMenu
+                        v-model="form.currency"
+                        :items="currencyOptions"
+                        value-key="value"
+                        placeholder="Валюту"
+                        size="sm"
+                      />
+                    </UFormField>
+                  </div>
+                </div>
 
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Організаційна структура</p>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <UFormField label="Філіал">
-                  <USelectMenu
-                    v-model="form.branch"
-                    :items="branchOptions"
-                    value-key="value"
-                    placeholder="Оберіть філіал"
-                    size="sm"
-                    @update:model-value="onBranchChange"
-                  />
-                </UFormField>
-                <UFormField label="Підрозділ">
-                  <USelectMenu
-                    v-model="form.department"
-                    :items="departmentOptions"
-                    value-key="value"
-                    placeholder="Оберіть підрозділ"
-                    size="sm"
-                  />
-                </UFormField>
-              </div>
-            </div>
+                <div>
+                  <p
+                    class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
+                  >
+                    Організаційна структура
+                  </p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <UFormField label="Філіал">
+                      <USelectMenu
+                        v-model="form.branch"
+                        :items="branchOptions"
+                        value-key="value"
+                        placeholder="Оберіть філіал"
+                        size="sm"
+                        @update:model-value="onBranchChange"
+                      />
+                    </UFormField>
+                    <UFormField label="Підрозділ">
+                      <USelectMenu
+                        v-model="form.department"
+                        :items="departmentOptions"
+                        value-key="value"
+                        placeholder="Оберіть підрозділ"
+                        size="sm"
+                      />
+                    </UFormField>
+                  </div>
+                </div>
 
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Параметри процедури</p>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <UFormField label="Тип проведення" required>
-                  <USelectMenu
-                    v-model="form.conduct_type"
-                    :items="conductTypeOptions"
-                    value-key="value"
-                    placeholder="Оберіть тип"
-                    size="sm"
-                  />
-                </UFormField>
-                <UFormField label="Тип публікації" required>
-                  <USelectMenu
-                    v-model="form.publication_type"
-                    :items="publicationTypeOptions"
-                    value-key="value"
-                    placeholder="Оберіть тип"
-                    size="sm"
-                  />
-                </UFormField>
+                <div>
+                  <p
+                    class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
+                  >
+                    Параметри процедури
+                  </p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <UFormField label="Тип проведення" required>
+                      <USelectMenu
+                        v-model="form.conduct_type"
+                        :items="conductTypeOptions"
+                        value-key="value"
+                        placeholder="Оберіть тип"
+                        size="sm"
+                      />
+                    </UFormField>
+                    <UFormField label="Тип публікації" required>
+                      <USelectMenu
+                        v-model="form.publication_type"
+                        :items="publicationTypeOptions"
+                        value-key="value"
+                        placeholder="Оберіть тип"
+                        size="sm"
+                      />
+                    </UFormField>
+                  </div>
+                </div>
               </div>
-            </div>
 
-              </div>
-
-              <div class="border-t border-gray-200 pt-5 lg:border-t-0 lg:border-l lg:border-gray-200 lg:pt-0 lg:pl-6 flex flex-col min-h-[320px]">
-                <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Загальні умови проведення тендера</p>
-                <UFormField label="Опис умов та вимог" class="mb-0 flex-1 flex flex-col min-h-0">
-                  <UTextarea
-                    v-model="form.general_terms"
-                    :rows="14"
-                    placeholder="Опишіть загальні умови, вимоги до учасників, порядок оцінки пропозицій тощо. Цей текст буде доступний учасникам."
-                    class="min-h-[320px] resize-y flex-1"
-                  />
+              <div
+                class="border-t border-gray-200 pt-5 lg:border-t-0 lg:border-l lg:border-gray-200 lg:pt-0 lg:pl-6 flex flex-col min-h-[320px]"
+              >
+                <p
+                  class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
+                >
+                  Загальні умови проведення тендера
+                </p>
+                <UFormField
+                  label="Опис умов та вимог"
+                  class="mb-0 flex-1 flex flex-col min-h-0"
+                >
+                  <div
+                    class="general-terms-editor-wrapper flex flex-col min-h-[320px] rounded-md border border-gray-200 bg-white overflow-hidden"
+                  >
+                    <UEditor
+                      v-slot="{ editor }"
+                      v-model="form.general_terms"
+                      content-type="html"
+                      :extensions="[TextAlign.configure({ types: ['heading', 'paragraph'] })]"
+                      placeholder="Опишіть загальні умови, вимоги до учасників, порядок оцінки пропозицій тощо. Цей текст буде доступний учасникам."
+                      :ui="{
+                        root: 'flex flex-col min-h-[300px]',
+                        content: 'flex-1 min-h-[260px] flex flex-col',
+                        base: 'min-h-[260px] outline-none py-2 px-3 cursor-text',
+                      }"
+                      class="w-full"
+                    >
+                      <UEditorToolbar
+                        :editor="editor"
+                        :items="generalTermsEditorToolbarItems"
+                        class="border-b border-gray-200 px-2 py-1 flex-shrink-0"
+                      />
+                    </UEditor>
+                  </div>
                 </UFormField>
               </div>
             </div>
@@ -162,18 +209,35 @@
 </template>
 
 <script setup lang="ts">
+import { TextAlign } from "@tiptap/extension-text-align";
 import { TENDER_STAGE_ITEMS } from "~/domains/tenders/tenders.constants";
 
 definePageMeta({
   layout: "cabinet",
   middleware: "auth",
-  meta: { title: "Створення процедури" },
+  meta: { title: "Створення тендера" },
 });
 
 const route = useRoute();
 const isSales = computed(
   () => String(route.params.type || "").toLowerCase() === "sales",
 );
+const isRegistrationMode = computed(
+  () => String(route.query.mode || "").toLowerCase() === "registration",
+);
+const pageTitle = computed(() =>
+  isRegistrationMode.value
+    ? isSales.value
+      ? "Реєстрація продажу"
+      : "Реєстрація закупівлі"
+    : "Створення тендера",
+);
+
+// Динамічно оновлюємо title сторінки
+useHead({
+  title: pageTitle,
+});
+
 const listView = computed(() => (isSales.value ? "sales" : "purchase"));
 
 const { me } = useMe();
@@ -183,10 +247,17 @@ const saving = ref(false);
 const error = ref("");
 const categorySearch = ref("");
 
-const stepperItems = TENDER_STAGE_ITEMS.map((s) => ({
-  ...s,
-  description: "",
-}));
+const stepperItems = computed(() => {
+  const base =
+    // Для будь-якого mode=registration ховаємо етап "Прийом пропозицій"
+    isRegistrationMode.value
+      ? TENDER_STAGE_ITEMS.filter((s) => s.value !== "acceptance")
+      : TENDER_STAGE_ITEMS;
+  return base.map((s) => ({
+    ...s,
+    description: "",
+  }));
+});
 const currentStepValue = ref("passport");
 
 const createCpvLabels = ref<string[]>([]);
@@ -208,17 +279,56 @@ const selectedCategoryIds = computed(() =>
   form.category ? [form.category] : [],
 );
 
-const conductTypeOptions = computed(() => [
-  {
-    value: "registration",
-    label: isSales.value ? "Реєстрація продажу" : "Реєстрація закупівлі",
-  },
-  { value: "rfx", label: "Збір пропозицій (RFx)" },
-  { value: "online_auction", label: "Онлайн торги" },
-]);
+const conductTypeOptions = computed(() => {
+  if (isRegistrationMode.value) {
+    return [
+      {
+        value: "registration",
+        label: isSales.value ? "Реєстрація продажу" : "Реєстрація закупівлі",
+      },
+    ];
+  }
+  // Створення нового тендера (перший тур): тільки Збір пропозицій та Онлайн торги
+  return [
+    { value: "rfx", label: "Збір пропозицій (RFx)" },
+    { value: "online_auction", label: "Онлайн торги" },
+  ];
+});
 const publicationTypeOptions = [
   { value: "open", label: "Відкрита процедура" },
   { value: "closed", label: "Закрита процедура" },
+];
+
+const generalTermsEditorToolbarItems = [
+  [
+    { kind: "mark", mark: "bold", icon: "i-lucide-bold" },
+    { kind: "mark", mark: "italic", icon: "i-lucide-italic" },
+    { kind: "mark", mark: "underline", icon: "i-lucide-underline" },
+  ],
+  [
+    {
+      icon: "i-lucide-list",
+      tooltip: { text: "Lists" },
+      content: { align: "start" },
+      items: [
+        { kind: "bulletList", icon: "i-lucide-list", label: "Bullet List" },
+        { kind: "orderedList", icon: "i-lucide-list-ordered", label: "Ordered List" },
+      ],
+    },
+  ],
+  [
+    {
+      icon: "i-lucide-align-justify",
+      tooltip: { text: "Text Align" },
+      content: { align: "end" },
+      items: [
+        { kind: "textAlign", align: "left", icon: "i-lucide-align-left", label: "Align Left" },
+        { kind: "textAlign", align: "center", icon: "i-lucide-align-center", label: "Align Center" },
+        { kind: "textAlign", align: "right", icon: "i-lucide-align-right", label: "Align Right" },
+        { kind: "textAlign", align: "justify", icon: "i-lucide-align-justify", label: "Align Justify" },
+      ],
+    },
+  ],
 ];
 
 const categoryTree = ref<any[]>([]);
@@ -226,6 +336,13 @@ const expenseOptions = ref<{ value: number; label: string }[]>([]);
 const branchOptions = ref<{ value: number; label: string }[]>([]);
 const departmentOptions = ref<{ value: number; label: string }[]>([]);
 const currencyOptions = ref<{ value: number; label: string }[]>([]);
+
+// Ініціалізація типу проведення за режимом
+if (isRegistrationMode.value) {
+  form.conduct_type = "registration";
+} else {
+  form.conduct_type = "rfx";
+}
 
 function flattenTree(
   items: any[],
@@ -299,7 +416,14 @@ async function saveTender() {
 
   const companyId = (me.value as any)?.memberships?.[0]?.company?.id ?? null;
   if (!companyId) {
-    error.value = "Неможливо визначити компанію.";
+    const { logout } = useAuth();
+    logout();
+    return;
+  }
+
+  const cpvIds = form.cpv_ids ?? [];
+  if (cpvIds.length === 0) {
+    error.value = "Оберіть хоча б одну категорію CPV.";
     return;
   }
 
@@ -366,5 +490,14 @@ onMounted(async () => {
 }
 .tender-stepper--compact :deep([data-slot="wrapper"]) {
   min-height: auto;
+}
+
+/* Редактор «Опис умов та вимог»: плейсхолдер зникає при фокусі, вся область клікабельна */
+.general-terms-editor-wrapper:focus-within :deep(.ProseMirror p.is-empty::before) {
+  opacity: 0;
+}
+.general-terms-editor-wrapper :deep(.ProseMirror.is-editor-empty:focus::before),
+.general-terms-editor-wrapper :deep(.ProseMirror p.is-empty:first-child:focus::before) {
+  opacity: 0;
 }
 </style>

@@ -629,6 +629,23 @@ class NomenclatureSerializer(serializers.ModelSerializer):
             for c in obj.cpv_categories.all()
         ]
 
+    def validate(self, attrs):
+        """Унікальність: пара назва + одиниця виміру в межах компанії."""
+        company = attrs.get("company") or (self.instance.company if self.instance else None)
+        unit = attrs.get("unit") or (self.instance.unit_id if self.instance else None)
+        name = (attrs.get("name") or (self.instance.name if self.instance else "") or "").strip()
+        if not company or not unit or not name:
+            return attrs
+        qs = Nomenclature.objects.filter(company=company, unit=unit).filter(name__iexact=name)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            from rest_framework import serializers as drf
+            raise drf.ValidationError(
+                {"name": "Номенклатура з такою назвою та одиницею виміру вже існує в довіднику."}
+            )
+        return attrs
+
 
 class CurrencySerializer(serializers.ModelSerializer):
     """Довідник валют (тільки читання для API)."""
@@ -642,6 +659,7 @@ class TenderCriterionSerializer(serializers.ModelSerializer):
     """Серіалізатор критерію тендеру."""
 
     type_label = serializers.CharField(source="get_type_display", read_only=True)
+    application_label = serializers.CharField(source="get_application_display", read_only=True)
 
     class Meta:
         model = TenderCriterion
@@ -651,11 +669,30 @@ class TenderCriterionSerializer(serializers.ModelSerializer):
             "name",
             "type",
             "type_label",
+            "application",
+            "application_label",
             "options",
             "created_at",
             "updated_at",
         )
         read_only_fields = ("id", "created_at", "updated_at")
+
+    def validate(self, attrs):
+        """Унікальність: назва + тип критерія в межах компанії."""
+        company = attrs.get("company") or (self.instance.company if self.instance else None)
+        name = (attrs.get("name") or (self.instance.name if self.instance else "") or "").strip()
+        ctype = attrs.get("type") or (self.instance.type if self.instance else None)
+        if not company or not name or not ctype:
+            return attrs
+        qs = TenderCriterion.objects.filter(company=company, name__iexact=name, type=ctype)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            from rest_framework import serializers as drf
+            raise drf.ValidationError(
+                {"name": "Критерій з такою назвою та типом вже існує в довіднику."}
+            )
+        return attrs
 
 
 class ProcurementTenderPositionSerializer(serializers.ModelSerializer):
@@ -739,11 +776,28 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
     branch_name = serializers.SerializerMethodField()
     department_name = serializers.SerializerMethodField()
     positions = ProcurementTenderPositionSerializer(many=True, required=False)
+
+    def validate(self, attrs):
+        """Категорія CPV обовʼязкова: хоча б одна CPV має бути обрана."""
+        cpv_categories = attrs.get("cpv_categories")
+        if cpv_categories is not None and len(cpv_categories) == 0:
+            from rest_framework import serializers as drf
+            raise drf.ValidationError(
+                {"cpv_ids": "Оберіть хоча б одну категорію CPV."}
+            )
+        if not self.instance and (cpv_categories is None or len(cpv_categories) == 0):
+            from rest_framework import serializers as drf
+            raise drf.ValidationError(
+                {"cpv_ids": "Оберіть хоча б одну категорію CPV."}
+            )
+        return attrs
+
     criterion_ids = serializers.PrimaryKeyRelatedField(
         many=True, queryset=TenderCriterion.objects.all(), required=False, source="tender_criteria"
     )
     criteria = serializers.SerializerMethodField()
     is_latest_tour = serializers.SerializerMethodField()
+    current_user_has_proposal = serializers.SerializerMethodField()
 
     class Meta:
         model = ProcurementTender
@@ -788,6 +842,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             "criteria",
             "positions",
             "is_latest_tour",
+            "current_user_has_proposal",
         )
         read_only_fields = (
             "id",
@@ -805,10 +860,26 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             "branch_name",
             "department_name",
             "is_latest_tour",
+            "current_user_has_proposal",
         )
 
     def get_is_latest_tour(self, obj):
         return not obj.next_tours.exists()
+
+    def get_current_user_has_proposal(self, obj):
+        request = self.context.get("request")
+        if not request or not getattr(request, "user", None):
+            return False
+        user_company_ids = list(
+            CompanyUser.objects.filter(
+                user=request.user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+        )
+        if not user_company_ids:
+            return False
+        return TenderProposal.objects.filter(
+            tender=obj, supplier_company_id__in=user_company_ids
+        ).exists()
 
     def get_category_name(self, obj):
         return obj.category.name if obj.category else ""
@@ -839,13 +910,37 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
 
     def get_criteria(self, obj):
         return [
-            {"id": c.id, "name": c.name, "type": c.type}
+            {
+                "id": c.id,
+                "name": c.name,
+                "type": c.type,
+                "application": getattr(c, "application", "individual"),
+                "application_label": getattr(c, "get_application_display", lambda: "Індивідуальний")(),
+            }
             for c in obj.tender_criteria.all()
         ]
+
+    @staticmethod
+    def _validate_positions_no_duplicate_nomenclature(positions_data):
+        if not positions_data:
+            return
+        from rest_framework import serializers as drf
+        nom_id_key = lambda x: x if isinstance(x, int) else getattr(x, "id", None)
+        seen = set()
+        for item in positions_data:
+            nom = item.get("nomenclature") or item.get("nomenclature_id")
+            nom_id = nom_id_key(nom) if nom is not None else None
+            if nom_id is not None:
+                if nom_id in seen:
+                    raise drf.ValidationError(
+                        {"positions": "Одна й та сама номенклатура не може бути додана двічі до позицій тендера."}
+                    )
+                seen.add(nom_id)
 
     def _update_positions(self, instance, positions_data):
         if positions_data is None:
             return
+        self._validate_positions_no_duplicate_nomenclature(positions_data)
         nom_id_key = lambda x: x if isinstance(x, int) else getattr(x, "id", None)
         current = {p.nomenclature_id: p for p in instance.positions.all()}
         seen_ids = set()
@@ -928,8 +1023,11 @@ class TenderProposalSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TenderProposal
-        fields = ("id", "tender", "supplier_company", "supplier_company_id", "supplier_name", "position_values")
-        read_only_fields = ("id", "tender")
+        fields = (
+            "id", "tender", "supplier_company", "supplier_company_id", "supplier_name",
+            "position_values", "created_at", "submitted_at",
+        )
+        read_only_fields = ("id", "tender", "created_at", "submitted_at")
 
 
 class TenderProposalPositionUpdateSerializer(serializers.Serializer):
@@ -1053,6 +1151,22 @@ class SalesTenderSerializer(serializers.ModelSerializer):
     )
     criteria = serializers.SerializerMethodField()
     is_latest_tour = serializers.SerializerMethodField()
+    current_user_has_proposal = serializers.SerializerMethodField()
+
+    def validate(self, attrs):
+        """Категорія CPV обовʼязкова: хоча б одна CPV має бути обрана."""
+        cpv_categories = attrs.get("cpv_categories")
+        if cpv_categories is not None and len(cpv_categories) == 0:
+            from rest_framework import serializers as drf
+            raise drf.ValidationError(
+                {"cpv_ids": "Оберіть хоча б одну категорію CPV."}
+            )
+        if not self.instance and (cpv_categories is None or len(cpv_categories) == 0):
+            from rest_framework import serializers as drf
+            raise drf.ValidationError(
+                {"cpv_ids": "Оберіть хоча б одну категорію CPV."}
+            )
+        return attrs
 
     class Meta:
         model = SalesTender
@@ -1097,6 +1211,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             "criteria",
             "positions",
             "is_latest_tour",
+            "current_user_has_proposal",
         )
         read_only_fields = (
             "id",
@@ -1114,10 +1229,26 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             "branch_name",
             "department_name",
             "is_latest_tour",
+            "current_user_has_proposal",
         )
 
     def get_is_latest_tour(self, obj):
         return not obj.next_tours.exists()
+
+    def get_current_user_has_proposal(self, obj):
+        request = self.context.get("request")
+        if not request or not getattr(request, "user", None):
+            return False
+        user_company_ids = list(
+            CompanyUser.objects.filter(
+                user=request.user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+        )
+        if not user_company_ids:
+            return False
+        return SalesTenderProposal.objects.filter(
+            tender=obj, supplier_company_id__in=user_company_ids
+        ).exists()
 
     def get_category_name(self, obj):
         return obj.category.name if obj.category else ""
@@ -1148,13 +1279,20 @@ class SalesTenderSerializer(serializers.ModelSerializer):
 
     def get_criteria(self, obj):
         return [
-            {"id": c.id, "name": c.name, "type": c.type}
+            {
+                "id": c.id,
+                "name": c.name,
+                "type": c.type,
+                "application": getattr(c, "application", "individual"),
+                "application_label": getattr(c, "get_application_display", lambda: "Індивідуальний")(),
+            }
             for c in obj.tender_criteria.all()
         ]
 
     def _update_positions(self, instance, positions_data):
         if positions_data is None:
             return
+        ProcurementTenderSerializer._validate_positions_no_duplicate_nomenclature(positions_data)
         nom_id_key = lambda x: x if isinstance(x, int) else getattr(x, "id", None)
         current = {p.nomenclature_id: p for p in instance.positions.all()}
         seen_ids = set()
@@ -1237,8 +1375,11 @@ class SalesTenderProposalSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SalesTenderProposal
-        fields = ("id", "tender", "supplier_company", "supplier_company_id", "supplier_name", "position_values")
-        read_only_fields = ("id", "tender")
+        fields = (
+            "id", "tender", "supplier_company", "supplier_company_id", "supplier_name",
+            "position_values", "created_at", "submitted_at",
+        )
+        read_only_fields = ("id", "tender", "created_at", "submitted_at")
 
 
 class SalesTenderFileSerializer(serializers.ModelSerializer):

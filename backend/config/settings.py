@@ -98,7 +98,7 @@ else:
             "ENGINE": "django.db.backends.mysql",
             "NAME": os.getenv("DB_NAME", "bidopen"),
             "USER": os.getenv("DB_USER", "admin"),
-            "PASSWORD": os.getenv("DB_PASSWORD", "2c7UCJ9tkk22PGj3"),
+            "PASSWORD": os.getenv("DB_PASSWORD", ""),
             "HOST": os.getenv("DB_HOST", "127.0.0.1"),
             "PORT": os.getenv("DB_PORT", "3306"),
             "OPTIONS": {"charset": "utf8mb4"},

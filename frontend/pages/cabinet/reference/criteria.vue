@@ -64,6 +64,15 @@
               />
             </UFormField>
 
+            <UFormField label="Застосування" name="application" required>
+              <USelectMenu
+                v-model="form.application"
+                :items="applicationOptions"
+                value-key="value"
+                placeholder="Оберіть застосування"
+              />
+            </UFormField>
+
             <!-- Числовий: діапазон + список значень -->
             <template v-if="form.type === 'numeric'">
               <div class="grid grid-cols-2 gap-4">
@@ -190,7 +199,7 @@ definePageMeta({
   meta: { title: "Критерії тендерів" },
 });
 
-const { getAuthHeaders } = useAuth();
+const { getAuthHeaders, logout } = useAuth();
 const { fetch } = useApi();
 const config = useRuntimeConfig();
 
@@ -207,10 +216,16 @@ const typeOptions = [
   { value: "boolean", label: "Булевий (Так/Ні)" },
 ];
 
+const applicationOptions = [
+  { value: "general", label: "Загальний" },
+  { value: "individual", label: "Індивідуальний" },
+];
+
 const form = reactive<{
   id: number | null;
   name: string;
   type: string;
+  application: string;
   options: {
     range_min?: number | null;
     range_max?: number | null;
@@ -221,6 +236,7 @@ const form = reactive<{
   id: null,
   name: "",
   type: "numeric",
+  application: "individual",
   options: {},
 });
 
@@ -228,6 +244,7 @@ function resetForm() {
   form.id = null;
   form.name = "";
   form.type = "numeric";
+  form.application = "individual";
   form.options = {
     range_min: null,
     range_max: null,
@@ -242,6 +259,7 @@ function openModal(item?: any) {
     form.id = item.id;
     form.name = item.name;
     form.type = item.type;
+    form.application = item.application ?? "individual";
     const opt = item.options || {};
     form.options = {
       range_min: opt.range_min ?? null,
@@ -293,6 +311,7 @@ function selectCriterion(item: any) {
 const tableColumns = [
   { accessorKey: "name", header: "Назва" },
   { accessorKey: "type_label", header: "Тип" },
+  { accessorKey: "application_label", header: "Застосування" },
   { accessorKey: "options_summary", header: "Параметри" },
   { id: "actions", header: "Дії" },
 ];
@@ -350,7 +369,7 @@ async function save() {
   if (!form.name.trim()) return;
   const companyId = await getCurrentCompanyId();
   if (!companyId) {
-    alert("Неможливо визначити компанію");
+    logout();
     return;
   }
 
@@ -378,6 +397,7 @@ async function save() {
       company: companyId,
       name: form.name.trim(),
       type: form.type,
+      application: form.application || "individual",
       options,
     };
 

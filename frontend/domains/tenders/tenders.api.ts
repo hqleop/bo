@@ -1,5 +1,5 @@
 import type { RequestFn } from '~/shared/api/apiClient'
-import type { TenderDetail, TenderListItem, TenderProposal, TenderCriterion } from './tenders.types'
+import type { TenderDetail, TenderListItem, TenderProposal, TenderCriterion, TenderFile } from './tenders.types'
 
 const PROCUREMENT_PREFIX = '/procurement-tenders'
 const SALES_PREFIX = '/sales-tenders'
@@ -15,6 +15,28 @@ function detailEndpoint(isSales: boolean, id: number) {
 
 export async function getTenderList(request: RequestFn, isSales: boolean) {
   return request<TenderListItem[]>(listEndpoint(isSales))
+}
+
+export type ParticipationTab = 'active' | 'processing' | 'completed'
+
+export async function getTendersForParticipation(
+  request: RequestFn,
+  isSales: boolean,
+  tab: ParticipationTab
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<TenderDetail[]>(`${prefix}/for-participation/?tab=${tab}`)
+}
+
+export async function confirmParticipation(
+  request: RequestFn,
+  tenderId: number,
+  isSales: boolean
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<TenderProposal>(`${prefix}/${tenderId}/confirm-participation/`, {
+    method: 'POST'
+  })
 }
 
 export async function getTender(request: RequestFn, id: number, isSales: boolean) {
@@ -48,6 +70,42 @@ export async function getTenderProposals(request: RequestFn, id: number, isSales
   return request<TenderProposal[]>(`${prefix}/${id}/proposals/`)
 }
 
+export async function getTenderFiles(request: RequestFn, id: number, isSales: boolean) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<TenderFile[]>(`${prefix}/${id}/files/`)
+}
+
+export async function uploadTenderFile(
+  request: RequestFn,
+  id: number,
+  isSales: boolean,
+  form: FormData
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<TenderFile>(`${prefix}/${id}/files/upload/`, { method: 'POST', body: form })
+}
+
+export async function deleteTenderFile(
+  request: RequestFn,
+  id: number,
+  isSales: boolean,
+  fileId: number
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<unknown>(`${prefix}/${id}/files/${fileId}/`, { method: 'DELETE' })
+}
+
+export async function patchTenderFile(
+  request: RequestFn,
+  id: number,
+  isSales: boolean,
+  fileId: number,
+  body: { visible_to_participants: boolean }
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<TenderFile>(`${prefix}/${id}/files/${fileId}/`, { method: 'PATCH', body })
+}
+
 export async function fixTenderDecision(
   request: RequestFn,
   id: number,
@@ -63,6 +121,30 @@ export async function fixTenderDecision(
 
 export async function getTenderCriteria(request: RequestFn) {
   return request<TenderCriterion[]>('/tender-criteria/')
+}
+
+export async function createTenderCriterion(
+  request: RequestFn,
+  body: { company: number; name: string; type: string; application?: string; options?: Record<string, unknown> }
+) {
+  return request<TenderCriterion>('/tender-criteria/', {
+    method: 'POST',
+    body: body as unknown as Record<string, unknown>
+  })
+}
+
+export async function getUnits(request: RequestFn) {
+  return request<{ id: number; name_ua?: string; short_name_ua?: string; name_en?: string }[]>('/units/')
+}
+
+export async function createNomenclature(
+  request: RequestFn,
+  body: { company: number; name: string; unit: number; cpv_ids?: number[] }
+) {
+  return request<{ id: number; name?: string; unit_name?: string }>('/nomenclatures/', {
+    method: 'POST',
+    body: body as unknown as Record<string, unknown>
+  })
 }
 
 // Reference data used by tender pages
@@ -105,6 +187,10 @@ export async function getCpvChildren(request: RequestFn, parentLevelCode?: strin
   return request<unknown[]>(`/cpv/children/${query}`.replace(/\/\?/, '?'))
 }
 
+export async function getCpvWithCompanies(request: RequestFn) {
+  return request<{ id: number; cpv_code: string; name_ua: string; label: string }[]>('/cpv/with-companies/')
+}
+
 export async function addProposal(
   request: RequestFn,
   tenderId: number,
@@ -137,4 +223,14 @@ export async function patchProposalPositionValues(
     method: 'PATCH',
     body
   })
+}
+
+export async function submitProposal(request: RequestFn, tenderId: number, isSales: boolean) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<TenderProposal>(`${prefix}/${tenderId}/submit-proposal/`, { method: 'POST' })
+}
+
+export async function withdrawProposal(request: RequestFn, tenderId: number, isSales: boolean) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<TenderProposal>(`${prefix}/${tenderId}/withdraw-proposal/`, { method: 'POST' })
 }

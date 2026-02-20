@@ -1,5 +1,5 @@
 <template>
-  <UFormField :label="label">
+  <UFormField :label="label" :required="required">
     <UPopover v-model:open="isOpen">
       <UButton block variant="outline" :disabled="disabled">
         <span v-if="displayText">{{ displayText }}</span>
@@ -79,12 +79,14 @@ const props = withDefaults(
     label: string;
     placeholder?: string;
     disabled?: boolean;
+    required?: boolean;
     selectedIds?: number[];
     selectedLabels?: string[];
   }>(),
   {
     placeholder: "Оберіть CPV",
     disabled: false,
+    required: false,
     selectedIds: () => [],
     selectedLabels: () => [],
   },

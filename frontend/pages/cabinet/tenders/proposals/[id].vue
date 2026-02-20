@@ -16,7 +16,10 @@
           <span class="font-normal text-gray-700">{{ tender.name }}</span>
         </h1>
       </div>
-      <div class="tender-stepper tender-stepper--compact mb-2">
+      <div
+        v-if="!isParticipant"
+        class="tender-stepper tender-stepper--compact mb-2"
+      >
         <UStepper
           :model-value="currentStage"
           :items="stepperItems"
@@ -28,16 +31,26 @@
 
       <div class="flex flex-1 min-h-0 gap-6">
         <div class="flex-1 min-w-0 min-h-0 flex flex-col gap-4">
-          <h2 class="text-base font-bold text-gray-800 text-center">
-            Подача пропозицій (закупівля)
-          </h2>
+          <div class="flex items-center justify-between gap-4">
+            <h2 class="text-base font-bold text-gray-800">
+              Подача пропозицій (закупівля)
+            </h2>
+            <UButton
+              variant="ghost"
+              size="sm"
+              icon="i-heroicons-arrow-left"
+              @click="isParticipant ? navigateTo('/cabinet/participation?type=purchase') : goBack()"
+            >
+              {{ isParticipant ? 'До списку тендерів' : 'Повернутись до підготовки' }}
+            </UButton>
+          </div>
           <p
             v-if="isViewingPreviousTour"
             class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2"
           >
             Перегляд попереднього туру. Зміни пропозицій заборонені.
           </p>
-          <UFormField label="Контрагент (постачальник)">
+          <UFormField v-if="!isParticipant" label="Контрагент (постачальник)">
             <div class="flex gap-2 items-center">
               <span
                 v-if="selectedSupplier"
@@ -65,6 +78,30 @@
             </div>
           </UFormField>
 
+          <div v-if="tenderCriteriaGeneral.length > 0" class="rounded-lg border border-blue-200 bg-blue-50/50 p-3 space-y-3 mb-4">
+            <h4 class="text-sm font-semibold text-gray-800">Загальні критерії</h4>
+            <p class="text-xs text-gray-600">Одне значення стосується всіх позицій.</p>
+            <div class="flex flex-wrap gap-4">
+              <UFormField
+                v-for="c in tenderCriteriaGeneral"
+                :key="c.id"
+                :label="c.name"
+                class="mb-0 min-w-[200px]"
+              >
+                <UInput
+                  v-if="currentProposal && !isViewingPreviousTour && (!isParticipant || participantCanEdit)"
+                  v-model="generalCriterionValues[c.id]"
+                  size="sm"
+                  class="w-full"
+                  @blur="savePositionValues"
+                />
+                <span v-else class="block py-1.5 text-sm text-gray-700">{{
+                  generalCriterionValues[c.id] || "—"
+                }}</span>
+              </UFormField>
+            </div>
+          </div>
+
           <div class="flex-1 min-h-0 overflow-auto">
             <UCard>
               <template #header>
@@ -88,7 +125,7 @@
                           {{ priceColumnHeader }}
                         </th>
                         <th
-                          v-for="c in tenderCriteria"
+                          v-for="c in tenderCriteriaIndividual"
                           :key="c.id"
                           class="text-left p-2 font-medium"
                         >
@@ -111,7 +148,7 @@
                         </td>
                         <td class="p-2">
                           <UInput
-                            v-if="currentProposal && !isViewingPreviousTour"
+                            v-if="currentProposal && !isViewingPreviousTour && (!isParticipant || participantCanEdit)"
                             v-model="row.price"
                             type="number"
                             step="0.01"
@@ -123,9 +160,9 @@
                             row.price || "—"
                           }}</span>
                         </td>
-                        <td v-for="c in tenderCriteria" :key="c.id" class="p-2">
+                        <td v-for="c in tenderCriteriaIndividual" :key="c.id" class="p-2">
                           <UInput
-                            v-if="currentProposal && !isViewingPreviousTour"
+                            v-if="currentProposal && !isViewingPreviousTour && (!isParticipant || participantCanEdit)"
                             v-model="row.criterion_values[c.id]"
                             size="sm"
                             class="min-w-[80px]"
@@ -140,14 +177,14 @@
                   </table>
                 </div>
                 <div
-                  v-if="currentProposal && !isViewingPreviousTour"
+                  v-if="currentProposal && !isViewingPreviousTour && !isParticipant"
                   class="mt-3 pt-3 border-t"
                 >
                   <UButton size="sm" @click="savePositionValues"
-                    >Подати пропозицію</UButton
+                    >Зберегти значення</UButton
                   >
                 </div>
-                <p v-else class="text-sm text-gray-500 mt-3">
+                <p v-else-if="!isParticipant" class="text-sm text-gray-500 mt-3">
                   Оберіть постачальника вище, щоб заповнити ціну та критерії по
                   позиціях.
                 </p>
@@ -156,31 +193,64 @@
           </div>
         </div>
 
-        <aside class="w-56 flex-shrink-0 space-y-3">
-          <UButton class="w-full" variant="outline" @click="goBack">
-            Повернутись до підготовки
-          </UButton>
-          <UButton
-            class="w-full"
-            :disabled="!canGoToDecision"
-            @click="goToDecisionStage"
-          >
-            Перейти на вибір рішення
-          </UButton>
-          <UButton
-            class="w-full"
-            variant="outline"
-            @click="showCheckModal = true"
-          >
-            Перевірка пропозицій
-          </UButton>
-          <UButton
-            class="w-full"
-            variant="outline"
-            @click="showFilesModal = true"
-          >
-            Прикріплені файли
-          </UButton>
+        <aside class="w-72 flex-shrink-0 flex flex-col gap-4">
+          <template v-if="isParticipant">
+            <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm font-medium text-gray-800">
+              {{ timerText }}
+            </div>
+            <UButton
+              v-if="!isProposalSubmitted"
+              class="w-full"
+              :loading="submitWithdrawLoading"
+              :disabled="!participantCanEdit"
+              @click="onSubmitProposal"
+            >
+              Подати пропозицію
+            </UButton>
+            <UButton
+              v-else
+              class="w-full"
+              color="error"
+              variant="solid"
+              :loading="submitWithdrawLoading"
+              :disabled="!participantCanEdit"
+              @click="onWithdrawProposal"
+            >
+              Відкликати пропозицію
+            </UButton>
+            <UButton
+              class="w-full"
+              variant="outline"
+              @click="showFilesModal = true"
+            >
+              Прикріплені файли
+            </UButton>
+          </template>
+          <template v-else>
+            <div class="space-y-3">
+              <UButton
+                class="w-full"
+                :disabled="!canGoToDecision"
+                @click="goToDecisionStage"
+              >
+                Перейти на вибір рішення
+              </UButton>
+              <UButton
+                class="w-full"
+                variant="outline"
+                @click="showCheckModal = true"
+              >
+                Усі пропозиції
+              </UButton>
+              <UButton
+                class="w-full"
+                variant="outline"
+                @click="showFilesModal = true"
+              >
+                Прикріплені файли
+              </UButton>
+            </div>
+          </template>
         </aside>
       </div>
 
@@ -230,7 +300,7 @@
         <template #content>
           <UCard class="flex flex-col max-h-[90vh] overflow-hidden">
             <template #header>
-              <h3 class="text-lg font-semibold">Перевірка пропозицій</h3>
+              <h3 class="text-lg font-semibold">Усі пропозиції</h3>
             </template>
             <div
               class="overflow-auto min-h-0 flex-1 resize-y min-h-[300px]"
@@ -389,6 +459,11 @@ const tenderId = computed(() => Number(route.params.id));
 const isSales = false;
 const tendersUC = useTendersUseCases();
 const suppliersUC = useSuppliersUseCases();
+const { me } = useMe();
+const myCompanyId = computed(() => (me.value as any)?.memberships?.[0]?.company?.id ?? null);
+const isParticipant = computed(
+  () => tender.value && myCompanyId.value != null && Number(tender.value.company) !== myCompanyId.value,
+);
 
 const tender = ref<any | null>(null);
 const loading = ref(true);
@@ -406,6 +481,9 @@ const supplierSearch = ref("");
 const showCheckModal = ref(false);
 const showFilesModal = ref(false);
 const savingPositions = ref(false);
+const submitWithdrawLoading = ref(false);
+const now = ref(new Date());
+let nowInterval: ReturnType<typeof setInterval> | null = null;
 
 const vatLabels: Record<string, string> = {
   with_vat: "з ПДВ",
@@ -417,6 +495,14 @@ const deliveryLabels: Record<string, string> = {
 };
 
 const tenderCriteria = computed(() => tender.value?.criteria ?? []);
+const tenderCriteriaIndividual = computed(() =>
+  tenderCriteria.value.filter((c: any) => (c.application || "individual") === "individual"),
+);
+const tenderCriteriaGeneral = computed(() =>
+  tenderCriteria.value.filter((c: any) => (c.application || "individual") === "general"),
+);
+/** Значення загальних критеріїв (одне на весь тендер), ключ — id критерія */
+const generalCriterionValues = ref<Record<number, string>>({});
 
 const tenderPositions = computed(() => tender.value?.positions ?? []);
 
@@ -455,6 +541,55 @@ const currentStage = computed(() => tender.value?.stage ?? "passport");
 
 const isViewingPreviousTour = computed(
   () => tender.value && tender.value.is_latest_tour === false,
+);
+
+const acceptanceStartAt = computed(() => {
+  const t = tender.value?.start_at;
+  return t ? new Date(t).getTime() : null;
+});
+const acceptanceEndAt = computed(() => {
+  const t = tender.value?.end_at;
+  return t ? new Date(t).getTime() : null;
+});
+const timerText = computed(() => {
+  const n = now.value.getTime();
+  const start = acceptanceStartAt.value;
+  const end = acceptanceEndAt.value;
+  if (start != null && n < start) {
+    const d = Math.max(0, Math.floor((start - n) / 1000));
+    const h = Math.floor(d / 3600);
+    const m = Math.floor((d % 3600) / 60);
+    const s = d % 60;
+    return `До початку прийому: ${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }
+  if (end != null && n > end) return "Прийом пропозицій завершено.";
+  if (end != null && n <= end) {
+    const d = Math.max(0, Math.floor((end - n) / 1000));
+    const h = Math.floor(d / 3600);
+    const m = Math.floor((d % 3600) / 60);
+    const s = d % 60;
+    return `До завершення прийому: ${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }
+  return "Прийом пропозицій";
+});
+const participantCanEdit = computed(() => {
+  if (!tender.value || tender.value.stage !== "acceptance") return false;
+  const n = now.value.getTime();
+  const start = acceptanceStartAt.value;
+  const end = acceptanceEndAt.value;
+  if (start != null && n < start) return false;
+  if (end != null && n > end) return false;
+  return true;
+});
+const myProposal = computed(() =>
+  proposals.value.find(
+    (p: any) =>
+      p.supplier_company_id === myCompanyId.value ||
+      p.supplier_company?.id === myCompanyId.value,
+  ),
+);
+const isProposalSubmitted = computed(
+  () => !!myProposal.value?.submitted_at,
 );
 
 const stepperItems = computed(() => {
@@ -636,6 +771,11 @@ async function addProposal(supplierCompanyId: number) {
 function buildPositionRowsFromTender() {
   const positions = tender.value?.positions || [];
   const criteria = tender.value?.criteria || [];
+  const generalIds = (tender.value?.criteria || []).filter((c: any) => (c.application || "individual") === "general").map((c: any) => c.id);
+  generalCriterionValues.value = generalIds.reduce((acc: Record<number, string>, id: number) => {
+    acc[id] = "";
+    return acc;
+  }, {});
   positionRows.value = positions.map((pos: any) => {
     const criterion_values: Record<number, string> = {};
     for (const c of criteria) {
@@ -665,6 +805,7 @@ function buildPositionRows(proposal: any) {
     {},
   );
   const criteria = tender.value?.criteria || [];
+  const generalCriteria = criteria.filter((c: any) => (c.application || "individual") === "general");
   const newRows = positions.map((pos: any) => {
     const pv = valuesByPos[pos.id];
     const criterion_values: Record<number, string> = {};
@@ -687,17 +828,26 @@ function buildPositionRows(proposal: any) {
     };
   });
   positionRows.value = [...newRows];
+  // Заповнити загальні критерії з першої позиції (вони однакові для всіх)
+  for (const c of generalCriteria) {
+    const firstVal = newRows[0]?.criterion_values?.[c.id];
+    if (firstVal !== undefined) generalCriterionValues.value[c.id] = firstVal;
+  }
 }
 
 async function savePositionValues() {
   if (!currentProposal.value?.id || !positionRows.value.length) return;
   savingPositions.value = true;
+  const generalVals = generalCriterionValues.value;
   try {
     const position_values = positionRows.value.map((row) => {
       const cv = row.criterion_values || {};
       const criterion_values: Record<string, string | number> = {};
-      for (const [k, v] of Object.entries(cv)) {
-        if (v !== "" && v != null) criterion_values[String(k)] = v;
+      for (const c of tenderCriteria.value) {
+        const val = (c.application || "individual") === "general"
+          ? generalVals[c.id]
+          : cv[c.id];
+        if (val !== "" && val != null) criterion_values[String(c.id)] = val;
       }
       return {
         tender_position_id: row.id,
@@ -727,6 +877,38 @@ async function savePositionValues() {
   }
 }
 
+async function onSubmitProposal() {
+  submitWithdrawLoading.value = true;
+  try {
+    const { data } = await tendersUC.submitProposal(tenderId.value, isSales);
+    if (data) {
+      const idx = proposals.value.findIndex((p: any) => p.id === data.id);
+      if (idx !== -1) proposals.value[idx] = data;
+      if (currentProposal.value?.id === data.id) {
+        currentProposal.value = data;
+      }
+    }
+  } finally {
+    submitWithdrawLoading.value = false;
+  }
+}
+
+async function onWithdrawProposal() {
+  submitWithdrawLoading.value = true;
+  try {
+    const { data } = await tendersUC.withdrawProposal(tenderId.value, isSales);
+    if (data) {
+      const idx = proposals.value.findIndex((p: any) => p.id === data.id);
+      if (idx !== -1) proposals.value[idx] = data;
+      if (currentProposal.value?.id === data.id) {
+        currentProposal.value = data;
+      }
+    }
+  } finally {
+    submitWithdrawLoading.value = false;
+  }
+}
+
 function goBack() {
   navigateTo(`/cabinet/tenders/${tenderId.value}`);
 }
@@ -748,10 +930,16 @@ async function goToDecisionStage() {
 onMounted(async () => {
   loading.value = true;
   try {
-    await Promise.all([loadTender(), loadProposals(), loadSuppliers()]);
-    if (proposals.value.length > 0 && !selectedSupplierId.value) {
+    await loadTender();
+    await loadProposals();
+    const part = tender.value && myCompanyId.value != null && Number(tender.value.company) !== myCompanyId.value;
+    if (!part) await loadSuppliers();
+    if (part && myProposal.value) {
+      currentProposal.value = myProposal.value;
+      buildPositionRows(myProposal.value);
+    } else if (proposals.value.length > 0 && !selectedSupplierId.value) {
       const first = proposals.value[0];
-      const id = first.supplier_company?.id ?? null;
+      const id = first.supplier_company?.id ?? first.supplier_company_id ?? null;
       if (id) {
         selectedSupplierId.value = id;
         selectedSupplier.value = supplierOptions.value.find(
@@ -766,8 +954,17 @@ onMounted(async () => {
         onSupplierSelect(id);
       }
     }
+    if (part) {
+      nowInterval = setInterval(() => {
+        now.value = new Date();
+      }, 1000);
+    }
   } finally {
     loading.value = false;
   }
+});
+
+onUnmounted(() => {
+  if (nowInterval) clearInterval(nowInterval);
 });
 </script>

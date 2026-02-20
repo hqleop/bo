@@ -3,6 +3,7 @@
 # =====================
 .venv/
 backend/core/__pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 
@@ -18,6 +19,8 @@ staticfiles/
 # Node / Nuxt
 # =====================
 node_modules/
+**/node_modules/
+**/node_modules/**
 .nuxt/
 .output/
 
