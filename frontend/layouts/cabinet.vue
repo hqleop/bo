@@ -1,5 +1,7 @@
 <template>
-  <div class="h-screen flex flex-col overflow-hidden bg-gray-50">
+  <div
+    class="cabinet-density h-screen flex flex-col overflow-hidden bg-gray-50"
+  >
     <!-- Sidebar + Main: фіксована висота по екрану, окремий скрол у сайдбарі та в контенті -->
     <div class="flex flex-1 min-h-0">
       <!-- Sidebar: висота по екрану, скрол лише у навігації -->
@@ -11,13 +13,13 @@
       >
         <div
           :class="[
-            'h-16 flex-shrink-0 border-b flex items-center justify-between',
-            isSidebarCollapsed ? 'px-2' : 'px-4',
+            'h-14 flex-shrink-0 border-b flex items-center justify-between',
+            isSidebarCollapsed ? 'px-2' : 'px-3',
           ]"
         >
           <h2
             v-if="!isSidebarCollapsed"
-            class="text-xl font-bold text-gray-900 whitespace-nowrap"
+            class="text-lg font-bold text-gray-900 whitespace-nowrap"
           >
             Bid Open
           </h2>
@@ -49,6 +51,11 @@
             :collapsed="isSidebarCollapsed"
             :tooltip="true"
             :popover="true"
+            :ui="{
+              content: 'p-2',
+              childLabel: 'text-base font-semibold px-2 py-1',
+              childIcon: 'text-lg',
+            }"
             color="neutral"
             variant="link"
             highlight
@@ -59,10 +66,17 @@
 
       <!-- Main: висота по екрану, скрол лише у робочій області -->
       <main class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
-        <header class="h-16 flex-shrink-0 bg-white shadow-sm border-b">
-          <div class="px-6 py-4 flex justify-between items-center h-full">
-            <h1 class="text-xl font-semibold text-gray-900">{{ pageTitle }}</h1>
+        <header class="h-14 flex-shrink-0 bg-white shadow-sm border-b">
+          <div class="px-4 py-2 flex justify-between items-center h-full">
+            <h1 class="text-lg font-semibold text-gray-900">{{ pageTitle }}</h1>
             <div class="flex items-center gap-3">
+              <UButton
+                icon="i-heroicons-clipboard-document-list"
+                variant="ghost"
+                color="neutral"
+                title="Завдання користувача"
+                @click="showTasks = !showTasks"
+              />
               <UButton
                 icon="i-heroicons-bell"
                 variant="ghost"
@@ -104,13 +118,30 @@
           </div>
         </header>
 
-        <div class="flex-1 min-h-0 overflow-y-auto p-6">
-          <div class="h-full border-0 ring-0 outline-none" :key="route.fullPath">
+        <div class="flex-1 min-h-0 overflow-y-auto p-4">
+          <div
+            class="h-full border-0 ring-0 outline-none"
+            :key="route.fullPath"
+          >
             <slot />
           </div>
         </div>
       </main>
     </div>
+
+    <!-- Notifications Panel -->
+    <UModal v-model:open="showTasks">
+      <template #content>
+        <UCard>
+          <template #header>
+            <h3 class="text-lg font-semibold">Завдання користувача</h3>
+          </template>
+          <div class="text-center py-8 text-gray-500">
+            Тут буде відображатись список завдань.
+          </div>
+        </UCard>
+      </template>
+    </UModal>
 
     <!-- Notifications Panel -->
     <UModal v-model:open="showNotifications">
@@ -179,6 +210,7 @@ const headerName = computed(() => {
 const headerAvatar = computed(() => me.value?.user?.avatar ?? null);
 const userEmail = computed(() => me.value?.user?.email ?? "");
 const permissions = computed(() => me.value?.permissions || []);
+const showTasks = ref(false);
 const showNotifications = ref(false);
 const isSidebarCollapsed = ref(true);
 
@@ -209,14 +241,14 @@ const menuLinks = computed(() => {
   // Участь в тендерах
   const participationChildren: any[] = [
     {
-      label: "Закупівлі",
-      to: "/cabinet/participation?type=purchase",
-      icon: "i-heroicons-shopping-cart",
-    },
-    {
       label: "Продажі",
       to: "/cabinet/participation?type=sales",
       icon: "i-heroicons-banknotes",
+    },
+    {
+      label: "Закупівлі",
+      to: "/cabinet/participation?type=purchase",
+      icon: "i-heroicons-shopping-cart",
     },
   ];
   links.push({
@@ -454,7 +486,9 @@ function logoutUser() {
 }
 
 const companyName = computed(
-  () => (me.value as { memberships?: Array<{ company?: { name?: string } }> })?.memberships?.[0]?.company?.name ?? "",
+  () =>
+    (me.value as { memberships?: Array<{ company?: { name?: string } }> })
+      ?.memberships?.[0]?.company?.name ?? "",
 );
 const pageTitle = computed(
   () => (route.meta.title as string) || companyName.value || "Кабінет",

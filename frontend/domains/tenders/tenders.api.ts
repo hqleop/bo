@@ -1,5 +1,12 @@
 import type { RequestFn } from '~/shared/api/apiClient'
-import type { TenderDetail, TenderListItem, TenderProposal, TenderCriterion, TenderFile } from './tenders.types'
+import type {
+  ParticipationListResponse,
+  TenderDetail,
+  TenderListItem,
+  TenderProposal,
+  TenderCriterion,
+  TenderFile
+} from './tenders.types'
 
 const PROCUREMENT_PREFIX = '/procurement-tenders'
 const SALES_PREFIX = '/sales-tenders'
@@ -22,10 +29,24 @@ export type ParticipationTab = 'active' | 'processing' | 'completed'
 export async function getTendersForParticipation(
   request: RequestFn,
   isSales: boolean,
-  tab: ParticipationTab
+  tab: ParticipationTab,
+  filters?: {
+    page?: number
+    companyId?: number | null
+    cpvIds?: number[]
+    receptionStarted?: boolean
+    conductType?: 'all' | 'rfx' | 'online_auction'
+  }
 ) {
   const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
-  return request<TenderDetail[]>(`${prefix}/for-participation/?tab=${tab}`)
+  const params = new URLSearchParams()
+  params.set('tab', tab)
+  params.set('page', String(filters?.page ?? 1))
+  if (filters?.companyId) params.set('company_id', String(filters.companyId))
+  if (filters?.cpvIds?.length) params.set('cpv_ids', filters.cpvIds.join(','))
+  if (filters?.receptionStarted && tab === 'active') params.set('reception_started', 'true')
+  if (filters?.conductType && filters.conductType !== 'all') params.set('conduct_type', filters.conductType)
+  return request<ParticipationListResponse>(`${prefix}/for-participation/?${params.toString()}`)
 }
 
 export async function confirmParticipation(

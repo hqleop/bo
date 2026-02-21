@@ -12,6 +12,7 @@
       />
       <UButton
         v-if="node.has_children"
+        type="button"
         size="xs"
         color="gray"
         variant="ghost"
@@ -24,6 +25,7 @@
       <span v-else class="w-6 shrink-0" />
 
       <UButton
+        type="button"
         size="xs"
         variant="ghost"
         class="justify-start flex-1 truncate min-w-0"

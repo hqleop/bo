@@ -9,9 +9,24 @@ export function useTendersUseCases() {
 
   async function getTendersForParticipation(
     isSales: boolean,
-    tab: 'active' | 'processing' | 'completed'
+    tab: 'active' | 'processing' | 'completed',
+    filters?: {
+      page?: number
+      companyId?: number | null
+      cpvIds?: number[]
+      receptionStarted?: boolean
+      conductType?: 'all' | 'rfx' | 'online_auction'
+    }
   ) {
-    return tendersApi.getTendersForParticipation(fetch, isSales, tab)
+    const response = await tendersApi.getTendersForParticipation(fetch, isSales, tab, filters)
+    if (!filters) {
+      const payload = response.data as any
+      return {
+        ...response,
+        data: Array.isArray(payload?.results) ? payload.results : Array.isArray(payload) ? payload : []
+      }
+    }
+    return response
   }
 
   async function confirmParticipation(tenderId: number, isSales: boolean) {

@@ -758,6 +758,7 @@ class ProcurementTenderPositionSerializer(serializers.ModelSerializer):
 class ProcurementTenderSerializer(serializers.ModelSerializer):
     """Тендер на закупівлю (паспорт та етапи)."""
 
+    number = serializers.SerializerMethodField()
     stage_label = serializers.CharField(source="get_stage_display", read_only=True)
     conduct_type_label = serializers.CharField(
         source="get_conduct_type_display", read_only=True
@@ -865,6 +866,9 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
 
     def get_is_latest_tour(self, obj):
         return not obj.next_tours.exists()
+
+    def get_number(self, obj):
+        return f"p-{obj.company_id}-{obj.id}" if obj.company_id and obj.id else ""
 
     def get_current_user_has_proposal(self, obj):
         request = self.context.get("request")
@@ -975,6 +979,64 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
         if positions_data is not None:
             self._update_positions(instance, positions_data)
         return instance
+
+
+class ProcurementParticipationTenderListSerializer(serializers.ModelSerializer):
+    """Lightweight procurement tender serializer for participation list."""
+
+    number = serializers.SerializerMethodField()
+    stage_label = serializers.CharField(source="get_stage_display", read_only=True)
+    conduct_type_label = serializers.CharField(
+        source="get_conduct_type_display", read_only=True
+    )
+    company = serializers.SerializerMethodField()
+    cpv_categories = serializers.SerializerMethodField()
+    current_user_has_proposal = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = ProcurementTender
+        fields = (
+            "id",
+            "number",
+            "tour_number",
+            "name",
+            "stage",
+            "stage_label",
+            "conduct_type",
+            "conduct_type_label",
+            "company",
+            "cpv_categories",
+            "start_at",
+            "end_at",
+            "created_at",
+            "updated_at",
+            "current_user_has_proposal",
+        )
+
+    def get_company(self, obj):
+        company = getattr(obj, "company", None)
+        if not company:
+            return None
+        return {
+            "id": company.id,
+            "name": company.name,
+            "edrpou": company.edrpou,
+            "label": f"{company.name} ({company.edrpou})" if company.edrpou else company.name,
+        }
+
+    def get_number(self, obj):
+        return f"p-{obj.company_id}-{obj.id}" if obj.company_id and obj.id else ""
+
+    def get_cpv_categories(self, obj):
+        return [
+            {
+                "id": c.id,
+                "cpv_code": c.cpv_code,
+                "name_ua": c.name_ua,
+                "label": f"{c.cpv_code} - {c.name_ua}",
+            }
+            for c in obj.cpv_categories.all()
+        ]
 
 
 class TenderProposalPositionSerializer(serializers.ModelSerializer):
@@ -1128,6 +1190,7 @@ class SalesTenderPositionSerializer(serializers.ModelSerializer):
 class SalesTenderSerializer(serializers.ModelSerializer):
     """Тендер на продаж (паспорт та етапи)."""
 
+    number = serializers.SerializerMethodField()
     stage_label = serializers.CharField(source="get_stage_display", read_only=True)
     conduct_type_label = serializers.CharField(
         source="get_conduct_type_display", read_only=True
@@ -1235,6 +1298,9 @@ class SalesTenderSerializer(serializers.ModelSerializer):
     def get_is_latest_tour(self, obj):
         return not obj.next_tours.exists()
 
+    def get_number(self, obj):
+        return f"s-{obj.company_id}-{obj.id}" if obj.company_id and obj.id else ""
+
     def get_current_user_has_proposal(self, obj):
         request = self.context.get("request")
         if not request or not getattr(request, "user", None):
@@ -1327,6 +1393,64 @@ class SalesTenderSerializer(serializers.ModelSerializer):
         if positions_data is not None:
             self._update_positions(instance, positions_data)
         return instance
+
+
+class SalesParticipationTenderListSerializer(serializers.ModelSerializer):
+    """Lightweight sales tender serializer for participation list."""
+
+    number = serializers.SerializerMethodField()
+    stage_label = serializers.CharField(source="get_stage_display", read_only=True)
+    conduct_type_label = serializers.CharField(
+        source="get_conduct_type_display", read_only=True
+    )
+    company = serializers.SerializerMethodField()
+    cpv_categories = serializers.SerializerMethodField()
+    current_user_has_proposal = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = SalesTender
+        fields = (
+            "id",
+            "number",
+            "tour_number",
+            "name",
+            "stage",
+            "stage_label",
+            "conduct_type",
+            "conduct_type_label",
+            "company",
+            "cpv_categories",
+            "start_at",
+            "end_at",
+            "created_at",
+            "updated_at",
+            "current_user_has_proposal",
+        )
+
+    def get_company(self, obj):
+        company = getattr(obj, "company", None)
+        if not company:
+            return None
+        return {
+            "id": company.id,
+            "name": company.name,
+            "edrpou": company.edrpou,
+            "label": f"{company.name} ({company.edrpou})" if company.edrpou else company.name,
+        }
+
+    def get_number(self, obj):
+        return f"s-{obj.company_id}-{obj.id}" if obj.company_id and obj.id else ""
+
+    def get_cpv_categories(self, obj):
+        return [
+            {
+                "id": c.id,
+                "cpv_code": c.cpv_code,
+                "name_ua": c.name_ua,
+                "label": f"{c.cpv_code} - {c.name_ua}",
+            }
+            for c in obj.cpv_categories.all()
+        ]
 
 
 class SalesTenderProposalPositionSerializer(serializers.ModelSerializer):

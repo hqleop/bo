@@ -11,7 +11,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Exists, OuterRef
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.utils import timezone
@@ -83,10 +83,12 @@ from .serializers import (
     CurrencySerializer,
     TenderCriterionSerializer,
     ProcurementTenderSerializer,
+    ProcurementParticipationTenderListSerializer,
     TenderProposalSerializer,
     TenderProposalPositionUpdateSerializer,
     ProcurementTenderFileSerializer,
     SalesTenderSerializer,
+    SalesParticipationTenderListSerializer,
     SalesTenderProposalSerializer,
     SalesTenderFileSerializer,
 )
@@ -139,6 +141,164 @@ def _resolve_request_company_id(request):
         )
 
     return user_company_ids[0], None
+
+
+def _parse_int_param(value, default=1, min_value=1):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(min_value, parsed)
+
+
+def _parse_int_list_param(raw_values):
+    if raw_values is None:
+        return []
+    if isinstance(raw_values, str):
+        raw_values = [raw_values]
+    out = []
+    for raw in raw_values:
+        for part in str(raw).split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                out.append(int(part))
+            except (TypeError, ValueError):
+                continue
+    # preserve order, drop duplicates
+    return list(dict.fromkeys(out))
+
+
+def _expand_cpv_ids_with_descendants(cpv_ids):
+    if not cpv_ids:
+        return []
+
+    selected = list(
+        CpvDictionary.objects.filter(id__in=cpv_ids).values("id", "cpv_level_code")
+    )
+    if not selected:
+        return []
+
+    result_ids = {item["id"] for item in selected}
+    pending_level_codes = {
+        item["cpv_level_code"] for item in selected if item.get("cpv_level_code")
+    }
+    processed = set()
+
+    while pending_level_codes:
+        level_codes = list(pending_level_codes - processed)
+        if not level_codes:
+            break
+        processed.update(level_codes)
+        children = list(
+            CpvDictionary.objects.filter(cpv_parent_code__in=level_codes).values(
+                "id", "cpv_level_code"
+            )
+        )
+        if not children:
+            continue
+        for child in children:
+            result_ids.add(child["id"])
+            next_level_code = child.get("cpv_level_code")
+            if next_level_code and next_level_code not in processed:
+                pending_level_codes.add(next_level_code)
+
+    return list(result_ids)
+
+
+def _filter_participation_qs_by_tab(qs, tab):
+    if tab == "active":
+        return qs.filter(stage="acceptance")
+    if tab == "processing":
+        return qs.filter(
+            Q(stage="decision")
+            | Q(stage="approval")
+            | (Q(stage="preparation") & Q(tour_number__gt=1))
+        )
+    if tab == "completed":
+        return qs.filter(stage="completed")
+    return qs.none()
+
+
+def _build_cpv_tree_for_tenders_queryset(qs):
+    cpv_ids = set(qs.values_list("cpv_category_id", flat=True))
+    cpv_ids.discard(None)
+    cpv_ids.update(
+        qs.values_list("cpv_categories__id", flat=True)
+    )
+    cpv_ids.discard(None)
+
+    if not cpv_ids:
+        return []
+
+    selected = list(
+        CpvDictionary.objects.filter(id__in=cpv_ids).values(
+            "id", "cpv_code", "name_ua", "cpv_level_code", "cpv_parent_code"
+        )
+    )
+    if not selected:
+        return []
+
+    included_by_level = {}
+    pending_parent_codes = set()
+    for item in selected:
+        level_code = item.get("cpv_level_code")
+        if level_code:
+            included_by_level[level_code] = item
+        parent_code = (item.get("cpv_parent_code") or "").strip()
+        if parent_code and parent_code != "0":
+            pending_parent_codes.add(parent_code)
+
+    processed_parent_codes = set()
+    while pending_parent_codes:
+        to_fetch = list(pending_parent_codes - processed_parent_codes)
+        if not to_fetch:
+            break
+        processed_parent_codes.update(to_fetch)
+        parents = list(
+            CpvDictionary.objects.filter(cpv_level_code__in=to_fetch).values(
+                "id", "cpv_code", "name_ua", "cpv_level_code", "cpv_parent_code"
+            )
+        )
+        for parent in parents:
+            level_code = parent.get("cpv_level_code")
+            if level_code:
+                included_by_level[level_code] = parent
+            parent_code = (parent.get("cpv_parent_code") or "").strip()
+            if parent_code and parent_code != "0":
+                pending_parent_codes.add(parent_code)
+
+    nodes_by_level = {}
+    for item in included_by_level.values():
+        level_code = item.get("cpv_level_code")
+        if not level_code:
+            continue
+        nodes_by_level[level_code] = {
+            "id": item["id"],
+            "cpv_code": item.get("cpv_code") or "",
+            "name_ua": item.get("name_ua") or "",
+            "label": f"{item.get('cpv_code') or ''} - {item.get('name_ua') or ''}",
+            "children": [],
+        }
+
+    roots = []
+    for level_code, node in nodes_by_level.items():
+        parent_code = (included_by_level[level_code].get("cpv_parent_code") or "").strip()
+        parent = nodes_by_level.get(parent_code)
+        if parent:
+            parent["children"].append(node)
+        else:
+            roots.append(node)
+
+    def sort_tree(items):
+        items.sort(key=lambda x: x.get("cpv_code") or "")
+        for item in items:
+            if item["children"]:
+                sort_tree(item["children"])
+
+    sort_tree(roots)
+    return roots
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -2039,7 +2199,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 ~Q(company_id__in=user_company_ids),
                 pk=pk,
                 conduct_type__in=["rfx", "online_auction"],
-                stage__in=["acceptance", "decision", "approval", "completed"],
+                stage__in=["acceptance", "decision", "approval", "completed", "preparation"],
             ).select_related(
                 "company", "category", "cpv_category", "expense_article",
                 "branch", "department", "currency", "created_by", "parent",
@@ -2051,12 +2211,17 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
     @extend_schema(
         parameters=[
             OpenApiParameter(name="tab", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="active | processing | completed"),
+            OpenApiParameter(name="page", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="company_id", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="cpv_ids", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="Comma-separated CPV ids"),
+            OpenApiParameter(name="reception_started", type=OpenApiTypes.BOOL, location=OpenApiParameter.QUERY, description="Available only for tab=active"),
+            OpenApiParameter(name="conduct_type", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="rfx | online_auction"),
         ],
-        responses=ProcurementTenderSerializer(many=True),
+        responses=OpenApiTypes.OBJECT,
     )
     @action(detail=False, methods=["get"], url_path="for-participation")
     def for_participation(self, request):
-        """РЎРїРёСЃРѕРє С‚РµРЅРґРµСЂС–РІ РґР»СЏ СѓС‡Р°СЃС‚С– (С–РЅС€РёС… РєРѕРјРїР°РЅС–Р№): РђРєС‚РёРІРЅС– / РћРїСЂР°С†СЊРѕРІСѓСЋС‚СЊСЃСЏ / Р—Р°РІРµСЂС€РµРЅС–."""
+        """Lightweight paginated list of procurement tenders for participation."""
         user = request.user
         user_company_ids = list(
             CompanyUser.objects.filter(
@@ -2064,33 +2229,96 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             ).values_list("company_id", flat=True)
         )
         if not user_company_ids:
-            return Response([])
+            return Response({
+                "count": 0,
+                "page": 1,
+                "page_size": 20,
+                "total_pages": 0,
+                "companies": [],
+                "cpv_tree": [],
+                "results": [],
+            })
+
         tab = (request.query_params.get("tab") or "active").strip().lower()
+        page = _parse_int_param(request.query_params.get("page"), default=1, min_value=1)
+        page_size = 20
+        reception_started = str(request.query_params.get("reception_started", "")).strip().lower() in ("1", "true", "yes")
+        conduct_type = (request.query_params.get("conduct_type") or "").strip().lower()
+        company_id = _parse_int_param(request.query_params.get("company_id"), default=0, min_value=0)
+        cpv_ids = _parse_int_list_param(request.query_params.getlist("cpv_ids"))
+        expanded_cpv_ids = _expand_cpv_ids_with_descendants(cpv_ids)
+
+        proposal_subquery = TenderProposal.objects.filter(
+            tender_id=OuterRef("pk"),
+            supplier_company_id__in=user_company_ids,
+        )
+
         qs = (
             ProcurementTender.objects.filter(
                 ~Q(company_id__in=user_company_ids),
                 conduct_type__in=["rfx", "online_auction"],
-                stage__in=["acceptance", "decision", "approval", "completed"],
+                stage__in=["acceptance", "decision", "approval", "completed", "preparation"],
             )
             .select_related(
-                "company", "currency", "parent",
+                "company",
             )
-            .prefetch_related("positions__nomenclature__unit", "tender_criteria")
-            .order_by("-updated_at")
+            .prefetch_related("cpv_categories")
+            .annotate(current_user_has_proposal=Exists(proposal_subquery))
         )
-        if tab == "active":
-            qs = qs.filter(stage="acceptance")
-        elif tab == "processing":
+        qs = _filter_participation_qs_by_tab(qs, tab)
+        if tab == "active" and reception_started:
+            qs = qs.filter(start_at__isnull=False, start_at__lte=timezone.now())
+        if conduct_type in ("rfx", "online_auction"):
+            qs = qs.filter(conduct_type=conduct_type)
+        if company_id:
+            qs = qs.filter(company_id=company_id)
+
+        cpv_tree = _build_cpv_tree_for_tenders_queryset(qs)
+
+        if expanded_cpv_ids:
             qs = qs.filter(
-                Q(stage="decision") | Q(stage="approval")
-                | (Q(stage="preparation") & Q(tour_number__gt=1))
-            )
-        elif tab == "completed":
-            qs = qs.filter(stage="completed")
-        serializer = ProcurementTenderSerializer(
-            qs, many=True, context={"request": request}
+                Q(cpv_category_id__in=expanded_cpv_ids)
+                | Q(cpv_categories__id__in=expanded_cpv_ids)
+            ).distinct()
+
+        company_options_qs = qs.values(
+            "company_id",
+            "company__name",
+            "company__edrpou",
+        ).distinct().order_by("company__name", "company__edrpou")
+        companies = [
+            {
+                "id": item["company_id"],
+                "name": item["company__name"] or "",
+                "edrpou": item["company__edrpou"] or "",
+                "label": (
+                    f"{item['company__name']} ({item['company__edrpou']})"
+                    if item.get("company__edrpou")
+                    else (item["company__name"] or "")
+                ),
+            }
+            for item in company_options_qs
+            if item.get("company_id")
+        ]
+
+        total = qs.count()
+        total_pages = (total + page_size - 1) // page_size
+        start = (page - 1) * page_size
+        end = start + page_size
+        paged_qs = qs.order_by("-updated_at")[start:end]
+
+        serializer = ProcurementParticipationTenderListSerializer(
+            paged_qs, many=True, context={"request": request}
         )
-        return Response(serializer.data)
+        return Response({
+            "count": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "companies": companies,
+            "cpv_tree": cpv_tree,
+            "results": serializer.data,
+        })
 
     @extend_schema(responses=TenderProposalSerializer)
     @action(detail=True, methods=["post"], url_path="confirm-participation")
@@ -2526,7 +2754,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                 ~Q(company_id__in=user_company_ids),
                 pk=pk,
                 conduct_type__in=["rfx", "online_auction"],
-                stage__in=["acceptance", "decision", "approval", "completed"],
+                stage__in=["acceptance", "decision", "approval", "completed", "preparation"],
             ).select_related(
                 "company", "category", "cpv_category", "expense_article",
                 "branch", "department", "currency", "created_by", "parent",
@@ -2541,12 +2769,17 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
     @extend_schema(
         parameters=[
             OpenApiParameter(name="tab", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="active | processing | completed"),
+            OpenApiParameter(name="page", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="company_id", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="cpv_ids", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="Comma-separated CPV ids"),
+            OpenApiParameter(name="reception_started", type=OpenApiTypes.BOOL, location=OpenApiParameter.QUERY, description="Available only for tab=active"),
+            OpenApiParameter(name="conduct_type", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="rfx | online_auction"),
         ],
-        responses=SalesTenderSerializer(many=True),
+        responses=OpenApiTypes.OBJECT,
     )
     @action(detail=False, methods=["get"], url_path="for-participation")
     def for_participation(self, request):
-        """РЎРїРёСЃРѕРє С‚РµРЅРґРµСЂС–РІ РЅР° РїСЂРѕРґР°Р¶ РґР»СЏ СѓС‡Р°СЃС‚С– (С–РЅС€РёС… РєРѕРјРїР°РЅС–Р№): РђРєС‚РёРІРЅС– / РћРїСЂР°С†СЊРѕРІСѓСЋС‚СЊСЃСЏ / Р—Р°РІРµСЂС€РµРЅС–."""
+        """Lightweight paginated list of sales tenders for participation."""
         user = request.user
         user_company_ids = list(
             CompanyUser.objects.filter(
@@ -2554,33 +2787,96 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             ).values_list("company_id", flat=True)
         )
         if not user_company_ids:
-            return Response([])
+            return Response({
+                "count": 0,
+                "page": 1,
+                "page_size": 20,
+                "total_pages": 0,
+                "companies": [],
+                "cpv_tree": [],
+                "results": [],
+            })
+
         tab = (request.query_params.get("tab") or "active").strip().lower()
+        page = _parse_int_param(request.query_params.get("page"), default=1, min_value=1)
+        page_size = 20
+        reception_started = str(request.query_params.get("reception_started", "")).strip().lower() in ("1", "true", "yes")
+        conduct_type = (request.query_params.get("conduct_type") or "").strip().lower()
+        company_id = _parse_int_param(request.query_params.get("company_id"), default=0, min_value=0)
+        cpv_ids = _parse_int_list_param(request.query_params.getlist("cpv_ids"))
+        expanded_cpv_ids = _expand_cpv_ids_with_descendants(cpv_ids)
+
+        proposal_subquery = SalesTenderProposal.objects.filter(
+            tender_id=OuterRef("pk"),
+            supplier_company_id__in=user_company_ids,
+        )
+
         qs = (
             SalesTender.objects.filter(
                 ~Q(company_id__in=user_company_ids),
                 conduct_type__in=["rfx", "online_auction"],
-                stage__in=["acceptance", "decision", "approval", "completed"],
+                stage__in=["acceptance", "decision", "approval", "completed", "preparation"],
             )
             .select_related(
-                "company", "currency", "parent",
+                "company",
             )
-            .prefetch_related("positions__nomenclature__unit", "tender_criteria")
-            .order_by("-updated_at")
+            .prefetch_related("cpv_categories")
+            .annotate(current_user_has_proposal=Exists(proposal_subquery))
         )
-        if tab == "active":
-            qs = qs.filter(stage="acceptance")
-        elif tab == "processing":
+        qs = _filter_participation_qs_by_tab(qs, tab)
+        if tab == "active" and reception_started:
+            qs = qs.filter(start_at__isnull=False, start_at__lte=timezone.now())
+        if conduct_type in ("rfx", "online_auction"):
+            qs = qs.filter(conduct_type=conduct_type)
+        if company_id:
+            qs = qs.filter(company_id=company_id)
+
+        cpv_tree = _build_cpv_tree_for_tenders_queryset(qs)
+
+        if expanded_cpv_ids:
             qs = qs.filter(
-                Q(stage="decision") | Q(stage="approval")
-                | (Q(stage="preparation") & Q(tour_number__gt=1))
-            )
-        elif tab == "completed":
-            qs = qs.filter(stage="completed")
-        serializer = SalesTenderSerializer(
-            qs, many=True, context={"request": request}
+                Q(cpv_category_id__in=expanded_cpv_ids)
+                | Q(cpv_categories__id__in=expanded_cpv_ids)
+            ).distinct()
+
+        company_options_qs = qs.values(
+            "company_id",
+            "company__name",
+            "company__edrpou",
+        ).distinct().order_by("company__name", "company__edrpou")
+        companies = [
+            {
+                "id": item["company_id"],
+                "name": item["company__name"] or "",
+                "edrpou": item["company__edrpou"] or "",
+                "label": (
+                    f"{item['company__name']} ({item['company__edrpou']})"
+                    if item.get("company__edrpou")
+                    else (item["company__name"] or "")
+                ),
+            }
+            for item in company_options_qs
+            if item.get("company_id")
+        ]
+
+        total = qs.count()
+        total_pages = (total + page_size - 1) // page_size
+        start = (page - 1) * page_size
+        end = start + page_size
+        paged_qs = qs.order_by("-updated_at")[start:end]
+
+        serializer = SalesParticipationTenderListSerializer(
+            paged_qs, many=True, context={"request": request}
         )
-        return Response(serializer.data)
+        return Response({
+            "count": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "companies": companies,
+            "cpv_tree": cpv_tree,
+            "results": serializer.data,
+        })
 
     @extend_schema(responses=SalesTenderProposalSerializer)
     @action(detail=True, methods=["post"], url_path="confirm-participation")

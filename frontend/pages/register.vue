@@ -109,7 +109,7 @@
           </div>
 
           <div class="flex gap-4">
-            <UButton variant="outline" block @click="currentStep = 1"
+            <UButton type="button" variant="outline" block @click="currentStep = 1"
               >Назад</UButton
             >
             <UButton type="submit" block :loading="loading"
@@ -138,6 +138,7 @@
 
           <div class="flex gap-4">
             <UButton
+              type="button"
               variant="outline"
               block
               @click="currentStep = 2"

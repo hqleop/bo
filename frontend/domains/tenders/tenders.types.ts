@@ -41,3 +41,20 @@ export interface TenderFile {
   uploaded_by_display?: string
   visible_to_participants?: boolean
 }
+
+export interface ParticipationCompanyOption {
+  id: number
+  name: string
+  edrpou?: string
+  label: string
+}
+
+export interface ParticipationListResponse {
+  count: number
+  page: number
+  page_size: number
+  total_pages: number
+  companies: ParticipationCompanyOption[]
+  cpv_tree?: unknown[]
+  results: TenderDetail[]
+}
