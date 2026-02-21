@@ -4,15 +4,51 @@
     <div class="flex flex-1 min-h-0">
       <!-- Sidebar: висота по екрану, скрол лише у навігації -->
       <aside
-        class="w-64 flex-shrink-0 h-full flex flex-col overflow-hidden bg-white shadow-sm"
+        :class="[
+          'flex-shrink-0 h-full flex flex-col overflow-visible bg-white shadow-sm border-r border-gray-200 transition-[width] duration-200',
+          isSidebarCollapsed ? 'w-20' : 'w-64',
+        ]"
       >
-        <div class="h-16 flex-shrink-0 px-4 border-b flex items-center">
-          <h2 class="text-xl font-bold text-gray-900">Bid Open</h2>
+        <div
+          :class="[
+            'h-16 flex-shrink-0 border-b flex items-center justify-between',
+            isSidebarCollapsed ? 'px-2' : 'px-4',
+          ]"
+        >
+          <h2
+            v-if="!isSidebarCollapsed"
+            class="text-xl font-bold text-gray-900 whitespace-nowrap"
+          >
+            Bid Open
+          </h2>
+          <div v-else class="w-full flex justify-center">
+            <span class="text-sm font-bold text-gray-900">BO</span>
+          </div>
+          <UButton
+            :icon="
+              isSidebarCollapsed
+                ? 'i-heroicons-chevron-double-right'
+                : 'i-heroicons-chevron-double-left'
+            "
+            variant="ghost"
+            color="neutral"
+            size="sm"
+            class="shrink-0"
+            @click="toggleSidebar"
+          />
         </div>
-        <nav class="flex-1 min-h-0 overflow-y-auto p-4">
+        <nav
+          :class="[
+            'flex-1 min-h-0 overflow-y-auto',
+            isSidebarCollapsed ? 'p-2' : 'p-4',
+          ]"
+        >
           <UNavigationMenu
             orientation="vertical"
             :items="navigationItems"
+            :collapsed="isSidebarCollapsed"
+            :tooltip="true"
+            :popover="true"
             color="neutral"
             variant="link"
             highlight
@@ -144,6 +180,7 @@ const headerAvatar = computed(() => me.value?.user?.avatar ?? null);
 const userEmail = computed(() => me.value?.user?.email ?? "");
 const permissions = computed(() => me.value?.permissions || []);
 const showNotifications = ref(false);
+const isSidebarCollapsed = ref(true);
 
 // Меню кабінету згідно цільової структури
 // Тимчасово БЕЗ обмежень по правах доступу: кожен авторизований користувач бачить усі пункти
@@ -345,15 +382,32 @@ const menuLinks = computed(() => {
 
 const route = useRoute();
 
+const getNavItemId = (item: any, index: number) =>
+  String(item.to || item.label || `item-${index}`);
+
 const isPathActive = (to: string | undefined) => {
   if (!to) return false;
-  const [pathOnly] = String(to).split("?");
-  return route.path === pathOnly;
+  const target = String(to);
+  const [pathOnly, queryString] = target.split("?");
+  if (route.path !== pathOnly) return false;
+  if (!queryString) return true;
+
+  const search = new URLSearchParams(queryString);
+  for (const [key, expected] of search.entries()) {
+    const current = route.query[key];
+    if (Array.isArray(current)) {
+      if (!current.includes(expected)) return false;
+    } else if (String(current ?? "") !== expected) {
+      return false;
+    }
+  }
+  return true;
 };
 
 // Пункти меню для UNavigationMenu з позначкою активного та defaultOpen для розділу з активним дочірнім
 const navigationItems = computed(() => {
-  return menuLinks.value.map((item: any) => {
+  return menuLinks.value.map((item: any, index: number) => {
+    const id = getNavItemId(item, index);
     const hasChildren = Array.isArray(item.children) && item.children.length;
     const children = hasChildren
       ? item.children.map((child: any) => ({
@@ -363,6 +417,7 @@ const navigationItems = computed(() => {
       : undefined;
     const hasActiveChild = hasChildren && children.some((c: any) => c.active);
     return {
+      id,
       ...item,
       ...(children && { children }),
       active: hasChildren ? false : isPathActive(item.to),
@@ -370,6 +425,10 @@ const navigationItems = computed(() => {
     };
   });
 });
+
+const toggleSidebar = () => {
+  isSidebarCollapsed.value = !isSidebarCollapsed.value;
+};
 
 const userMenuItems = [
   [

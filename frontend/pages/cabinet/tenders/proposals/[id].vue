@@ -213,7 +213,7 @@
               color="error"
               variant="solid"
               :loading="submitWithdrawLoading"
-              :disabled="!participantCanEdit"
+              :disabled="!participantCanWithdraw"
               @click="onWithdrawProposal"
             >
               Відкликати пропозицію
@@ -572,7 +572,7 @@ const timerText = computed(() => {
   }
   return "Прийом пропозицій";
 });
-const participantCanEdit = computed(() => {
+const participantCanManageProposal = computed(() => {
   if (!tender.value || tender.value.stage !== "acceptance") return false;
   const n = now.value.getTime();
   const start = acceptanceStartAt.value;
@@ -588,8 +588,19 @@ const myProposal = computed(() =>
       p.supplier_company?.id === myCompanyId.value,
   ),
 );
-const isProposalSubmitted = computed(
-  () => !!myProposal.value?.submitted_at,
+const isProposalSubmitted = computed(() => {
+  const proposal = myProposal.value as Record<string, unknown> | undefined;
+  if (!proposal) return false;
+  const status = String(proposal.status ?? "").toLowerCase();
+  if (proposal.withdrawn_at) return false;
+  if (status === "withdrawn" || status === "retracted") return false;
+  return !!proposal.submitted_at;
+});
+const participantCanWithdraw = computed(
+  () => participantCanManageProposal.value && isProposalSubmitted.value,
+);
+const participantCanEdit = computed(
+  () => participantCanManageProposal.value && !isProposalSubmitted.value,
 );
 
 const stepperItems = computed(() => {
@@ -968,3 +979,4 @@ onUnmounted(() => {
   if (nowInterval) clearInterval(nowInterval);
 });
 </script>
+

@@ -1,5 +1,6 @@
 <template>
   <UApp>
+    <SystemAlerts />
     <NuxtLayout>
       <NuxtPage :key="route.fullPath" />
     </NuxtLayout>

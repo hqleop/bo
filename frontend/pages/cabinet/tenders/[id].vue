@@ -167,7 +167,7 @@
                           v-model="form.branch"
                           :items="branchOptions"
                           value-key="value"
-                          placeholder="РћР±РµСЂС–С‚СЊ С„С–Р»С–Р°Р»"
+                          placeholder="Оберіть філіал"
                           size="sm"
                           :disabled="isViewingPreviousTour"
                           @update:model-value="onBranchChange"
