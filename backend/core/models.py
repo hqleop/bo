@@ -486,6 +486,7 @@ class Currency(models.Model):
     """
 
     code = models.CharField(max_length=10, unique=True)
+    code_iso = models.CharField(max_length=3, null=True, blank=True, db_index=True)
     name = models.CharField(max_length=100)
 
     class Meta:

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div v-if="loading" class="flex items-center justify-center py-12">
     <UIcon
       name="i-heroicons-arrow-path"
@@ -6,7 +6,7 @@
     />
   </div>
   <div v-else-if="!tender" class="text-center py-12 text-gray-500">
-    РўРµРЅРґРµСЂ РЅРµ Р·РЅР°Р№РґРµРЅРѕ.
+    Тендер не знайдено.
   </div>
   <div v-else class="h-full flex flex-col border-0 ring-0 outline-none">
     <div class="mb-4 flex items-center justify-between gap-4">
@@ -14,11 +14,11 @@
         v-if="tender.number"
         class="text-xl font-semibold text-gray-900 truncate min-w-0"
       >
-        в„– {{ tender.number }}
+        № {{ tender.number }}
         <span class="font-normal text-gray-700">{{ tender.name }}</span>
       </h1>
       <div v-if="tourOptions.length" class="flex items-center gap-2 shrink-0">
-        <span class="text-sm text-gray-600">РўСѓСЂ:</span>
+        <span class="text-sm text-gray-600">Тур:</span>
         <USelect
           :model-value="tenderId"
           :items="tourOptions"
@@ -41,12 +41,12 @@
     </div>
 
     <UAlert
-      v-if="isViewingPreviousTour"
+      v-if="isViewingPreviousTourOnly"
       color="neutral"
       variant="subtle"
       icon="i-heroicons-eye"
-      title="РџРµСЂРµРіР»СЏРґ РїРѕРїРµСЂРµРґРЅСЊРѕРіРѕ С‚СѓСЂСѓ"
-      description="Р’Рё РїРµСЂРµРіР»СЏРґР°С”С‚Рµ Р·Р±РµСЂРµР¶РµРЅС– РґР°РЅС– РїРѕРїРµСЂРµРґРЅСЊРѕРіРѕ С‚СѓСЂСѓ. Р РµРґР°РіСѓРІР°РЅРЅСЏ С‚Р° Р·РјС–РЅР° РµС‚Р°РїС–РІ РЅРµРґРѕСЃС‚СѓРїРЅС– вЂ” РєРѕР¶РµРЅ С‚СѓСЂ Р·Р±РµСЂС–РіР°С”С‚СЊСЃСЏ РѕРєСЂРµРјРѕ."
+      title="Перегляд попереднього туру"
+      description="Ви переглядаєте збережені дані попереднього туру. Редагування та зміна етапів недоступні — кожен тур зберігається окремо."
       class="mb-4"
     />
 
@@ -59,7 +59,7 @@
           <UCard class="overflow-hidden">
             <template #header>
               <h3 class="text-lg font-semibold text-gray-900">
-                РџР°СЃРїРѕСЂС‚ С‚РµРЅРґРµСЂР°
+                Паспорт тендера
               </h3>
             </template>
             <UForm :state="form" class="space-y-6">
@@ -68,13 +68,13 @@
               >
                 <div class="space-y-6">
                   <UFormField
-                    label="РќР°Р·РІР° С‚РµРЅРґРµСЂР°"
+                    label="Назва тендера"
                     required
                     class="mb-0 w-full"
                   >
                     <UInput
                       v-model="form.name"
-                      placeholder="Р’РІРµРґС–С‚СЊ РЅР°Р·РІСѓ С‚РµРЅРґРµСЂР°"
+                      placeholder="Введіть назву тендера"
                       size="md"
                       class="w-full"
                       :disabled="isViewingPreviousTour"
@@ -85,13 +85,13 @@
                     <p
                       class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
                     >
-                      РљР°С‚РµРіРѕСЂС–Р·Р°С†С–СЏ
+                      Категорізація
                     </p>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <ContentSearch
-                        label="РљР°С‚РµРіРѕСЂС–СЏ"
-                        placeholder="РћР±РµСЂС–С‚СЊ РєР°С‚РµРіРѕСЂС–СЋ"
-                        search-placeholder="РџРѕС€СѓРє РєР°С‚РµРіРѕСЂС–С—"
+                        label="Категорія"
+                        placeholder="Оберіть категорію"
+                        search-placeholder="Пошук категорії"
                         :disabled="
                           isViewingPreviousTour ||
                           (form.cpv_ids?.length ?? 0) > 0
@@ -103,8 +103,8 @@
                         @update:search-term="categorySearch = $event"
                       />
                       <CpvLazyMultiSearch
-                        label="РљР°С‚РµРіРѕСЂС–СЏ CPV"
-                        placeholder="РћР±РµСЂС–С‚СЊ CPV"
+                        label="Категорія CPV"
+                        placeholder="Оберіть CPV"
                         required
                         :disabled="isViewingPreviousTour || !!form.category"
                         :selected-ids="form.cpv_ids"
@@ -119,20 +119,20 @@
                     <p
                       class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
                     >
-                      Р‘СЋРґР¶РµС‚ С– РІР°Р»СЋС‚Р°
+                      Бюджет і валюта
                     </p>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <UFormField label="РЎС‚Р°С‚С‚СЏ Р±СЋРґР¶РµС‚Сѓ">
+                      <UFormField label="Стаття бюджету">
                         <USelectMenu
                           v-model="form.expense_article"
                           :items="expenseOptions"
                           value-key="value"
-                          placeholder="РћР±РµСЂС–С‚СЊ СЃС‚Р°С‚С‚СЋ"
+                          placeholder="Оберіть статтю"
                           size="sm"
                           :disabled="isViewingPreviousTour"
                         />
                       </UFormField>
-                      <UFormField label="РћСЂС–С”РЅС‚РѕРІРЅРёР№ Р±СЋРґР¶РµС‚">
+                      <UFormField label="Орієнтовний бюджет">
                         <UInput
                           v-model.number="form.estimated_budget"
                           type="number"
@@ -142,12 +142,12 @@
                           :disabled="isViewingPreviousTour"
                         />
                       </UFormField>
-                      <UFormField label="Р’Р°Р»СЋС‚Р°" required>
+                      <UFormField label="Валюта" required>
                         <USelectMenu
                           v-model="form.currency"
                           :items="currencyOptions"
                           value-key="value"
-                          placeholder="Р’Р°Р»СЋС‚Сѓ"
+                          placeholder="Валюту"
                           size="sm"
                           :disabled="isViewingPreviousTour"
                         />
@@ -159,10 +159,10 @@
                     <p
                       class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
                     >
-                      РћСЂРіР°РЅС–Р·Р°С†С–Р№РЅР° СЃС‚СЂСѓРєС‚СѓСЂР°
+                      Організаційна структура
                     </p>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <UFormField label="Р¤С–Р»С–Р°Р»">
+                      <UFormField label="Філіал">
                         <USelectMenu
                           v-model="form.branch"
                           :items="branchOptions"
@@ -173,12 +173,12 @@
                           @update:model-value="onBranchChange"
                         />
                       </UFormField>
-                      <UFormField label="РџС–РґСЂРѕР·РґС–Р»">
+                      <UFormField label="Підрозділ">
                         <USelectMenu
                           v-model="form.department"
                           :items="departmentOptions"
                           value-key="value"
-                          placeholder="РћР±РµСЂС–С‚СЊ РїС–РґСЂРѕР·РґС–Р»"
+                          placeholder="Оберіть підрозділ"
                           size="sm"
                           :disabled="isViewingPreviousTour"
                         />
@@ -190,25 +190,25 @@
                     <p
                       class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
                     >
-                      РџР°СЂР°РјРµС‚СЂРё РїСЂРѕС†РµРґСѓСЂРё
+                      Параметри процедури
                     </p>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <UFormField label="РўРёРї РїСЂРѕРІРµРґРµРЅРЅСЏ" required>
+                      <UFormField label="Тип проведення" required>
                         <USelectMenu
                           v-model="form.conduct_type"
                           :items="conductTypeOptions"
                           value-key="value"
-                          placeholder="РћР±РµСЂС–С‚СЊ С‚РёРї"
+                          placeholder="Оберіть тип"
                           size="sm"
                           :disabled="isViewingPreviousTour"
                         />
                       </UFormField>
-                      <UFormField label="РўРёРї РїСѓР±Р»С–РєР°С†С–С—" required>
+                      <UFormField label="Тип публікації" required>
                         <USelectMenu
                           v-model="form.publication_type"
                           :items="publicationTypeOptions"
                           value-key="value"
-                          placeholder="РћР±РµСЂС–С‚СЊ С‚РёРї"
+                          placeholder="Оберіть тип"
                           size="sm"
                           :disabled="isViewingPreviousTour"
                         />
@@ -223,10 +223,10 @@
                   <p
                     class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
                   >
-                    Р—Р°РіР°Р»СЊРЅС– СѓРјРѕРІРё РїСЂРѕРІРµРґРµРЅРЅСЏ С‚РµРЅРґРµСЂР°
+                    Загальні умови проведення тендера
                   </p>
                   <UFormField
-                    label="РћРїРёСЃ СѓРјРѕРІ С‚Р° РІРёРјРѕРі"
+                    label="Опис умов та вимог"
                     class="mb-0 flex-1 flex flex-col min-h-0"
                   >
                     <div
@@ -241,7 +241,7 @@
                             types: ['heading', 'paragraph'],
                           }),
                         ]"
-                        placeholder="РћРїРёС€С–С‚СЊ Р·Р°РіР°Р»СЊРЅС– СѓРјРѕРІРё, РІРёРјРѕРіРё РґРѕ СѓС‡Р°СЃРЅРёРєС–РІ, РїРѕСЂСЏРґРѕРє РѕС†С–РЅРєРё РїСЂРѕРїРѕР·РёС†С–Р№ С‚РѕС‰Рѕ. Р¦РµР№ С‚РµРєСЃС‚ Р±СѓРґРµ РґРѕСЃС‚СѓРїРЅРёР№ СѓС‡Р°СЃРЅРёРєР°Рј."
+                        placeholder="Опишіть загальні умови, вимоги до учасників, порядок оцінки пропозицій тощо. Цей текст буде доступний учасникам."
                         :editable="!isViewingPreviousTour"
                         :ui="{
                           root: 'flex flex-col min-h-[300px]',
@@ -264,51 +264,51 @@
           </UCard>
         </template>
 
-        <template v-else-if="tender.stage === 'preparation'">
-          <!-- РџР°РЅРµР»СЊ Р·Р°РїСЂРѕС€РµРЅРЅСЏ СѓС‡Р°СЃРЅРёРєС–РІ: 2/3 Р»С–РІРѕСЂСѓС‡, 1/3 РїСЂР°РІРѕСЂСѓС‡ -->
+        <template v-else-if="displayStage === 'preparation'">
+          <!-- Панель запрошення учасників: 2/3 ліворуч, 1/3 праворуч -->
           <div
             v-if="showInvitationPanel"
             class="h-full min-h-0 flex flex-col rounded-lg p-4 bg-white"
           >
             <div class="flex items-center justify-between mb-4">
-              <h3 class="text-lg font-semibold">Р—Р°РїСЂРѕС€РµРЅРЅСЏ СѓС‡Р°СЃРЅРёРєС–РІ</h3>
+              <h3 class="text-lg font-semibold">Запрошення учасників</h3>
               <UButton
                 variant="ghost"
                 size="sm"
                 icon="i-heroicons-arrow-left"
                 @click="showInvitationPanel = false"
               >
-                Р”Рѕ РїС–РґРіРѕС‚РѕРІРєРё
+                До підготовки
               </UButton>
             </div>
-            <!-- РџСЂРѕРїРѕСЂС†С–С—: 2/5 РєРѕРЅС‚СЂР°РіРµРЅС‚Рё, 2/5 CPV, 1/5 email -->
+            <!-- Пропорції: 2/5 контрагенти, 2/5 CPV, 1/5 email -->
             <div class="flex flex-1 min-h-0 gap-4">
-              <!-- РћР±Р»Р°СЃС‚СЊ 1 (2/5): РћР±СЂР°РЅРЅСЏ РєРѕРЅС‚СЂР°РіРµРЅС‚Р° вЂ” РІРµСЂС…: РґРІР° РїРѕС€СѓРєРё + СЃРїРёСЃРѕРє РїРѕСЃС‚Р°С‡Р°Р»СЊРЅРёРєС–РІ Р· РїР°РіС–РЅР°С†С–С”СЋ С‚Р° Р—Р°РїСЂРѕСЃРёС‚Рё, РЅРёР·: Р·Р°РїСЂРѕС€РµРЅС– -->
+              <!-- Область 1 (2/5): Обрання контрагента — верх: два пошуки + список постачальників з пагінацією та Запросити, низ: запрошені -->
               <div
                 class="flex-[2] min-w-0 flex flex-col border border-gray-200 rounded-lg bg-gray-50/50 overflow-hidden"
               >
                 <h4
                   class="p-3 border-b border-gray-200 text-sm font-semibold text-gray-700"
                 >
-                  РћР±СЂР°РЅРЅСЏ РєРѕРЅС‚СЂР°РіРµРЅС‚Р° Р·С– СЃРїРёСЃРєСѓ РєРѕРЅС‚СЂР°РіРµРЅС‚С–РІ РєРѕРјРїР°РЅС–С—
+                  Обрання контрагента зі списку контрагентів компанії
                 </h4>
                 <div
                   class="flex-1 min-h-0 flex flex-col min-w-0 divide-y divide-gray-200"
                 >
-                  <!-- Р’РµСЂС…РЅСЏ РїРѕР»РѕРІРёРЅР°: РїРѕС€СѓРєРё + СЃРїРёСЃРѕРє РїРѕСЃС‚Р°С‡Р°Р»СЊРЅРёРєС–РІ -->
+                  <!-- Верхня половина: пошуки + список постачальників -->
                   <div
                     class="flex-1 min-h-0 flex flex-col p-3 overflow-hidden min-h-[200px]"
                   >
-                    <UFormField label="РџРѕС€СѓРє РєРѕРЅС‚СЂР°РіРµРЅС‚Р° Р·Р° РЅР°Р·РІРѕСЋ Р°Р±Рѕ РєРѕРґРѕРј">
+                    <UFormField label="Пошук контрагента за назвою або кодом">
                       <UInput
                         v-model="invitationContractorSearch"
-                        placeholder="РќР°Р·РІР° Р°Р±Рѕ Р„Р”Р РџРћРЈ"
+                        placeholder="Назва або ЄДРПОУ"
                         size="sm"
                         class="w-full"
                       />
                     </UFormField>
                     <UFormField
-                      label="Р¤С–Р»СЊС‚СЂ РїРѕСЃС‚Р°С‡Р°Р»СЊРЅРёРєС–РІ РїРѕ РєР°С‚РµРіРѕСЂС–С— CPV"
+                      label="Фільтр постачальників по категорії CPV"
                       class="mt-2"
                     >
                       <USelectMenu
@@ -316,7 +316,7 @@
                         :items="invitationCpvOptions"
                         value-key="id"
                         label-key="label"
-                        placeholder="РЈСЃС– РєР°С‚РµРіРѕСЂС–С—"
+                        placeholder="Усі категорії"
                         multiple
                         class="w-full"
                       />
@@ -349,7 +349,7 @@
                           <span class="flex-1 text-sm truncate">{{
                             rel.supplier_company?.name ||
                             rel.supplier_company?.edrpou ||
-                            "вЂ”"
+                            "—"
                           }}</span>
                           <span
                             v-if="rel.supplier_company?.edrpou"
@@ -361,12 +361,12 @@
                             variant="outline"
                             @click="inviteOneContractor(rel)"
                           >
-                            Р—Р°РїСЂРѕСЃРёС‚Рё
+                            Запросити
                           </UButton>
                         </li>
                       </ul>
                       <p v-else class="text-sm text-gray-500 p-3">
-                        РќРµРјР°С” РїРѕСЃС‚Р°С‡Р°Р»СЊРЅРёРєС–РІ Р·Р° РєСЂРёС‚РµСЂС–СЏРјРё РїРѕС€СѓРєСѓ.
+                        Немає постачальників за критеріями пошуку.
                       </p>
                     </div>
                     <div
@@ -381,7 +381,7 @@
                             invitationSupplierPage = invitationSupplierPage - 1
                           "
                         >
-                          РќР°Р·Р°Рґ
+                          Назад
                         </UButton>
                         <span class="text-sm text-gray-600">
                           {{ invitationSupplierPage }} /
@@ -398,7 +398,7 @@
                             invitationSupplierPage = invitationSupplierPage + 1
                           "
                         >
-                          Р”Р°Р»С–
+                          Далі
                         </UButton>
                       </div>
                       <UButton
@@ -406,14 +406,14 @@
                         :disabled="selectedContractorCompanyIds.length === 0"
                         @click="inviteSelectedContractors"
                       >
-                        Р—Р°РїСЂРѕСЃРёС‚Рё
+                        Запросити
                       </UButton>
                     </div>
                   </div>
-                  <!-- РќРёР¶РЅСЏ РїРѕР»РѕРІРёРЅР°: Р·Р°РїСЂРѕС€РµРЅС– РєРѕРјРїР°РЅС–С— -->
+                  <!-- Нижня половина: запрошені компанії -->
                   <div class="flex-1 min-h-0 flex flex-col p-3 min-h-[120px]">
                     <h4 class="text-sm font-semibold text-gray-700 mb-2">
-                      Р—Р°РїСЂРѕС€РµРЅС– РєРѕРјРїР°РЅС–С—
+                      Запрошені компанії
                     </h4>
                     <ul
                       v-if="invitedCompanies.length"
@@ -425,40 +425,40 @@
                         class="flex items-center justify-between gap-2 py-1.5 px-2 rounded bg-white border border-gray-200 text-sm"
                       >
                         <span class="truncate flex-1 min-w-0">{{
-                          company.name || company.edrpou || "вЂ”"
+                          company.name || company.edrpou || "—"
                         }}</span>
                         <UButton
                           icon="i-heroicons-trash"
                           size="xs"
                           variant="ghost"
                           color="error"
-                          aria-label="Р’РёРґР°Р»РёС‚Рё"
+                          aria-label="Видалити"
                           @click="removeInvitedCompany(idx)"
                         />
                       </li>
                     </ul>
-                    <p v-else class="text-sm text-gray-500 py-1">РџРѕСЂРѕР¶РЅСЊРѕ.</p>
+                    <p v-else class="text-sm text-gray-500 py-1">Порожньо.</p>
                   </div>
                 </div>
               </div>
 
-              <!-- РћР±Р»Р°СЃС‚СЊ 2 (2/5): Р·РІРµСЂС…Сѓ РїРѕС€СѓРє + СЃРїРёСЃРѕРє CPV (СЃРёСЃС‚РµРјРЅС–) Р· РїР°РіС–РЅР°С†С–С”СЋ С‚Р° Р—Р°РїСЂРѕСЃРёС‚Рё, Р·РЅРёР·Сѓ вЂ” РєР°С‚РµРіРѕСЂС–С— РїРѕ СЏРєРёРј Р·Р°РїСЂРѕС€СѓСЋС‚СЊСЃСЏ -->
+              <!-- Область 2 (2/5): зверху пошук + список CPV (системні) з пагінацією та Запросити, знизу — категорії по яким запрошуються -->
               <div
                 class="flex-[2] min-w-0 flex flex-col border border-gray-200 rounded-lg bg-white overflow-hidden divide-y divide-gray-200"
               >
                 <h4
                   class="p-3 border-b border-gray-200 text-sm font-semibold text-gray-700"
                 >
-                  РџРѕС€СѓРє РєРѕРЅС‚СЂР°РіРµРЅС‚С–РІ РїРѕ CPV
+                  Пошук контрагентів по CPV
                 </h4>
                 <div class="flex-1 min-h-0 flex flex-col min-w-0">
                   <div
                     class="flex-1 min-h-0 flex flex-col p-3 overflow-hidden min-h-[200px]"
                   >
-                    <UFormField label="РџРѕС€СѓРє РєР°С‚РµРіРѕСЂС–С— CPV">
+                    <UFormField label="Пошук категорії CPV">
                       <UInput
                         v-model="invitationCpvSearchTerm"
-                        placeholder="РљРѕРґ Р°Р±Рѕ РЅР°Р·РІР° CPV"
+                        placeholder="Код або назва CPV"
                         size="sm"
                         class="w-full"
                       />
@@ -490,7 +490,7 @@
                             variant="outline"
                             @click="inviteOneCpv(item.id)"
                           >
-                            Р—Р°РїСЂРѕСЃРёС‚Рё
+                            Запросити
                           </UButton>
                         </li>
                       </ul>
@@ -498,10 +498,10 @@
                         v-else-if="cpvWithCompaniesLoading"
                         class="text-sm text-gray-500 p-3"
                       >
-                        Р—Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ...
+                        Завантаження...
                       </p>
                       <p v-else class="text-sm text-gray-500 p-3">
-                        РќРµРјР°С” РєР°С‚РµРіРѕСЂС–Р№ Р·Р° РєСЂРёС‚РµСЂС–СЏРјРё РїРѕС€СѓРєСѓ.
+                        Немає категорій за критеріями пошуку.
                       </p>
                     </div>
                     <div
@@ -516,7 +516,7 @@
                             cpvWithCompaniesPage = cpvWithCompaniesPage - 1
                           "
                         >
-                          РќР°Р·Р°Рґ
+                          Назад
                         </UButton>
                         <span class="text-sm text-gray-600">
                           {{ cpvWithCompaniesPage }} /
@@ -532,7 +532,7 @@
                             cpvWithCompaniesPage = cpvWithCompaniesPage + 1
                           "
                         >
-                          Р”Р°Р»С–
+                          Далі
                         </UButton>
                       </div>
                       <UButton
@@ -540,13 +540,13 @@
                         :disabled="selectedCpvIdsForInvite.length === 0"
                         @click="inviteSelectedCpv"
                       >
-                        Р—Р°РїСЂРѕСЃРёС‚Рё
+                        Запросити
                       </UButton>
                     </div>
                   </div>
                   <div class="flex-1 min-h-0 flex flex-col p-3 min-h-[120px]">
                     <h4 class="text-sm font-semibold text-gray-700 mb-2">
-                      РљР°С‚РµРіРѕСЂС–С— CPV, Р·Р° СЏРєРёРјРё Р·Р°РїСЂРѕС€СѓСЋС‚СЊСЃСЏ СѓС‡Р°СЃРЅРёРєРё
+                      Категорії CPV, за якими запрошуються учасники
                     </h4>
                     <ul
                       v-if="invitationCpvFilterIds.length"
@@ -565,19 +565,19 @@
                           size="xs"
                           variant="ghost"
                           color="error"
-                          aria-label="Р’РёРґР°Р»РёС‚Рё"
+                          aria-label="Видалити"
                           @click="removeInvitedCpv(id)"
                         />
                       </li>
                     </ul>
                     <p v-else class="text-sm text-gray-500 py-1">
-                      РћР±РµСЂС–С‚СЊ РєР°С‚РµРіРѕСЂС–С— РІРёС‰Рµ С‚Р° РЅР°С‚РёСЃРЅС–С‚СЊ Р—Р°РїСЂРѕСЃРёС‚Рё.
+                      Оберіть категорії вище та натисніть Запросити.
                     </p>
                   </div>
                 </div>
               </div>
 
-              <!-- РћР±Р»Р°СЃС‚СЊ 3 (1/5): Р—Р°РїСЂРѕС€РµРЅРЅСЏ РїРѕ email -->
+              <!-- Область 3 (1/5): Запрошення по email -->
               <div
                 class="flex-1 min-w-0 flex flex-col border border-gray-200 rounded-lg bg-white p-4 overflow-hidden"
               >
@@ -586,11 +586,11 @@
                   icon="i-heroicons-envelope"
                   @click="showInviteByEmailModal = true"
                 >
-                  Р—Р°РїСЂРѕС€РµРЅРЅСЏ РїРѕ email
+                  Запрошення по email
                 </UButton>
                 <div class="mt-4 flex-1 min-h-0 overflow-auto">
                   <h4 class="text-sm font-semibold text-gray-700 mb-2">
-                    Р—Р°РїСЂРѕС€РµРЅС– Р·Р° email
+                    Запрошені за email
                   </h4>
                   <ul v-if="invitedEmails.length" class="space-y-1.5">
                     <li
@@ -604,12 +604,12 @@
                         size="xs"
                         variant="ghost"
                         color="error"
-                        aria-label="Р’РёРґР°Р»РёС‚Рё"
+                        aria-label="Видалити"
                         @click="removeInvitedEmail(idx)"
                       />
                     </li>
                   </ul>
-                  <p v-else class="text-sm text-gray-500 py-2">РџРѕСЂРѕР¶РЅСЊРѕ.</p>
+                  <p v-else class="text-sm text-gray-500 py-2">Порожньо.</p>
                 </div>
               </div>
             </div>
@@ -619,7 +619,7 @@
             v-else
             class="h-full min-h-0 flex flex-col rounded-lg p-4 bg-white"
           >
-            <h3 class="text-lg font-semibold mb-3">РџС–РґРіРѕС‚РѕРІРєР° РїСЂРѕС†РµРґСѓСЂРё</h3>
+            <h3 class="text-lg font-semibold mb-3">Підготовка процедури</h3>
             <UTabs
               v-model="prepTab"
               :items="prepTabs"
@@ -645,11 +645,11 @@
                       "
                       @click="showCreateNomenclatureModal = true"
                     >
-                      РЎС‚РІРѕСЂРёС‚Рё РЅРѕРјРµРЅРєР»Р°С‚СѓСЂСѓ
+                      Створити номенклатуру
                     </UButton>
                   </div>
                   <div class="flex-1 min-h-0 flex gap-4">
-                    <!-- Р›С–РІР° РєРѕР»РѕРЅРєР°: РїРѕС€СѓРє + РґРµСЂРµРІРѕ РєР°С‚РµРіРѕСЂС–С— в†’ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂРё (С‚С–Р»СЊРєРё РґР»СЏ РІР»Р°СЃРЅРёРєР°) -->
+                    <!-- Ліва колонка: пошук + дерево категорії → номенклатури (тільки для власника) -->
                     <aside
                       v-if="!isParticipant"
                       class="w-72 flex-shrink-0 flex flex-col min-h-0 border border-gray-200 rounded-lg bg-gray-50/50 overflow-hidden"
@@ -657,7 +657,7 @@
                       <div class="p-2 border-b border-gray-200">
                         <UInput
                           v-model="nomenclatureSearch"
-                          placeholder="РџРѕС€СѓРє РЅРѕРјРµРЅРєР»Р°С‚СѓСЂРё"
+                          placeholder="Пошук номенклатури"
                           size="sm"
                           class="w-full"
                         />
@@ -667,13 +667,13 @@
                           v-if="loadingNomenclatures"
                           class="text-sm text-gray-500 py-4 text-center"
                         >
-                          Р—Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂ...
+                          Завантаження номенклатур...
                         </div>
                         <div
                           v-else-if="!nomenclatureTreeItems.length"
                           class="text-sm text-gray-500 py-4 text-center"
                         >
-                          РћР±РµСЂС–С‚СЊ РєР°С‚РµРіРѕСЂС–СЋ Р°Р±Рѕ CPV Сѓ РїР°СЃРїРѕСЂС‚С– С‚РµРЅРґРµСЂР°.
+                          Оберіть категорію або CPV у паспорті тендера.
                         </div>
                         <UTree
                           v-else
@@ -686,7 +686,7 @@
                       </div>
                     </aside>
 
-                    <!-- РўР°Р±Р»РёС†СЏ РїРѕР·РёС†С–Р№ -->
+                    <!-- Таблиця позицій -->
                     <div class="flex-1 min-h-0 flex flex-col min-w-0">
                       <div class="flex-1 min-h-0 overflow-auto">
                         <UTable
@@ -723,7 +723,7 @@
                               variant="ghost"
                               size="xs"
                               icon="i-heroicons-trash"
-                              :aria-label="'Р’РёРґР°Р»РёС‚Рё РїРѕР·РёС†С–СЋ'"
+                              :aria-label="'Видалити позицію'"
                               :disabled="isViewingPreviousTour"
                               @click="removeTenderPositionByRow(row)"
                             />
@@ -735,32 +735,32 @@
                 </div>
 
                 <div v-else-if="item.value === 'criteria'" class="space-y-6">
-                  <!-- РџР°СЂР°РјРµС‚СЂРё С†С–РЅРѕРІРѕРіРѕ РєСЂРёС‚РµСЂС–СЏ -->
+                  <!-- Параметри цінового критерія -->
                   <div class="rounded-lg p-4 bg-gray-50/50">
                     <h4 class="text-sm font-semibold text-gray-700 mb-3">
-                      РџР°СЂР°РјРµС‚СЂРё С†С–РЅРѕРІРѕРіРѕ РєСЂРёС‚РµСЂС–СЏ
+                      Параметри цінового критерія
                     </h4>
                     <div class="flex flex-wrap gap-6">
-                      <UFormField label="РџР”Р’" class="min-w-[200px]">
+                      <UFormField label="ПДВ" class="min-w-[200px]">
                         <USelectMenu
                           v-model="priceCriterionVat"
                           :items="vatOptions"
                           value-key="value"
-                          placeholder="РћР±РµСЂС–С‚СЊ РІР°СЂС–Р°РЅС‚"
+                          placeholder="Оберіть варіант"
                         />
                       </UFormField>
-                      <UFormField label="Р”РѕСЃС‚Р°РІРєР°" class="min-w-[260px]">
+                      <UFormField label="Доставка" class="min-w-[260px]">
                         <USelectMenu
                           v-model="priceCriterionDelivery"
                           :items="deliveryOptions"
                           value-key="value"
-                          placeholder="РћР±РµСЂС–С‚СЊ РІР°СЂС–Р°РЅС‚"
+                          placeholder="Оберіть варіант"
                         />
                       </UFormField>
                     </div>
                   </div>
 
-                  <!-- Р†РЅС€С– РєСЂРёС‚РµСЂС–С— С‚РµРЅРґРµСЂР°: Р»С–РІР° РїР°РЅРµР»СЊ (РїРѕС€СѓРє + РґРµСЂРµРІРѕ) + СЃРїРёСЃРѕРє РѕР±СЂР°РЅРёС… -->
+                  <!-- Інші критерії тендера: ліва панель (пошук + дерево) + список обраних -->
                   <div class="flex gap-4 min-h-0 flex-1">
                     <aside
                       class="w-72 flex-shrink-0 flex flex-col min-h-0 rounded-lg bg-gray-50/50 overflow-hidden"
@@ -768,7 +768,7 @@
                       <div class="p-2 border-b border-gray-200">
                         <UInput
                           v-model="criteriaSearch"
-                          placeholder="РџРѕС€СѓРє РєСЂРёС‚РµСЂС–С—РІ"
+                          placeholder="Пошук критеріїв"
                           size="sm"
                           class="w-full"
                         />
@@ -778,13 +778,13 @@
                           v-if="loadingReferenceCriteria"
                           class="text-sm text-gray-500 py-4 text-center"
                         >
-                          Р—Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ РєСЂРёС‚РµСЂС–С—РІ...
+                          Завантаження критеріїв...
                         </div>
                         <div
                           v-else-if="!criteriaTreeItems.length"
                           class="text-sm text-gray-500 py-4 text-center"
                         >
-                          РќРµРјР°С” РєСЂРёС‚РµСЂС–С—РІ Сѓ РґРѕРІС–РґРЅРёРєСѓ.
+                          Немає критеріїв у довіднику.
                         </div>
                         <UTree
                           v-else
@@ -801,7 +801,7 @@
                     >
                       <div class="flex items-center justify-between gap-2 mb-3">
                         <h4 class="text-sm font-semibold text-gray-700">
-                          Р”РѕРґР°РЅС– РєСЂРёС‚РµСЂС–С—
+                          Додані критерії
                         </h4>
                         <UButton
                           size="sm"
@@ -810,19 +810,19 @@
                           :disabled="isViewingPreviousTour"
                           @click="openCreateCriterionModal"
                         >
-                          РЎС‚РІРѕСЂРёС‚Рё РєСЂРёС‚РµСЂС–Р№
+                          Створити критерій
                         </UButton>
                       </div>
                       <p class="text-sm text-gray-600 mb-3">
-                        РџРѕРґРІС–Р№РЅРёР№ РєР»С–Рє РїРѕ РєСЂРёС‚РµСЂС–СЋ РІ СЃРїРёСЃРєСѓ Р·Р»С–РІР° РґРѕРґР°С” Р№РѕРіРѕ
-                        СЃСЋРґРё. Р—Р°РіР°Р»СЊРЅС– РєСЂРёС‚РµСЂС–С— Р·Р°РїРѕРІРЅСЋСЋС‚СЊСЃСЏ РѕРґРёРЅ СЂР°Р· РЅР° С‚РµРЅРґРµСЂ,
-                        С–РЅРґРёРІС–РґСѓР°Р»СЊРЅС– вЂ” РїРѕ РєРѕР¶РЅС–Р№ РїРѕР·РёС†С–С—.
+                        Подвійний клік по критерію в списку зліва додає його
+                        сюди. Загальні критерії заповнюються один раз на тендер,
+                        індивідуальні — по кожній позиції.
                       </p>
                       <div v-if="tenderCriteriaGeneral.length > 0" class="mb-4">
                         <h5
                           class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2"
                         >
-                          Р—Р°РіР°Р»СЊРЅС– РєСЂРёС‚РµСЂС–С—
+                          Загальні критерії
                         </h5>
                         <ul class="space-y-2 text-sm">
                           <li
@@ -839,7 +839,7 @@
                               size="xs"
                               variant="ghost"
                               color="error"
-                              aria-label="Р’РёРґР°Р»РёС‚Рё Р· С‚РµРЅРґРµСЂР°"
+                              aria-label="Видалити з тендера"
                               :disabled="isViewingPreviousTour"
                               @click="removeCriterionFromTender(c)"
                             />
@@ -850,7 +850,7 @@
                         <h5
                           class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2"
                         >
-                          Р†РЅРґРёРІС–РґСѓР°Р»СЊРЅС– РєСЂРёС‚РµСЂС–С— (РїРѕ РїРѕР·РёС†С–С—)
+                          Індивідуальні критерії (по позиції)
                         </h5>
                         <ul
                           class="space-y-2 text-sm flex-1 min-h-0 overflow-auto"
@@ -869,7 +869,7 @@
                               size="xs"
                               variant="ghost"
                               color="error"
-                              aria-label="Р’РёРґР°Р»РёС‚Рё Р· С‚РµРЅРґРµСЂР°"
+                              aria-label="Видалити з тендера"
                               :disabled="isViewingPreviousTour"
                               @click="removeCriterionFromTender(c)"
                             />
@@ -880,7 +880,7 @@
                         v-if="tenderCriteria.length === 0"
                         class="text-sm text-gray-500 py-2"
                       >
-                        РљСЂРёС‚РµСЂС–С— РЅРµ РґРѕРґР°РЅРѕ.
+                        Критерії не додано.
                       </p>
                     </div>
                   </div>
@@ -934,27 +934,27 @@
         </template>
         <template v-else-if="displayStage === 'decision'">
           <div class="space-y-6">
-            <!-- Р’РµСЂС…РЅСЏ РѕР±Р»Р°СЃС‚СЊ: РѕСЂС–С”РЅС‚РѕРІРЅР° СЂРёРЅРєРѕРІР° С‚Р° СЂС–С€РµРЅРЅСЏ -->
+            <!-- Верхня область: орієнтовна ринкова та рішення -->
             <div class="rounded-lg p-4 bg-gray-50/50">
               <div class="flex flex-wrap items-end gap-6">
-                <UFormField label="РћСЂС–С”РЅС‚РѕРІРЅР° СЂРёРЅРєРѕРІР°" class="min-w-[220px]">
+                <UFormField label="Орієнтовна ринкова" class="min-w-[220px]">
                   <USelectMenu
                     v-model="estimatedMarketMethod"
                     :items="estimatedMarketOptions"
                     value-key="value"
-                    placeholder="РћР±РµСЂС–С‚СЊ"
+                    placeholder="Оберіть"
                   />
                 </UFormField>
-                <UFormField label="Р С–С€РµРЅРЅСЏ" class="min-w-[200px]">
-                  <UInput placeholder="вЂ”" disabled />
+                <UFormField label="Рішення" class="min-w-[200px]">
+                  <UInput placeholder="—" disabled />
                 </UFormField>
               </div>
             </div>
 
-            <!-- РўР°Р±Р»РёС†СЏ РїРѕР·РёС†С–Р№ (СЃС‚РёР»СЊ СЏРє РЅР° РїС–РґРіРѕС‚РѕРІС†С–) -->
+            <!-- Таблиця позицій (стиль як на підготовці) -->
             <div class="rounded-lg p-4 bg-white">
               <h4 class="text-sm font-semibold text-gray-700 mb-3">
-                РџРѕР·РёС†С–С— С‚РµРЅРґРµСЂР°
+                Позиції тендера
               </h4>
               <div class="min-h-0 overflow-auto">
                 <UTable
@@ -996,20 +996,20 @@
           <div class="space-y-4">
             <UCard>
               <template #header>
-                <h3 class="text-lg font-semibold">Р—Р°С‚РІРµСЂРґР¶РµРЅРЅСЏ</h3>
+                <h3 class="text-lg font-semibold">Затвердження</h3>
               </template>
               <p class="text-sm text-gray-600 mb-4">
-                РџРµСЂРµРіР»СЏРЅСЊС‚Рµ РїРµСЂРµРјРѕР¶С†С–РІ РїРѕ РїРѕР·РёС†С–СЏС… С‚Р° РїС–РґС‚РІРµСЂРґСЊС‚Рµ СЂС–С€РµРЅРЅСЏ РґР»СЏ
-                Р·Р°РІРµСЂС€РµРЅРЅСЏ С‚РµРЅРґРµСЂР°.
+                Перегляньте переможців по позиціях та підтвердьте рішення для
+                завершення тендера.
               </p>
               <div class="border rounded-lg overflow-hidden">
                 <table class="w-full text-sm border-collapse">
                   <thead>
                     <tr class="border-b bg-gray-50">
-                      <th class="text-left p-2 font-medium">РџРѕР·РёС†С–СЏ</th>
-                      <th class="text-left p-2 font-medium">РљС–Р»СЊРєС–СЃС‚СЊ</th>
-                      <th class="text-left p-2 font-medium">РџРµСЂРµРјРѕР¶РµС†СЊ</th>
-                      <th class="text-left p-2 font-medium">Р¦С–РЅР°</th>
+                      <th class="text-left p-2 font-medium">Позиція</th>
+                      <th class="text-left p-2 font-medium">Кількість</th>
+                      <th class="text-left p-2 font-medium">Переможець</th>
+                      <th class="text-left p-2 font-medium">Ціна</th>
                       <th
                         v-for="c in tenderCriteria"
                         :key="c.id"
@@ -1029,20 +1029,20 @@
                       <td class="p-2">
                         {{ pos.quantity }} {{ pos.unit_name ?? "" }}
                       </td>
-                      <td class="p-2">{{ pos.winner_supplier_name ?? "вЂ”" }}</td>
-                      <td class="p-2">{{ pos.winner_price ?? "вЂ”" }}</td>
+                      <td class="p-2">{{ pos.winner_supplier_name ?? "—" }}</td>
+                      <td class="p-2">{{ pos.winner_price ?? "—" }}</td>
                       <td v-for="c in tenderCriteria" :key="c.id" class="p-2">
                         {{
                           (pos.winner_criterion_values &&
                             (pos.winner_criterion_values[c.id] ??
                               pos.winner_criterion_values[String(c.id)])) ??
-                          "вЂ”"
+                          "—"
                         }}
                       </td>
                     </tr>
                     <tr v-if="!displayTenderPositions.length">
                       <td colspan="100" class="p-4 text-center text-gray-500">
-                        РќРµРјР°С” РїРѕР·РёС†С–Р№.
+                        Немає позицій.
                       </td>
                     </tr>
                   </tbody>
@@ -1055,9 +1055,9 @@
         <template v-else>
           <UCard>
             <template #header>
-              <h3 class="text-lg font-semibold">Р—Р°РІРµСЂС€РµРЅРёР№</h3>
+              <h3 class="text-lg font-semibold">Завершений</h3>
             </template>
-            <p class="text-sm text-gray-600">РўРµРЅРґРµСЂ Р·Р°РІРµСЂС€РµРЅРѕ.</p>
+            <p class="text-sm text-gray-600">Тендер завершено.</p>
           </UCard>
         </template>
       </div>
@@ -1070,7 +1070,7 @@
             :disabled="isViewingPreviousTour"
             @click="savePassport"
           >
-            Р—Р±РµСЂРµРіС‚Рё
+            Зберегти
           </UButton>
         </template>
 
@@ -1082,7 +1082,7 @@
               @click="openSubmitProposal"
               :loading="saving"
             >
-              РџРѕРґР°С‚Рё РїСЂРѕРїРѕР·РёС†С–СЋ
+              Подати пропозицію
             </UButton>
           </template>
           <template v-else>
@@ -1091,7 +1091,7 @@
               :disabled="isViewingPreviousTour"
               @click="openPublishModal"
             >
-              РћРїСѓР±Р»С–РєСѓРІР°С‚Рё
+              Опублікувати
             </UButton>
             <UButton
               class="w-full"
@@ -1099,7 +1099,7 @@
               :disabled="isViewingPreviousTour"
               @click="showInvitationPanel = true"
             >
-              Р—Р°РїСЂРѕСЃРёС‚Рё СѓС‡Р°СЃРЅРёРєС–РІ
+              Запросити учасників
             </UButton>
           </template>
           <UButton
@@ -1107,7 +1107,7 @@
             variant="outline"
             @click="openAttachedFilesModal"
           >
-            РџСЂРёРєСЂС–РїР»РµРЅС– С„Р°Р№Р»Рё
+            Прикріплені файли
           </UButton>
         </template>
 
@@ -1117,7 +1117,7 @@
             :disabled="isViewingPreviousTour"
             @click="openTimingModal"
           >
-            Р—РјС–РЅРёС‚Рё С‡Р°СЃ РїСЂРѕРІРµРґРµРЅРЅСЏ
+            Змінити час проведення
           </UButton>
           <UButton class="w-full" variant="outline" @click="openAttachedFilesModal">
             Прикріплені файли
@@ -1139,7 +1139,7 @@
               :disabled="isViewingPreviousTour"
               @click="goBackToPreparation"
             >
-              РџРѕРІРµСЂРЅСѓС‚РёСЃСЊ РЅР° РїС–РґРіРѕС‚РѕРІРєСѓ
+              Повернутись на підготовку
             </UButton>
           </template>
           <template v-else-if="displayStage === 'decision' && (tender?.conduct_type === 'rfx' || tender?.conduct_type === 'online_auction')">
@@ -1149,7 +1149,7 @@
               :disabled="isViewingPreviousTour"
               @click="openResumeAcceptanceModal"
             >
-              Р’С–РґРЅРѕРІРёС‚Рё РїСЂРёР№РѕРј РїСЂРѕРїРѕР·РёС†С–Р№
+              Відновити прийом пропозицій
             </UButton>
           </template>
           <UButton
@@ -1158,14 +1158,14 @@
             :disabled="isViewingPreviousTour"
             @click="showWinnerModal = true"
           >
-            Р СѓС‡РЅРёР№ РІРёР±С–СЂ РїРµСЂРµРјРѕР¶С†СЏ
+            Ручний вибір переможця
           </UButton>
           <UButton
             class="w-full"
             :disabled="isViewingPreviousTour"
             @click="showDecisionModal = true"
           >
-            Р—Р°С„С–РєСЃСѓРІР°С‚Рё СЂС–С€РµРЅРЅСЏ
+            Зафіксувати рішення
           </UButton>
           <UButton
             class="w-full"
@@ -1173,7 +1173,7 @@
             :disabled="isViewingPreviousTour"
             @click="openProposalsModal"
           >
-            РЈСЃС– РїСЂРѕРїРѕР·РёС†С–С—
+            Усі пропозиції
           </UButton>
         </template>
 
@@ -1183,7 +1183,7 @@
             :disabled="isViewingPreviousTour"
             @click="approveTender"
           >
-            Р—Р°С‚РІРµСЂРґРёС‚Рё
+            Затвердити
           </UButton>
           <UButton
             class="w-full"
@@ -1191,7 +1191,7 @@
             :disabled="isViewingPreviousTour"
             @click="openProposalsModal"
           >
-            РЈСЃС– РїСЂРѕРїРѕР·РёС†С–С—
+            Усі пропозиції
           </UButton>
         </template>
       </aside>
@@ -1200,23 +1200,23 @@
     <UModal v-model:open="showPublishModal">
       <template #content>
         <UCard>
-          <template #header><h3>РџРµСЂС–РѕРґ РїСЂРѕРІРµРґРµРЅРЅСЏ</h3></template>
+          <template #header><h3>Період проведення</h3></template>
           <div class="space-y-4">
-            <UFormField label="РџРѕС‡Р°С‚РѕРє">
+            <UFormField label="Початок">
               <UInput v-model="timingForm.start_at" type="datetime-local" />
             </UFormField>
-            <UFormField label="Р—Р°РІРµСЂС€РµРЅРЅСЏ">
+            <UFormField label="Завершення">
               <UInput v-model="timingForm.end_at" type="datetime-local" />
             </UFormField>
             <div class="flex gap-2">
               <UButton class="flex-1" @click="publishTender"
-                >РџС–РґС‚РІРµСЂРґРёС‚Рё</UButton
+                >Підтвердити</UButton
               >
               <UButton
                 class="flex-1"
                 variant="outline"
                 @click="showPublishModal = false"
-                >РЎРєР°СЃСѓРІР°С‚Рё</UButton
+                >Скасувати</UButton
               >
             </div>
           </div>
@@ -1227,10 +1227,10 @@
     <UModal v-model:open="showInviteByEmailModal">
       <template #content>
         <UCard>
-          <template #header><h3>Р—Р°РїСЂРѕС€РµРЅРЅСЏ РїРѕ email</h3></template>
+          <template #header><h3>Запрошення по email</h3></template>
           <div class="space-y-4">
             <UFormField
-              label="Р’РІРµРґС–С‚СЊ email (РєРѕР¶РµРЅ Р· РЅРѕРІРѕРіРѕ СЂСЏРґРєР°) Р°Р±Рѕ Р·Р°РІР°РЅС‚Р°Р¶С‚Рµ СЃРїРёСЃРѕРє"
+              label="Введіть email (кожен з нового рядка) або завантажте список"
             >
               <UTextarea
                 v-model="inviteByEmailText"
@@ -1253,22 +1253,22 @@
                 icon="i-heroicons-arrow-up-tray"
                 @click="inviteByEmailFileInput?.click()"
               >
-                Р—Р°РІР°РЅС‚Р°Р¶РёС‚Рё СЃРїРёСЃРѕРє
+                Завантажити список
               </UButton>
               <span class="text-xs text-gray-500"
-                >Р¤Р°Р№Р»: РѕРґРёРЅ email РЅР° СЂСЏРґРѕРє</span
+                >Файл: один email на рядок</span
               >
             </div>
             <div class="flex gap-2">
               <UButton class="flex-1" @click="submitInviteByEmail">
-                Р—Р°РїСЂРѕСЃРёС‚Рё
+                Запросити
               </UButton>
               <UButton
                 class="flex-1"
                 variant="outline"
                 @click="showInviteByEmailModal = false"
               >
-                РЎРєР°СЃСѓРІР°С‚Рё
+                Скасувати
               </UButton>
             </div>
           </div>
@@ -1279,14 +1279,14 @@
     <UModal v-model:open="showTimingModal">
       <template #content>
         <UCard>
-          <template #header><h3>Р—РјС–РЅРёС‚Рё С‡Р°СЃ РїСЂРѕРІРµРґРµРЅРЅСЏ</h3></template>
+          <template #header><h3>Змінити час проведення</h3></template>
           <div class="space-y-4">
             <UFormField
-              label="РџРѕС‡Р°С‚РѕРє"
+              label="Початок"
               :help="
                 canEditStart
                   ? ''
-                  : 'РџС–СЃР»СЏ СЃС‚Р°СЂС‚Сѓ С‡Р°СЃ РїРѕС‡Р°С‚РєСѓ Р·РјС–РЅСЋРІР°С‚Рё РЅРµ РјРѕР¶РЅР°'
+                  : 'Після старту час початку змінювати не можна'
               "
             >
               <UInput
@@ -1295,7 +1295,7 @@
                 :disabled="!canEditStart"
               />
             </UFormField>
-            <UFormField label="Р—Р°РІРµСЂС€РµРЅРЅСЏ">
+            <UFormField label="Завершення">
               <UInput v-model="timingForm.end_at" type="datetime-local" />
             </UFormField>
             <div class="flex gap-2">
@@ -1304,14 +1304,14 @@
                 :disabled="isViewingPreviousTour"
                 @click="saveTiming"
               >
-                Р—Р±РµСЂРµРіС‚Рё
+                Зберегти
               </UButton>
               <UButton
                 class="flex-1"
                 variant="outline"
                 @click="showTimingModal = false"
               >
-                РЎРєР°СЃСѓРІР°С‚Рё
+                Скасувати
               </UButton>
             </div>
           </div>
@@ -1322,19 +1322,19 @@
     <UModal v-model:open="showResumeAcceptanceModal">
       <template #content>
         <UCard>
-          <template #header><h3>Р’С–РґРЅРѕРІРёС‚Рё РїСЂРёР№РѕРј РїСЂРѕРїРѕР·РёС†С–Р№</h3></template>
+          <template #header><h3>Відновити прийом пропозицій</h3></template>
           <p class="text-sm text-gray-600 mb-4">
-            Р’РєР°Р¶С–С‚СЊ С‡Р°СЃ РїРѕС‡Р°С‚РєСѓ (РЅРµ СЂР°РЅС–С€Рµ РїРѕС‚РѕС‡РЅРѕРіРѕ) С‚Р° С‡Р°СЃ Р·Р°РІРµСЂС€РµРЅРЅСЏ РїСЂРёР№РѕРјСѓ РїСЂРѕРїРѕР·РёС†С–Р№.
+            Вкажіть час початку (не раніше поточного) та час завершення прийому пропозицій.
           </p>
           <div class="space-y-4">
-            <UFormField label="РџРѕС‡Р°С‚РѕРє РїСЂРёР№РѕРјСѓ РїСЂРѕРїРѕР·РёС†С–Р№" required>
+            <UFormField label="Початок прийому пропозицій" required>
               <UInput
                 v-model="resumeAcceptanceForm.start_at"
                 type="datetime-local"
                 :min="resumeAcceptanceMinStart"
               />
             </UFormField>
-            <UFormField label="Р—Р°РІРµСЂС€РµРЅРЅСЏ РїСЂРёР№РѕРјСѓ РїСЂРѕРїРѕР·РёС†С–Р№" required>
+            <UFormField label="Завершення прийому пропозицій" required>
               <UInput
                 v-model="resumeAcceptanceForm.end_at"
                 type="datetime-local"
@@ -1342,10 +1342,10 @@
             </UFormField>
             <div class="flex gap-2">
               <UButton class="flex-1" :disabled="resumeAcceptanceSaving" @click="submitResumeAcceptance">
-                Р’С–РґРЅРѕРІРёС‚Рё
+                Відновити
               </UButton>
               <UButton class="flex-1" variant="outline" :disabled="resumeAcceptanceSaving" @click="showResumeAcceptanceModal = false">
-                РЎРєР°СЃСѓРІР°С‚Рё
+                Скасувати
               </UButton>
             </div>
           </div>
@@ -1356,10 +1356,10 @@
     <UModal v-model:open="showWinnerModal">
       <template #content>
         <UCard>
-          <template #header><h3>Р СѓС‡РЅРёР№ РІРёР±С–СЂ РїРµСЂРµРјРѕР¶С†СЏ</h3></template>
+          <template #header><h3>Ручний вибір переможця</h3></template>
           <p class="text-sm text-gray-600 mb-4">
-            РћР±РµСЂС–С‚СЊ РїРµСЂРµРјРѕР¶С†СЏ РїРѕ РєРѕР¶РЅС–Р№ РїРѕР·РёС†С–С— Р· РєРѕРЅС‚СЂР°РіРµРЅС‚С–РІ, СЏРєС– РїРѕРґР°Р»Рё
-            РїСЂРѕРїРѕР·РёС†С–С—.
+            Оберіть переможця по кожній позиції з контрагентів, які подали
+            пропозиції.
           </p>
           <div class="space-y-3 max-h-[60vh] overflow-auto">
             <div
@@ -1374,14 +1374,14 @@
                 :model-value="selectedWinnerByPosition[pos.id] ?? null"
                 :items="decisionWinnerOptionsForPosition(pos.id)"
                 value-key="value"
-                placeholder="РћР±РµСЂС–С‚СЊ РєРѕРЅС‚СЂР°РіРµРЅС‚Р°"
+                placeholder="Оберіть контрагента"
                 class="flex-1 min-w-[200px]"
                 @update:model-value="(v) => setDecisionWinner(pos.id, v)"
               />
             </div>
           </div>
           <template #footer>
-            <UButton @click="showWinnerModal = false">Р—Р°РєСЂРёС‚Рё</UButton>
+            <UButton @click="showWinnerModal = false">Закрити</UButton>
           </template>
         </UCard>
       </template>
@@ -1390,24 +1390,24 @@
     <UModal v-model:open="showDecisionModal">
       <template #content>
         <UCard>
-          <template #header><h3>Р—Р°С„С–РєСЃСѓРІР°С‚Рё СЂС–С€РµРЅРЅСЏ</h3></template>
+          <template #header><h3>Зафіксувати рішення</h3></template>
           <div class="space-y-2">
             <UButton class="w-full" @click="fixDecision('winner')">
-              Р—Р°РєСЂРёС‚Рё С–Р· РїРµСЂРµРјРѕР¶С†СЏРјРё
+              Закрити із переможцями
             </UButton>
             <UButton
               class="w-full"
               variant="outline"
               @click="fixDecision('next_round')"
             >
-              РџРµСЂРµРЅРµСЃС‚Рё РЅР° РЅР°СЃС‚СѓРїРЅРёР№ С‚СѓСЂ
+              Перенести на наступний тур
             </UButton>
             <UButton
               class="w-full"
               variant="outline"
               @click="fixDecision('cancel')"
             >
-              РЎРєР°СЃСѓРІР°С‚Рё
+              Скасувати
             </UButton>
           </div>
         </UCard>
@@ -1421,7 +1421,7 @@
       <template #content>
         <UCard class="flex flex-col max-h-[90vh] overflow-hidden">
           <template #header>
-            <h3 class="text-lg font-semibold">РЈСЃС– РїСЂРѕРїРѕР·РёС†С–С—</h3>
+            <h3 class="text-lg font-semibold">Усі пропозиції</h3>
           </template>
           <div
             class="overflow-auto min-h-0 flex-1 resize-y min-h-[300px]"
@@ -1433,14 +1433,14 @@
             >
               <thead>
                 <tr class="border-b bg-gray-100">
-                  <th class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap">РќР°Р·РІР° РїРѕР·РёС†С–С—</th>
-                  <th class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap">РљС–Р»СЊРєС–СЃС‚СЊ</th>
+                  <th class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap">Назва позиції</th>
+                  <th class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap">Кількість</th>
                   <template v-for="proposal in decisionProposals" :key="proposal.id">
                     <th
                       :colspan="2 + (tender.value?.criteria?.length ?? 0)"
                       class="text-left p-2 font-medium bg-gray-200 border-l border-gray-300"
                     >
-                      {{ proposal.supplier_company?.name || proposal.supplier_name || "вЂ”" }}
+                      {{ proposal.supplier_company?.name || proposal.supplier_name || "—" }}
                       <span v-if="proposal.supplier_company?.edrpou" class="text-gray-600 font-normal">({{ proposal.supplier_company.edrpou }})</span>
                     </th>
                   </template>
@@ -1450,7 +1450,7 @@
                   <th class="p-2 bg-gray-50"></th>
                   <template v-for="proposal in decisionProposals" :key="proposal.id">
                     <th class="text-left p-2 font-medium border-l border-gray-200 whitespace-nowrap">{{ proposalComparisonPriceHeader }}</th>
-                    <th class="text-left p-2 font-medium border-l border-gray-200 whitespace-nowrap">РЎСѓРјР°</th>
+                    <th class="text-left p-2 font-medium border-l border-gray-200 whitespace-nowrap">Сума</th>
                     <th
                       v-for="c in (tender.value?.criteria ?? [])"
                       :key="c.id"
@@ -1474,27 +1474,27 @@
                       class="p-2 border-l border-gray-200"
                       :class="(proposalComparisonByPosition[pos.id]?.bestId === proposal.id && 'bg-green-500/20') || (proposalComparisonByPosition[pos.id]?.worstId === proposal.id && proposalComparisonByPosition[pos.id]?.worstId !== proposalComparisonByPosition[pos.id]?.bestId && 'bg-red-500/20')"
                     >
-                      {{ getProposalPositionValue(proposal, pos.id)?.price ?? "вЂ”" }}
+                      {{ getProposalPositionValue(proposal, pos.id)?.price ?? "—" }}
                     </td>
                     <td
                       class="p-2 border-l border-gray-200"
                       :class="(proposalComparisonByPosition[pos.id]?.bestId === proposal.id && 'bg-green-500/20') || (proposalComparisonByPosition[pos.id]?.worstId === proposal.id && proposalComparisonByPosition[pos.id]?.worstId !== proposalComparisonByPosition[pos.id]?.bestId && 'bg-red-500/20')"
                     >
-                      {{ getProposalPositionSum(proposal, pos) ?? "вЂ”" }}
+                      {{ getProposalPositionSum(proposal, pos) ?? "—" }}
                     </td>
                     <td
                       v-for="c in (tender.value?.criteria ?? [])"
                       :key="c.id"
                       class="p-2 border-l border-gray-200"
                     >
-                      {{ getProposalCriterionValue(proposal, pos.id, c.id) ?? "вЂ”" }}
+                      {{ getProposalCriterionValue(proposal, pos.id, c.id) ?? "—" }}
                     </td>
                   </template>
                 </tr>
               </tbody>
             </table>
             <p v-else class="text-gray-500 py-8 text-center">
-              РќРµРјР°С” РїРѕР·РёС†С–Р№ Р°Р±Рѕ РїСЂРѕРїРѕР·РёС†С–Р№ РґР»СЏ РїРѕСЂС–РІРЅСЏРЅРЅСЏ.
+              Немає позицій або пропозицій для порівняння.
             </p>
           </div>
         </UCard>
@@ -1565,7 +1565,7 @@
     >
       <template #content>
         <UCard class="min-w-0">
-          <template #header><h3>РџСЂРёРєСЂС–РїР»РµРЅС– С„Р°Р№Р»Рё</h3></template>
+          <template #header><h3>Прикріплені файли</h3></template>
           <div class="space-y-4 min-w-0">
             <div>
               <input
@@ -1582,7 +1582,7 @@
                 :loading="attachedFilesUploading"
                 @click="attachedFilesInput?.click()"
               >
-                РћР±СЂР°С‚Рё С„Р°Р№Р»Рё
+                Обрати файли
               </UButton>
             </div>
             <div v-if="attachedFilesLoading" class="flex justify-center py-4">
@@ -1601,18 +1601,18 @@
                     <th
                       class="text-left py-2 px-3 font-medium text-gray-700 w-10"
                     >
-                      Р’РёРґРёРјС–СЃС‚СЊ
+                      Видимість
                     </th>
                     <th class="text-left py-2 px-3 font-medium text-gray-700">
-                      Р¤Р°Р№Р»
+                      Файл
                     </th>
                     <th
                       class="text-left py-2 px-3 font-medium text-gray-700 w-36"
                     >
-                      Р”Р°С‚Р°
+                      Дата
                     </th>
                     <th class="text-left py-2 px-3 font-medium text-gray-700">
-                      РљРѕСЂРёСЃС‚СѓРІР°С‡
+                      Користувач
                     </th>
                     <th class="w-24" />
                   </tr>
@@ -1636,7 +1636,7 @@
                       {{ formatFileDate(f.uploaded_at) }}
                     </td>
                     <td class="py-2 px-3 text-gray-600 min-w-0 truncate">
-                      {{ f.uploaded_by_display || "вЂ”" }}
+                      {{ f.uploaded_by_display || "—" }}
                     </td>
                     <td class="py-2 px-3 w-24">
                       <div class="flex items-center gap-1">
@@ -1647,14 +1647,14 @@
                           :to="f.file_url"
                           target="_blank"
                           rel="noopener"
-                          title="РЎРєР°С‡Р°С‚Рё"
+                          title="Скачати"
                         />
                         <UButton
                           variant="ghost"
                           size="xs"
                           icon="i-heroicons-trash"
                           color="error"
-                          title="Р’РёРґР°Р»РёС‚Рё"
+                          title="Видалити"
                           @click="deleteAttachedFile(f.id)"
                         />
                       </div>
@@ -1664,7 +1664,7 @@
               </table>
             </div>
             <div v-else class="text-sm text-gray-500 py-2">
-              РќРµРјР°С” РїСЂРёРєСЂС–РїР»РµРЅРёС… С„Р°Р№Р»С–РІ.
+              Немає прикріплених файлів.
             </div>
           </div>
         </UCard>
@@ -1674,30 +1674,30 @@
     <UModal v-model:open="showCreateCriterionModal">
       <template #content>
         <UCard>
-          <template #header><h3>РЎС‚РІРѕСЂРёС‚Рё РєСЂРёС‚РµСЂС–Р№</h3></template>
+          <template #header><h3>Створити критерій</h3></template>
           <div class="space-y-4">
-            <UFormField label="РќР°Р·РІР° РєСЂРёС‚РµСЂС–СЏ" required>
+            <UFormField label="Назва критерія" required>
               <UInput
                 v-model="createCriterionForm.name"
-                placeholder="РќР°РїСЂРёРєР»Р°Рґ: Р¦С–РЅР° Р·Р° РѕРґРёРЅРёС†СЋ"
+                placeholder="Наприклад: Ціна за одиницю"
                 :disabled="createCriterionSaving"
               />
             </UFormField>
-            <UFormField label="РўРёРї РєСЂРёС‚РµСЂС–СЏ" required>
+            <UFormField label="Тип критерія" required>
               <USelectMenu
                 v-model="createCriterionForm.type"
                 :items="criterionTypeOptions"
                 value-key="value"
-                placeholder="РћР±РµСЂС–С‚СЊ С‚РёРї"
+                placeholder="Оберіть тип"
                 :disabled="createCriterionSaving"
               />
             </UFormField>
-            <UFormField label="Р—Р°СЃС‚РѕСЃСѓРІР°РЅРЅСЏ" required>
+            <UFormField label="Застосування" required>
               <USelectMenu
                 v-model="createCriterionForm.application"
                 :items="criterionApplicationOptions"
                 value-key="value"
-                placeholder="РћР±РµСЂС–С‚СЊ Р·Р°СЃС‚РѕСЃСѓРІР°РЅРЅСЏ"
+                placeholder="Оберіть застосування"
                 :disabled="createCriterionSaving"
               />
             </UFormField>
@@ -1707,13 +1707,13 @@
                 :disabled="createCriterionSaving"
                 @click="showCreateCriterionModal = false"
               >
-                РЎРєР°СЃСѓРІР°С‚Рё
+                Скасувати
               </UButton>
               <UButton
                 :loading="createCriterionSaving"
                 @click="saveCreateCriterion"
               >
-                РЎС‚РІРѕСЂРёС‚Рё С‚Р° РґРѕРґР°С‚Рё
+                Створити та додати
               </UButton>
             </div>
           </div>
@@ -1724,25 +1724,25 @@
     <UModal v-model:open="showCreateNomenclatureModal">
       <template #content>
         <UCard>
-          <template #header><h3>РЎС‚РІРѕСЂРёС‚Рё РЅРѕРјРµРЅРєР»Р°С‚СѓСЂСѓ</h3></template>
+          <template #header><h3>Створити номенклатуру</h3></template>
           <div class="space-y-4">
             <p class="text-sm text-gray-600">
-              РќРѕРјРµРЅРєР»Р°С‚СѓСЂР° Р±СѓРґРµ СЃС‚РІРѕСЂРµРЅР° РІ РґРѕРІС–РґРЅРёРєСѓ, РїСЂРёРІКјСЏР·Р°РЅР° РґРѕ РєР°С‚РµРіРѕСЂС–Р№
-              CPV Р· РїР°СЃРїРѕСЂС‚Р° С‚РµРЅРґРµСЂР° С‚Р° РґРѕРґР°РЅР° РґРѕ РїРѕР·РёС†С–Р№ С‚РµРЅРґРµСЂР°.
+              Номенклатура буде створена в довіднику, привʼязана до категорій
+              CPV з паспорта тендера та додана до позицій тендера.
             </p>
-            <UFormField label="РќР°Р·РІР° РЅРѕРјРµРЅРєР»Р°С‚СѓСЂРё" required>
+            <UFormField label="Назва номенклатури" required>
               <UInput
                 v-model="createNomenclatureForm.name"
-                placeholder="Р’РІРµРґС–С‚СЊ РЅР°Р·РІСѓ"
+                placeholder="Введіть назву"
                 :disabled="createNomenclatureSaving"
               />
             </UFormField>
-            <UFormField label="РћРґРёРЅРёС†СЏ РІРёРјС–СЂСѓ" required>
+            <UFormField label="Одиниця виміру" required>
               <USelectMenu
                 v-model="createNomenclatureForm.unit"
                 :items="createNomenclatureUnitOptions"
                 value-key="value"
-                placeholder="РћР±РµСЂС–С‚СЊ РѕРґРёРЅРёС†СЋ РІРёРјС–СЂСѓ"
+                placeholder="Оберіть одиницю виміру"
                 :disabled="createNomenclatureSaving"
               />
             </UFormField>
@@ -1752,13 +1752,13 @@
                 :disabled="createNomenclatureSaving"
                 @click="showCreateNomenclatureModal = false"
               >
-                РЎРєР°СЃСѓРІР°С‚Рё
+                Скасувати
               </UButton>
               <UButton
                 :loading="createNomenclatureSaving"
                 @click="submitCreateNomenclature"
               >
-                РЎС‚РІРѕСЂРёС‚Рё С‚Р° РґРѕРґР°С‚Рё
+                Створити та додати
               </UButton>
             </div>
           </div>
@@ -1775,7 +1775,7 @@ import { TENDER_STAGE_ITEMS } from "~/domains/tenders/tenders.constants";
 definePageMeta({
   layout: "cabinet",
   middleware: "auth",
-  meta: { title: "РўРµРЅРґРµСЂ РЅР° Р·Р°РєСѓРїС–РІР»СЋ" },
+  meta: { title: "Тендер на закупівлю" },
 });
 
 const route = useRoute();
@@ -1799,8 +1799,8 @@ const saving = ref(false);
 const tourOptions = ref<{ value: number; label: string }[]>([]);
 const prepTab = ref<"positions" | "criteria">("positions");
 const prepTabs = [
-  { label: "РџРѕР·РёС†С–С—", value: "positions" },
-  { label: "РљСЂРёС‚РµСЂС–С—", value: "criteria" },
+  { label: "Позиції", value: "positions" },
+  { label: "Критерії", value: "criteria" },
 ];
 
 const generalTermsEditorToolbarItems = [
@@ -1859,19 +1859,19 @@ const generalTermsEditorToolbarItems = [
   ],
 ];
 
-// РџР°СЂР°РјРµС‚СЂРё С†С–РЅРѕРІРѕРіРѕ РєСЂРёС‚РµСЂС–СЏ (Р·РЅР°С‡РµРЅРЅСЏ value Р· РѕРїС†С–Р№)
+// Параметри цінового критерія (значення value з опцій)
 const priceCriterionVat = ref<string | undefined>(undefined);
 const priceCriterionDelivery = ref<string | undefined>(undefined);
 const vatOptions = [
-  { value: "with_vat", label: "Р· РџР”Р’" },
-  { value: "without_vat", label: "Р±РµР· РџР”Р’" },
+  { value: "with_vat", label: "з ПДВ" },
+  { value: "without_vat", label: "без ПДВ" },
 ];
 const deliveryOptions = [
-  { value: "with_delivery", label: "С–Р· СѓСЂР°С…СѓРІР°РЅРЅСЏРј РґРѕСЃС‚Р°РІРєРё" },
-  { value: "without_delivery", label: "Р±РµР· СѓСЂР°С…СѓРІР°РЅРЅСЏ РґРѕСЃС‚Р°РІРєРё" },
+  { value: "with_delivery", label: "із урахуванням доставки" },
+  { value: "without_delivery", label: "без урахування доставки" },
 ];
 
-// РљСЂРёС‚РµСЂС–С— Р· РґРѕРІС–РґРЅРёРєР° С‚Р° РґРѕРґР°РЅС– РґРѕ С‚РµРЅРґРµСЂР°
+// Критерії з довідника та додані до тендера
 const referenceCriteria = ref<any[]>([]);
 const tenderCriteria = ref<any[]>([]);
 const criteriaSearch = ref("");
@@ -1879,7 +1879,7 @@ const categorySearch = ref("");
 const nomenclatureSearch = ref("");
 const loadingNomenclatures = ref(false);
 const tenderPositions = ref<any[]>([]);
-/** РџРѕР·РёС†С–С— РґР»СЏ РІС–РґРѕР±СЂР°Р¶РµРЅРЅСЏ: Р· API (tender.positions) Р°Р±Рѕ Р»РѕРєР°Р»СЊРЅРёР№ ref (РґР»СЏ РІР»Р°СЃРЅРёРєР° РїС–СЃР»СЏ loadTender). */
+/** Позиції для відображення: з API (tender.positions) або локальний ref (для власника після loadTender). */
 const displayTenderPositions = computed(() => {
   const raw = tender.value?.positions;
   if (Array.isArray(raw) && raw.length > 0) {
@@ -1934,7 +1934,7 @@ const createNomenclatureUnits = ref<
 >([]);
 const timingForm = reactive({ start_at: "", end_at: "" });
 
-// Р—Р°РїСЂРѕС€РµРЅРЅСЏ СѓС‡Р°СЃРЅРёРєС–РІ: РєРѕРЅС‚СЂР°РіРµРЅС‚Рё С‚Р° email
+// Запрошення учасників: контрагенти та email
 const suppliersUC = useSuppliersUseCases();
 const invitationContractors = ref<
   Array<{
@@ -1968,7 +1968,7 @@ const invitedEmails = ref<string[]>([]);
 const inviteByEmailText = ref("");
 const inviteByEmailFileInput = ref<HTMLInputElement | null>(null);
 
-// РўС–Р»СЊРєРё С‚С– РєРѕРґРё CPV, Р·Р° СЏРєРёРјРё Р·Р°СЂРµС”СЃС‚СЂРѕРІР°РЅС– РєРѕРЅС‚СЂР°РіРµРЅС‚Рё
+// Тільки ті коди CPV, за якими зареєстровані контрагенти
 const createNomenclatureUnitOptions = computed(() =>
   createNomenclatureUnits.value.map((u) => ({
     value: u.id,
@@ -1988,7 +1988,7 @@ const invitationCpvOptions = computed(() => {
   return Array.from(set.entries()).map(([id, label]) => ({ id, label }));
 });
 
-// CPV Р· Р·Р°СЂРµС”СЃС‚СЂРѕРІР°РЅРёРјРё РєРѕРјРїР°РЅС–СЏРјРё (СЃРёСЃС‚РµРјРЅС–) вЂ” С„С–Р»СЊС‚СЂ РїРѕ РїРѕС€СѓРєСѓ С‚Р° РїР°РіС–РЅР°С†С–СЏ
+// CPV з зареєстрованими компаніями (системні) — фільтр по пошуку та пагінація
 const cpvWithCompaniesFiltered = computed(() => {
   const list = cpvWithCompaniesList.value;
   const q = (invitationCpvSearchTerm.value || "").trim().toLowerCase();
@@ -2047,7 +2047,7 @@ function removeInvitedCpv(id: number) {
   );
 }
 
-// Р¤С–Р»СЊС‚СЂ РїРѕСЃС‚Р°С‡Р°Р»СЊРЅРёРєС–РІ Сѓ РѕР±Р»Р°СЃС‚С– 1: РїРѕ РЅР°Р·РІС–/РєРѕРґСѓ С‚Р° РїРѕ CPV
+// Фільтр постачальників у області 1: по назві/коду та по CPV
 const invitationSupplierListFiltered = computed(() => {
   let list = invitationContractors.value;
   const q = (invitationContractorSearch.value || "").trim().toLowerCase();
@@ -2241,7 +2241,7 @@ watch(
 const decisionProposals = ref<any[]>([]);
 const estimatedMarketMethod = ref("arithmetic_mean");
 const estimatedMarketOptions = [
-  { value: "arithmetic_mean", label: "РЎРµСЂРµРґРЅСЏ Р°СЂРёС„РјРµС‚РёС‡РЅР°" },
+  { value: "arithmetic_mean", label: "Середня арифметична" },
 ];
 const selectedWinnerByPosition = ref<Record<number, number>>({});
 
@@ -2250,7 +2250,16 @@ const stageItems = TENDER_STAGE_ITEMS;
 const isRegistration = computed(
   () => (tender.value?.conduct_type ?? form.conduct_type) === "registration",
 );
-const isViewingPreviousTour = computed(
+function normalizeStageForUi(
+  stage: string | undefined | null,
+  conductType: string | undefined | null,
+) {
+  const normalizedStage = stage ?? "passport";
+  return conductType === "registration" && normalizedStage === "acceptance"
+    ? "decision"
+    : normalizedStage;
+}
+const isViewingPreviousTourOnly = computed(
   () => tender.value && tender.value.is_latest_tour === false,
 );
 
@@ -2264,10 +2273,40 @@ const visibleStageItems = computed(() => {
 const STAGE_ORDER = computed(() => visibleStageItems.value.map((s) => s.value));
 
 const displayStage = ref<string>("passport");
+const currentProcessStage = computed(() =>
+  normalizeStageForUi(
+    tender.value?.stage,
+    tender.value?.conduct_type ?? form.conduct_type,
+  ),
+);
+const currentProcessIndex = computed(() =>
+  STAGE_ORDER.value.indexOf(currentProcessStage.value),
+);
+const displayStageIndex = computed(() =>
+  STAGE_ORDER.value.indexOf(displayStage.value),
+);
+const shouldLockPastStages = computed(() =>
+  ["acceptance", "decision", "approval", "completed"].includes(
+    currentProcessStage.value,
+  ),
+);
+const isPastStageView = computed(
+  () =>
+    shouldLockPastStages.value &&
+    displayStageIndex.value !== -1 &&
+    currentProcessIndex.value !== -1 &&
+    displayStageIndex.value < currentProcessIndex.value,
+);
+const isEditLocked = computed(
+  () =>
+    !!isViewingPreviousTourOnly.value ||
+    isPastStageView.value ||
+    currentProcessStage.value === "completed",
+);
+const isViewingPreviousTour = computed(() => isEditLocked.value);
 
 const stepperItems = computed(() => {
-  const currentStage = tender.value?.stage ?? "passport";
-  const progressIndex = STAGE_ORDER.value.indexOf(currentStage);
+  const progressIndex = currentProcessIndex.value;
   return visibleStageItems.value.map((s, index) => ({
     ...s,
     description: "",
@@ -2284,8 +2323,7 @@ const stepperItems = computed(() => {
 const currentStepValue = computed({
   get: () => displayStage.value,
   set: (value: string) => {
-    const currentStage = tender.value?.stage ?? "passport";
-    const currentIndex = STAGE_ORDER.value.indexOf(currentStage);
+    const currentIndex = currentProcessIndex.value;
     const targetIndex = STAGE_ORDER.value.indexOf(value);
     if (targetIndex !== -1 && targetIndex <= currentIndex) {
       displayStage.value = value;
@@ -2312,28 +2350,28 @@ const selectedCategoryIds = computed(() =>
 );
 
 const conductTypeOptions = computed(() => {
-  // Р”Р»СЏ С‚РµРЅРґРµСЂС–РІ Р· С‚РёРїРѕРј "Р РµС”СЃС‚СЂР°С†С–СЏ" Р·Р°РІР¶РґРё РїРѕРєР°Р·СѓС”РјРѕ Р»РёС€Рµ С†РµР№ РІР°СЂС–Р°РЅС‚
+  // Для тендерів з типом "Реєстрація" завжди показуємо лише цей варіант
   if (isRegistration.value) {
-    return [{ value: "registration", label: "Р РµС”СЃС‚СЂР°С†С–СЏ Р·Р°РєСѓРїС–РІР»С–" }];
+    return [{ value: "registration", label: "Реєстрація закупівлі" }];
   }
   const tour = tender.value?.tour_number ?? 1;
   if (tour <= 1) {
-    // РџРµСЂС€РёР№ С‚СѓСЂ: С‚С–Р»СЊРєРё Р—Р±С–СЂ РїСЂРѕРїРѕР·РёС†С–Р№ С‚Р° РћРЅР»Р°Р№РЅ С‚РѕСЂРіРё
+    // Перший тур: тільки Збір пропозицій та Онлайн торги
     return [
-      { value: "rfx", label: "Р—Р±С–СЂ РїСЂРѕРїРѕР·РёС†С–Р№ (RFx)" },
-      { value: "online_auction", label: "РћРЅР»Р°Р№РЅ С‚РѕСЂРіРё" },
+      { value: "rfx", label: "Збір пропозицій (RFx)" },
+      { value: "online_auction", label: "Онлайн торги" },
     ];
   }
-  // 2-Р№ С‚Р° РїРѕРґР°Р»СЊС€С– С‚СѓСЂРё: СѓСЃС– С‚СЂРё РІР°СЂС–Р°РЅС‚Рё
+  // 2-й та подальші тури: усі три варіанти
   return [
-    { value: "registration", label: "Р РµС”СЃС‚СЂР°С†С–СЏ Р·Р°РєСѓРїС–РІР»С–" },
-    { value: "rfx", label: "Р—Р±С–СЂ РїСЂРѕРїРѕР·РёС†С–Р№ (RFx)" },
-    { value: "online_auction", label: "РћРЅР»Р°Р№РЅ С‚РѕСЂРіРё" },
+    { value: "registration", label: "Реєстрація закупівлі" },
+    { value: "rfx", label: "Збір пропозицій (RFx)" },
+    { value: "online_auction", label: "Онлайн торги" },
   ];
 });
 const publicationTypeOptions = [
-  { value: "open", label: "Р’С–РґРєСЂРёС‚Р° РїСЂРѕС†РµРґСѓСЂР°" },
-  { value: "closed", label: "Р—Р°РєСЂРёС‚Р° РїСЂРѕС†РµРґСѓСЂР°" },
+  { value: "open", label: "Відкрита процедура" },
+  { value: "closed", label: "Закрита процедура" },
 ];
 
 const categoryTree = ref<any[]>([]);
@@ -2342,11 +2380,11 @@ const branchOptions = ref<{ value: number; label: string }[]>([]);
 const departmentOptions = ref<{ value: number; label: string }[]>([]);
 const currencyOptions = ref<{ value: number; label: string }[]>([]);
 const positionsColumns = [
-  { accessorKey: "name", header: "РќР°Р·РІР°" },
-  { accessorKey: "unit_name", header: "РћРґ. РІРёРјС–СЂСѓ" },
-  { accessorKey: "quantity", header: "РљС–Р»СЊРєС–СЃС‚СЊ" },
-  { accessorKey: "description", header: "РћРїРёСЃ" },
-  { accessorKey: "vat", header: "РџР”Р’" },
+  { accessorKey: "name", header: "Назва" },
+  { accessorKey: "unit_name", header: "Од. виміру" },
+  { accessorKey: "quantity", header: "Кількість" },
+  { accessorKey: "description", header: "Опис" },
+  { accessorKey: "vat", header: "ПДВ" },
   { accessorKey: "actions", header: "", cellClass: "w-12" },
 ];
 
@@ -2383,7 +2421,7 @@ function decisionWinnerOptionsForPosition(positionId: number) {
     .map((p) => ({
       value: p.id,
       label:
-        p.supplier_name ?? p.supplier_company?.name ?? `РџСЂРѕРїРѕР·РёС†С–СЏ #${p.id}`,
+        p.supplier_name ?? p.supplier_company?.name ?? `Пропозиція #${p.id}`,
     }));
 }
 
@@ -2395,15 +2433,15 @@ function setDecisionWinner(positionId: number, proposalId: number | null) {
 }
 
 const decisionTableColumns = [
-  { accessorKey: "name", header: "РџРѕР·РёС†С–СЏ" },
-  { accessorKey: "quantity_unit", header: "РљС–Р»СЊРєС–СЃС‚СЊ" },
-  { accessorKey: "market_value", header: "РћСЂС–С”РЅС‚РѕРІРЅР° СЂРёРЅРєРѕРІР°" },
-  { accessorKey: "best_counterparty", header: "РљСЂР°С‰РёР№ РєРѕРЅС‚СЂР°РіРµРЅС‚" },
-  { accessorKey: "best_price", header: "РљСЂР°С‰Р° С†С–РЅР°" },
-  { accessorKey: "selected_counterparty", header: "РљРѕРЅС‚СЂР°РіРµРЅС‚ С‰Рѕ РѕР±РёСЂР°С”С‚СЊСЃСЏ" },
-  { accessorKey: "selected_price", header: "Р¦С–РЅР° С‰Рѕ РѕР±РёСЂР°С”С‚СЊСЃСЏ" },
-  { accessorKey: "price_diff", header: "Р РѕР·Р±С–Р¶РЅС–СЃС‚СЊ Сѓ С†С–РЅС–" },
-  { accessorKey: "economy_market", header: "Р•РєРѕРЅРѕРјС–СЏ РїРѕ РѕСЂС–С”РЅС‚РѕРІРЅС–Р№ СЂРёРЅРєРѕРІС–Р№" },
+  { accessorKey: "name", header: "Позиція" },
+  { accessorKey: "quantity_unit", header: "Кількість" },
+  { accessorKey: "market_value", header: "Орієнтовна ринкова" },
+  { accessorKey: "best_counterparty", header: "Кращий контрагент" },
+  { accessorKey: "best_price", header: "Краща ціна" },
+  { accessorKey: "selected_counterparty", header: "Контрагент що обирається" },
+  { accessorKey: "selected_price", header: "Ціна що обирається" },
+  { accessorKey: "price_diff", header: "Розбіжність у ціні" },
+  { accessorKey: "economy_market", header: "Економія по орієнтовній ринковій" },
 ];
 
 const decisionTableRows = computed(() => {
@@ -2429,7 +2467,7 @@ const decisionTableRows = computed(() => {
         ? avgPrice.toFixed(2)
         : avgPrice != null
           ? avgPrice.toFixed(2)
-          : "вЂ”";
+          : "—";
 
     let bestProposal: any = null;
     let bestPrice: number | null = null;
@@ -2445,8 +2483,8 @@ const decisionTableRows = computed(() => {
     const bestCounterparty =
       bestProposal?.supplier_name ??
       bestProposal?.supplier_company?.name ??
-      "вЂ”";
-    const bestPriceStr = bestPrice != null ? bestPrice.toFixed(2) : "вЂ”";
+      "—";
+    const bestPriceStr = bestPrice != null ? bestPrice.toFixed(2) : "—";
 
     const selectedProposalId = selected[pos.id] ?? bestProposal?.id ?? null;
     const selectedProposal = selectedProposalId
@@ -2462,22 +2500,22 @@ const decisionTableRows = computed(() => {
     const selectedCounterparty =
       selectedProposal?.supplier_name ??
       selectedProposal?.supplier_company?.name ??
-      "вЂ”";
+      "—";
     const selectedPriceStr =
-      selectedPrice != null ? selectedPrice.toFixed(2) : "вЂ”";
+      selectedPrice != null ? selectedPrice.toFixed(2) : "—";
 
     const priceDiff =
       bestPrice != null && selectedPrice != null
         ? selectedPrice - bestPrice
         : null;
-    const priceDiffStr = priceDiff != null ? priceDiff.toFixed(2) : "вЂ”";
+    const priceDiffStr = priceDiff != null ? priceDiff.toFixed(2) : "—";
 
     const economyMarket =
       avgPrice != null && selectedPrice != null
         ? avgPrice - selectedPrice
         : null;
     const economyMarketStr =
-      economyMarket != null ? economyMarket.toFixed(2) : "вЂ”";
+      economyMarket != null ? economyMarket.toFixed(2) : "—";
 
     return {
       id: pos.id,
@@ -2496,7 +2534,7 @@ const decisionTableRows = computed(() => {
   });
 });
 
-/** Р”РµСЂРµРІРѕ РґР»СЏ UTree: РєР°С‚РµРіРѕСЂС–С— (Р±Р°С‚СЊРєРё) в†’ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂРё (РґС–С‚Рё), С„РѕСЂРјР°С‚ Nuxt UI TreeItem */
+/** Дерево для UTree: категорії (батьки) → номенклатури (діти), формат Nuxt UI TreeItem */
 const nomenclatureTreeItems = computed(() => {
   const list = availableNomenclatures.value;
   const term = (nomenclatureSearch.value || "").trim().toLowerCase();
@@ -2515,14 +2553,14 @@ const nomenclatureTreeItems = computed(() => {
   let label: string;
   let id: string;
   if (categoryId !== null && categoryId !== undefined) {
-    label = findCategoryNameById(categoryTree.value, categoryId) || "РљР°С‚РµРіРѕСЂС–СЏ";
+    label = findCategoryNameById(categoryTree.value, categoryId) || "Категорія";
     id = `cat-${categoryId}`;
   } else if (cpvIds.length > 0 && cpvLabels.length > 0) {
     label =
       cpvLabels.length === 1 ? (cpvLabels[0] ?? "") : cpvLabels.join(", ");
     id = `cpv-${cpvIds.join("-")}`;
   } else {
-    label = "РќРѕРјРµРЅРєР»Р°С‚СѓСЂРё";
+    label = "Номенклатури";
     id = "nomenclatures";
   }
   const children = filtered.map((n: any) => ({
@@ -2599,11 +2637,11 @@ async function openSubmitProposal() {
     if (!canSubmitProposal.value) {
       const msg =
         tenderPositions.value.length < 1
-          ? "Р”РѕРґР°Р№С‚Рµ С…РѕС‡Р° Р± РѕРґРЅСѓ РїРѕР·РёС†С–СЋ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂРё РІ С‚РµРЅРґРµСЂ."
+          ? "Додайте хоча б одну позицію номенклатури в тендер."
           : !priceCriterionVat.value || !priceCriterionDelivery.value
-            ? "РќР°Р»Р°С€С‚СѓР№С‚Рµ РїР°СЂР°РјРµС‚СЂРё С†С–РЅРѕРІРѕРіРѕ РєСЂРёС‚РµСЂС–СЏ (РџР”Р’ С‚Р° Р”РѕСЃС‚Р°РІРєР°)."
+            ? "Налаштуйте параметри цінового критерія (ПДВ та Доставка)."
             : "";
-      alert(msg || "РќРµРјРѕР¶Р»РёРІРѕ РІС–РґРєСЂРёС‚Рё РїРѕРґР°С‡Сѓ РїСЂРѕРїРѕР·РёС†С–Р№.");
+      alert(msg || "Неможливо відкрити подачу пропозицій.");
       return;
     }
     await navigateTo(`/cabinet/tenders/proposals/${tenderId.value}`);
@@ -2651,7 +2689,7 @@ async function loadAttachedFiles() {
   attachedFilesLoading.value = false;
   if (error) {
     useToast().add({
-      title: "РџРѕРјРёР»РєР° Р·Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ СЃРїРёСЃРєСѓ С„Р°Р№Р»С–РІ",
+      title: "Помилка завантаження списку файлів",
       description: error,
       color: "error",
     });
@@ -2681,14 +2719,14 @@ async function submitCreateNomenclature() {
   const name = (createNomenclatureForm.name || "").trim();
   if (!name) {
     useToast().add({
-      title: "Р’РєР°Р¶С–С‚СЊ РЅР°Р·РІСѓ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂРё",
+      title: "Вкажіть назву номенклатури",
       color: "error",
     });
     return;
   }
   if (createNomenclatureForm.unit == null) {
     useToast().add({
-      title: "РћР±РµСЂС–С‚СЊ РѕРґРёРЅРёС†СЋ РІРёРјС–СЂСѓ",
+      title: "Оберіть одиницю виміру",
       color: "error",
     });
     return;
@@ -2696,8 +2734,8 @@ async function submitCreateNomenclature() {
   const companyId = tender.value?.company;
   if (!companyId) {
     useToast().add({
-      title: "РџРѕРјРёР»РєР°",
-      description: "РўРµРЅРґРµСЂ РЅРµ РїСЂРёРІКјСЏР·Р°РЅРёР№ РґРѕ РєРѕРјРїР°РЅС–С—.",
+      title: "Помилка",
+      description: "Тендер не привʼязаний до компанії.",
       color: "error",
     });
     return;
@@ -2714,7 +2752,7 @@ async function submitCreateNomenclature() {
       });
     if (createError || !created?.id) {
       useToast().add({
-        title: "РџРѕРјРёР»РєР° СЃС‚РІРѕСЂРµРЅРЅСЏ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂРё",
+        title: "Помилка створення номенклатури",
         description: typeof createError === "string" ? createError : "",
         color: "error",
       });
@@ -2745,7 +2783,7 @@ async function submitCreateNomenclature() {
     }
     showCreateNomenclatureModal.value = false;
     useToast().add({
-      title: "РќРѕРјРµРЅРєР»Р°С‚СѓСЂСѓ СЃС‚РІРѕСЂРµРЅРѕ С‚Р° РґРѕРґР°РЅРѕ РґРѕ РїРѕР·РёС†С–Р№",
+      title: "Номенклатуру створено та додано до позицій",
       color: "success",
     });
     await loadNomenclaturesForPreparation();
@@ -2772,7 +2810,7 @@ async function onAttachedFilesInputChange(e: Event) {
     );
     if (error) {
       useToast().add({
-        title: "РџРѕРјРёР»РєР° Р·Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ",
+        title: "Помилка завантаження",
         description: error,
         color: "error",
       });
@@ -2792,7 +2830,7 @@ async function deleteAttachedFile(fileId: number) {
   );
   if (error) {
     useToast().add({
-      title: "РџРѕРјРёР»РєР° РІРёРґР°Р»РµРЅРЅСЏ",
+      title: "Помилка видалення",
       description: error,
       color: "error",
     });
@@ -2814,7 +2852,7 @@ async function toggleFileVisibility(fileId: number, visible: boolean) {
   );
   if (error) {
     useToast().add({
-      title: "РџРѕРјРёР»РєР° РѕРЅРѕРІР»РµРЅРЅСЏ",
+      title: "Помилка оновлення",
       description: error,
       color: "error",
     });
@@ -2830,10 +2868,10 @@ async function toggleFileVisibility(fileId: number, visible: boolean) {
 
 function criterionTypeLabel(type: string) {
   const map: Record<string, string> = {
-    numeric: "Р§РёСЃР»РѕРІРёР№",
-    text: "РўРµРєСЃС‚РѕРІРёР№",
-    file: "Р¤Р°Р№Р»РѕРІРёР№",
-    boolean: "Р‘СѓР»РµРІРёР№",
+    numeric: "Числовий",
+    text: "Текстовий",
+    file: "Файловий",
+    boolean: "Булевий",
   };
   return map[type] ?? type;
 }
@@ -2859,14 +2897,14 @@ const createCriterionForm = reactive({
 });
 const createCriterionSaving = ref(false);
 const criterionTypeOptions = [
-  { value: "numeric", label: "Р§РёСЃР»РѕРІРёР№" },
-  { value: "text", label: "РўРµРєСЃС‚РѕРІРёР№" },
-  { value: "file", label: "Р¤Р°Р№Р»РѕРІРёР№" },
-  { value: "boolean", label: "Р‘СѓР»РµРІРёР№ (РўР°Рє/РќС–)" },
+  { value: "numeric", label: "Числовий" },
+  { value: "text", label: "Текстовий" },
+  { value: "file", label: "Файловий" },
+  { value: "boolean", label: "Булевий (Так/Ні)" },
 ];
 const criterionApplicationOptions = [
-  { value: "general", label: "Р—Р°РіР°Р»СЊРЅРёР№" },
-  { value: "individual", label: "Р†РЅРґРёРІС–РґСѓР°Р»СЊРЅРёР№" },
+  { value: "general", label: "Загальний" },
+  { value: "individual", label: "Індивідуальний" },
 ];
 
 function openCreateCriterionModal() {
@@ -2880,13 +2918,13 @@ function openCreateCriterionModal() {
 async function saveCreateCriterion() {
   const name = (createCriterionForm.name || "").trim();
   if (!name) {
-    useToast().add({ title: "Р’РєР°Р¶С–С‚СЊ РЅР°Р·РІСѓ РєСЂРёС‚РµСЂС–СЏ", color: "error" });
+    useToast().add({ title: "Вкажіть назву критерія", color: "error" });
     return;
   }
   const companyId = tender.value?.company;
   if (!companyId) {
     useToast().add({
-      title: "РўРµРЅРґРµСЂ РЅРµ РїСЂРёРІКјСЏР·Р°РЅРёР№ РґРѕ РєРѕРјРїР°РЅС–С—",
+      title: "Тендер не привʼязаний до компанії",
       color: "error",
     });
     return;
@@ -2902,11 +2940,11 @@ async function saveCreateCriterion() {
     });
     if (error || !created?.id) {
       useToast().add({
-        title: "РџРѕРјРёР»РєР° СЃС‚РІРѕСЂРµРЅРЅСЏ РєСЂРёС‚РµСЂС–СЏ",
+        title: "Помилка створення критерія",
         description:
           typeof error === "string"
             ? error
-            : "РљСЂРёС‚РµСЂС–Р№ Р· С‚Р°РєРѕСЋ РЅР°Р·РІРѕСЋ С‚Р° С‚РёРїРѕРј РІР¶Рµ С–СЃРЅСѓС”.",
+            : "Критерій з такою назвою та типом вже існує.",
         color: "error",
       });
       return;
@@ -2931,7 +2969,7 @@ async function saveCreateCriterion() {
     }
     showCreateCriterionModal.value = false;
     useToast().add({
-      title: "РљСЂРёС‚РµСЂС–Р№ СЃС‚РІРѕСЂРµРЅРѕ С‚Р° РґРѕРґР°РЅРѕ РґРѕ С‚РµРЅРґРµСЂР°",
+      title: "Критерій створено та додано до тендера",
       color: "success",
     });
     await loadReferenceCriteria();
@@ -2940,7 +2978,7 @@ async function saveCreateCriterion() {
   }
 }
 
-/** Р”РµСЂРµРІРѕ РґР»СЏ UTree: РѕРґРёРЅ Р±Р°С‚СЊРєС–РІСЃСЊРєРёР№ РІСѓР·РѕР» В«РљСЂРёС‚РµСЂС–С—В», РґС–С‚Рё вЂ” РєСЂРёС‚РµСЂС–С— Р· РґРѕРІС–РґРЅРёРєР° (Р· С„С–Р»СЊС‚СЂРѕРј РїРѕС€СѓРєСѓ) */
+/** Дерево для UTree: один батьківський вузол «Критерії», діти — критерії з довідника (з фільтром пошуку) */
 const criteriaTreeItems = computed(() => {
   const list = referenceCriteria.value;
   const term = (criteriaSearch.value || "").trim().toLowerCase();
@@ -2958,7 +2996,7 @@ const criteriaTreeItems = computed(() => {
     label: `${c.name || ""} (${criterionTypeLabel(c.type)})`,
   }));
   return [
-    { id: "criteria-root", label: "РљСЂРёС‚РµСЂС–С—", defaultExpanded: true, children },
+    { id: "criteria-root", label: "Критерії", defaultExpanded: true, children },
   ];
 });
 
@@ -2990,7 +3028,7 @@ function onCriteriaTreeSelect(
     (orig as { preventDefault: () => void }).preventDefault();
 }
 
-/** Р”РѕРґР°С‚Рё РєСЂРёС‚РµСЂС–Р№ Р· РґРѕРІС–РґРЅРёРєР° (РїРѕРґРІС–Р№РЅРёР№ РєР»С–Рє Сѓ Р»С–РІС–Р№ РїР°РЅРµР»С–). РЇРєС‰Рѕ РІР¶Рµ С” вЂ” РЅС–С‡РѕРіРѕ РЅРµ СЂРѕР±РёРјРѕ. */
+/** Додати критерій з довідника (подвійний клік у лівій панелі). Якщо вже є — нічого не робимо. */
 function addCriterionFromTree(criterionId: number) {
   if (isViewingPreviousTour.value) return;
   if (tenderCriteria.value.some((c) => c.id === criterionId)) return;
@@ -3084,11 +3122,10 @@ async function loadTender() {
       return;
     }
     tender.value = tenderData;
-    const stage = tenderData.stage ?? "passport";
-    displayStage.value =
-      tenderData.conduct_type === "registration" && stage === "acceptance"
-        ? "decision"
-        : stage;
+    displayStage.value = normalizeStageForUi(
+      tenderData.stage,
+      tenderData.conduct_type,
+    );
     const rawPositions = Array.isArray(tenderData.positions)
       ? tenderData.positions
       : Array.isArray((tenderData as any).tender_positions)
@@ -3149,11 +3186,11 @@ async function loadTender() {
 async function loadTours() {
   if (!tenderId.value) return;
   const { data } = await tendersUC.getTenderTours(tenderId.value, isSales);
-  // API РїРѕРІРµСЂС‚Р°С” [{ id, tour_number }]; С‚СѓСЂ 1 вЂ” РїРµСЂС€РёР№ (РєРѕСЂС–РЅСЊ), РЅР°СЃС‚СѓРїРЅС– вЂ” РїРѕРІС‚РѕСЂРЅС– РїСЂРѕРІРµРґРµРЅРЅСЏ
+  // API повертає [{ id, tour_number }]; тур 1 — перший (корінь), наступні — повторні проведення
   tourOptions.value = Array.isArray(data)
     ? (data as { id: number; tour_number: number }[]).map((t) => ({
         value: t.id,
-        label: `РўСѓСЂ ${t.tour_number ?? 1}`,
+        label: `Тур ${t.tour_number ?? 1}`,
       }))
     : [];
 }
@@ -3221,12 +3258,12 @@ async function loadNomenclaturesForPreparation() {
   }
 }
 
-/** Р”РѕРґР°С‚Рё РїРѕР·РёС†С–СЋ Р· РЅРѕРјРµРЅРєР»Р°С‚СѓСЂРё (РїРѕРґРІС–Р№РЅРёР№ РєР»С–Рє Сѓ Р»С–РІС–Р№ РїР°РЅРµР»С–). РЇРєС‰Рѕ РІР¶Рµ С” вЂ” РїРѕРїРµСЂРµРґР¶РµРЅРЅСЏ. */
+/** Додати позицію з номенклатури (подвійний клік у лівій панелі). Якщо вже є — попередження. */
 function addPositionFromNomenclature(nomenclatureId: number) {
   if (isViewingPreviousTour.value) return;
   if (tenderPositions.value.some((p) => p.nomenclature_id === nomenclatureId)) {
     useToast().add({
-      title: "Р¦СЏ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂР° РІР¶Рµ РґРѕРґР°РЅР° РґРѕ РїРѕР·РёС†С–Р№ С‚РµРЅРґРµСЂР°",
+      title: "Ця номенклатура вже додана до позицій тендера",
       color: "warning",
     });
     return;
@@ -3245,7 +3282,7 @@ function addPositionFromNomenclature(nomenclatureId: number) {
   });
 }
 
-/** Р’РёРґР°Р»РёС‚Рё РїРѕР·РёС†С–СЋ Р· С‚РµРЅРґРµСЂР° (Р·Р° СЂСЏРґРєРѕРј С‚Р°Р±Р»РёС†С–). */
+/** Видалити позицію з тендера (за рядком таблиці). */
 function removeTenderPositionByRow(row: {
   index?: number;
   original?: (typeof tenderPositions.value)[number];
@@ -3282,11 +3319,10 @@ async function patchTender(payload: Record<string, unknown>) {
   if (error || !data) return false;
   tender.value = { ...tender.value, ...data };
   if (data.stage != null) {
-    const stage = data.stage;
-    displayStage.value =
-      tender.value?.conduct_type === "registration" && stage === "acceptance"
-        ? "decision"
-        : stage;
+    displayStage.value = normalizeStageForUi(
+      data.stage,
+      tender.value?.conduct_type ?? form.conduct_type,
+    );
   }
   return true;
 }
@@ -3295,8 +3331,8 @@ async function savePassport() {
   const cpvIds = form.cpv_ids ?? [];
   if (cpvIds.length === 0) {
     useToast().add({
-      title: "Р—Р°РїРѕРІРЅС–С‚СЊ РѕР±РѕРІКјСЏР·РєРѕРІРµ РїРѕР»Рµ",
-      description: "РћР±РµСЂС–С‚СЊ С…РѕС‡Р° Р± РѕРґРЅСѓ РєР°С‚РµРіРѕСЂС–СЋ CPV.",
+      title: "Заповніть обовʼязкове поле",
+      description: "Оберіть хоча б одну категорію CPV.",
       color: "error",
     });
     return;
@@ -3319,8 +3355,8 @@ async function savePassport() {
     });
     if (!ok) {
       useToast().add({
-        title: "РџРѕРјРёР»РєР° Р·Р±РµСЂРµР¶РµРЅРЅСЏ",
-        description: "РџРµСЂРµРІС–СЂС‚Рµ РґР°РЅС– (Р·РѕРєСЂРµРјР° РєР°С‚РµРіРѕСЂС–СЋ CPV).",
+        title: "Помилка збереження",
+        description: "Перевірте дані (зокрема категорію CPV).",
         color: "error",
       });
     }
@@ -3336,10 +3372,10 @@ function openPublishModal() {
     !!priceCriterionVat.value && !!priceCriterionDelivery.value;
   if (!hasPositions || !hasPriceParams) {
     const msg = !hasPositions
-      ? "РџСѓР±Р»С–РєР°С†С–СЏ РЅРµРјРѕР¶Р»РёРІР°: РґРѕРґР°Р№С‚Рµ С…РѕС‡Р° Р± РѕРґРЅСѓ РїРѕР·РёС†С–СЋ С‚РµРЅРґРµСЂР°."
-      : "РџСѓР±Р»С–РєР°С†С–СЏ РЅРµРјРѕР¶Р»РёРІР°: РЅР°Р»Р°С€С‚СѓР№С‚Рµ РїР°СЂР°РјРµС‚СЂРё С†С–РЅРѕРІРѕРіРѕ РєСЂРёС‚РµСЂС–СЏ (РџР”Р’ С‚Р° Р”РѕСЃС‚Р°РІРєР°).";
+      ? "Публікація неможлива: додайте хоча б одну позицію тендера."
+      : "Публікація неможлива: налаштуйте параметри цінового критерія (ПДВ та Доставка).";
     toast.add({
-      title: "РџСѓР±Р»С–РєР°С†С–СЏ РЅРµРјРѕР¶Р»РёРІР°",
+      title: "Публікація неможлива",
       description: msg,
       color: "error",
     });
@@ -3361,8 +3397,8 @@ async function publishTender() {
   const prepared = await savePreparation();
   if (!prepared) {
     useToast().add({
-      title: "РќРµ РІРґР°Р»РѕСЃСЏ Р·Р±РµСЂРµРіС‚Рё РїС–РґРіРѕС‚РѕРІРєСѓ С‚РµРЅРґРµСЂР°",
-      description: "РџРµСЂРµРІС–СЂС‚Рµ РїРѕР·РёС†С–С—, РєСЂРёС‚РµСЂС–С— С‚Р° РїР°СЂР°РјРµС‚СЂРё С†С–РЅРѕРІРѕРіРѕ РєСЂРёС‚РµСЂС–СЋ.",
+      title: "Не вдалося зберегти підготовку тендера",
+      description: "Перевірте позиції, критерії та параметри цінового критерію.",
       color: "error",
     });
     return;
@@ -3388,7 +3424,7 @@ async function goToDecision() {
   await patchTender({ stage: "decision" });
 }
 
-/** РџРѕРІРµСЂРЅСѓС‚Рё С‚РµРЅРґРµСЂ РЅР° РµС‚Р°Рї РїС–РґРіРѕС‚РѕРІРєРё (С‚С–Р»СЊРєРё РґР»СЏ С‚РёРїСѓ Р РµС”СЃС‚СЂР°С†С–СЏ). */
+/** Повернути тендер на етап підготовки (тільки для типу Реєстрація). */
 async function goBackToPreparation() {
   if (isViewingPreviousTour.value) return;
   const ok = await patchTender({ stage: "preparation" });
@@ -3416,18 +3452,18 @@ async function submitResumeAcceptance() {
   const startStr = (resumeAcceptanceForm.start_at || "").trim();
   const endStr = (resumeAcceptanceForm.end_at || "").trim();
   if (!startStr || !endStr) {
-    useToast().add({ title: "Р—Р°РїРѕРІРЅС–С‚СЊ С‡Р°СЃ РїРѕС‡Р°С‚РєСѓ С‚Р° Р·Р°РІРµСЂС€РµРЅРЅСЏ", color: "error" });
+    useToast().add({ title: "Заповніть час початку та завершення", color: "error" });
     return;
   }
   const start = new Date(startStr);
   const end = new Date(endStr);
   const now = new Date();
   if (start < now) {
-    useToast().add({ title: "Р§Р°СЃ РїРѕС‡Р°С‚РєСѓ РЅРµ РјРѕР¶Рµ Р±СѓС‚Рё РјРµРЅС€РёРј РІС–Рґ РїРѕС‚РѕС‡РЅРѕРіРѕ", color: "error" });
+    useToast().add({ title: "Час початку не може бути меншим від поточного", color: "error" });
     return;
   }
   if (end <= start) {
-    useToast().add({ title: "Р§Р°СЃ Р·Р°РІРµСЂС€РµРЅРЅСЏ РїРѕРІРёРЅРµРЅ Р±СѓС‚Рё РїС–Р·РЅС–С€Рµ Р·Р° С‡Р°СЃ РїРѕС‡Р°С‚РєСѓ", color: "error" });
+    useToast().add({ title: "Час завершення повинен бути пізніше за час початку", color: "error" });
     return;
   }
   resumeAcceptanceSaving.value = true;
@@ -3439,7 +3475,7 @@ async function submitResumeAcceptance() {
     });
     if (ok) {
       showResumeAcceptanceModal.value = false;
-      useToast().add({ title: "РџСЂРёР№РѕРј РїСЂРѕРїРѕР·РёС†С–Р№ РІС–РґРЅРѕРІР»РµРЅРѕ", color: "success" });
+      useToast().add({ title: "Прийом пропозицій відновлено", color: "success" });
       await loadTender();
     }
   } finally {
@@ -3506,11 +3542,11 @@ const proposalComparisonPositions = computed(() => tender.value?.positions ?? []
 const proposalComparisonPriceHeader = computed(() => {
   const v = tender.value?.price_criterion_vat;
   const d = tender.value?.price_criterion_delivery;
-  const vatLabels: Record<string, string> = { with_vat: "Р· РџР”Р’", without_vat: "Р±РµР· РџР”Р’" };
-  const deliveryLabels: Record<string, string> = { with_delivery: "С–Р· СѓСЂР°С…СѓРІР°РЅРЅСЏРј РґРѕСЃС‚Р°РІРєРё", without_delivery: "Р±РµР· СѓСЂР°С…СѓРІР°РЅРЅСЏ РґРѕСЃС‚Р°РІРєРё" };
+  const vatLabels: Record<string, string> = { with_vat: "з ПДВ", without_vat: "без ПДВ" };
+  const deliveryLabels: Record<string, string> = { with_delivery: "із урахуванням доставки", without_delivery: "без урахування доставки" };
   const vLabel = v && vatLabels[v] ? vatLabels[v] : v || "";
   const dLabel = d && deliveryLabels[d] ? deliveryLabels[d] : d || "";
-  return ["Р¦С–РЅР°", vLabel, dLabel].filter(Boolean).join(" ");
+  return ["Ціна", vLabel, dLabel].filter(Boolean).join(" ");
 });
 
 function getProposalPositionSum(proposal: any, pos: { id: number; quantity: number }) {
@@ -3594,7 +3630,7 @@ watch(prepTab, (tab) => {
 </script>
 
 <style scoped>
-/* РљРѕРјРїР°РєС‚РЅРёР№ СЃС‚РµРїРµСЂ */
+/* Компактний степер */
 .tender-stepper--compact :deep([data-slot="header"]) {
   gap: 0.25rem;
 }
@@ -3609,7 +3645,7 @@ watch(prepTab, (tab) => {
 .tender-stepper--compact :deep([data-slot="wrapper"]) {
   min-height: auto;
 }
-/* РџСЂРѕРіСЂРµСЃ: РїСЂРѕР№РґРµРЅС– РєСЂРѕРєРё С‚Р° РїРѕС‚РѕС‡РЅРёР№ РµС‚Р°Рї С‚РµРЅРґРµСЂР° вЂ” Р°РєС†РµРЅС‚РЅРёР№ РєРѕР»С–СЂ */
+/* Прогрес: пройдені кроки та поточний етап тендера — акцентний колір */
 .tender-stepper :deep(.tender-step-done [data-slot="trigger"]),
 .tender-stepper :deep(.tender-step-progress-current [data-slot="trigger"]) {
   background-color: var(--color-primary-500);
@@ -3618,13 +3654,13 @@ watch(prepTab, (tab) => {
 .tender-stepper :deep(.tender-step-done [data-slot="separator"]) {
   background-color: var(--color-primary-500);
 }
-/* РљСЂРѕРє, РЅР° СЏРєРѕРјСѓ Р·Р°СЂР°Р· РєРѕСЂРёСЃС‚СѓРІР°С‡ (РїРµСЂРµРіР»СЏРґ) вЂ” СЃРІС–С‚Р»С–С€РёР№ */
+/* Крок, на якому зараз користувач (перегляд) — світліший */
 .tender-stepper :deep(.tender-step-viewing [data-slot="trigger"]) {
   background-color: var(--color-primary-300);
   color: white;
 }
 
-/* Р РµРґР°РєС‚РѕСЂ В«РћРїРёСЃ СѓРјРѕРІ С‚Р° РІРёРјРѕРіВ»: РїР»РµР№СЃС…РѕР»РґРµСЂ Р·РЅРёРєР°С” РїСЂРё С„РѕРєСѓСЃС–, РІСЃСЏ РѕР±Р»Р°СЃС‚СЊ РєР»С–РєР°Р±РµР»СЊРЅР° */
+/* Редактор «Опис умов та вимог»: плейсхолдер зникає при фокусі, вся область клікабельна */
 .general-terms-editor-wrapper:focus-within
   :deep(.ProseMirror p.is-empty::before) {
   opacity: 0;

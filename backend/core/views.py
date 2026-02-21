@@ -2408,6 +2408,14 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         """РЎРїРёСЃРѕРє РїСЂРёРєСЂС–РїР»РµРЅРёС… С„Р°Р№Р»С–РІ."""
         tender = self.get_object()
         qs = ProcurementTenderFile.objects.filter(tender=tender)
+        user_company_ids = list(
+            CompanyUser.objects.filter(
+                user=request.user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+        )
+        is_owner = tender.company_id in user_company_ids
+        if not is_owner:
+            qs = qs.filter(visible_to_participants=True)
         serializer = ProcurementTenderFileSerializer(
             qs, many=True, context={"request": request}
         )
@@ -2887,6 +2895,14 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
         """РЎРїРёСЃРѕРє РїСЂРёРєСЂС–РїР»РµРЅРёС… С„Р°Р№Р»С–РІ."""
         tender = self.get_object()
         qs = SalesTenderFile.objects.filter(tender=tender)
+        user_company_ids = list(
+            CompanyUser.objects.filter(
+                user=request.user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+        )
+        is_owner = tender.company_id in user_company_ids
+        if not is_owner:
+            qs = qs.filter(visible_to_participants=True)
         serializer = SalesTenderFileSerializer(
             qs, many=True, context={"request": request}
         )

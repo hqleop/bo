@@ -442,9 +442,30 @@
         <template #content>
           <UCard>
             <template #header><h3>Прикріплені файли</h3></template>
-            <p class="text-gray-600">
-              Список файлів тендера. Функціонал у розробці.
+            <div v-if="tenderFilesLoading" class="text-gray-500">Завантаження...</div>
+            <p v-else-if="tenderFilesError" class="text-sm text-red-600">
+              {{ tenderFilesError }}
             </p>
+            <div v-else-if="tenderFiles.length" class="space-y-2">
+              <div
+                v-for="f in tenderFiles"
+                :key="f.id"
+                class="flex items-center justify-between gap-3 rounded border border-gray-200 p-2"
+              >
+                <a
+                  :href="f.file_url || '#'"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-sm text-primary-600 hover:underline truncate"
+                >
+                  {{ f.name || `Файл #${f.id}` }}
+                </a>
+                <span class="text-xs text-gray-500 shrink-0">
+                  {{ formatFileDate(f.uploaded_at) }}
+                </span>
+              </div>
+            </div>
+            <p v-else class="text-gray-500">Немає прикріплених файлів.</p>
           </UCard>
         </template>
       </UModal>
@@ -477,6 +498,9 @@ const showSupplierModal = ref(false);
 const supplierSearch = ref("");
 const showCheckModal = ref(false);
 const showFilesModal = ref(false);
+const tenderFiles = ref<any[]>([]);
+const tenderFilesLoading = ref(false);
+const tenderFilesError = ref("");
 const savingPositions = ref(false);
 const submitWithdrawLoading = ref(false);
 const now = ref(new Date());
@@ -728,6 +752,29 @@ async function loadTender() {
 async function loadProposals() {
   const { data } = await tendersUC.getTenderProposals(tenderId.value, isSales);
   if (data) proposals.value = Array.isArray(data) ? data : [];
+}
+
+async function loadTenderFiles() {
+  tenderFilesLoading.value = true;
+  tenderFilesError.value = "";
+  try {
+    const { data, error } = await tendersUC.getTenderFiles(tenderId.value, isSales);
+    if (error) {
+      tenderFilesError.value = error;
+      tenderFiles.value = [];
+      return;
+    }
+    tenderFiles.value = Array.isArray(data) ? data : [];
+  } finally {
+    tenderFilesLoading.value = false;
+  }
+}
+
+function formatFileDate(value?: string) {
+  if (!value) return "";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return "";
+  return dt.toLocaleString("uk-UA");
 }
 
 async function loadSuppliers() {
@@ -982,5 +1029,9 @@ onMounted(async () => {
 onUnmounted(() => {
   if (nowInterval) clearInterval(nowInterval);
 });
-</script>
 
+watch(showFilesModal, async (open) => {
+  if (!open) return;
+  await loadTenderFiles();
+});
+</script>

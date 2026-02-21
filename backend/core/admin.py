@@ -128,8 +128,8 @@ class ExpenseArticleUserAdmin(admin.ModelAdmin):
 
 @admin.register(Currency)
 class CurrencyAdmin(admin.ModelAdmin):
-    list_display = ("code", "name")
-    search_fields = ("code", "name")
+    list_display = ("code", "code_iso", "name")
+    search_fields = ("code", "code_iso", "name")
 
 
 @admin.register(TenderCriterion)

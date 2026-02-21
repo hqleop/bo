@@ -652,7 +652,7 @@ class CurrencySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Currency
-        fields = ("id", "code", "name")
+        fields = ("id", "code", "code_iso", "name")
 
 
 class TenderCriterionSerializer(serializers.ModelSerializer):

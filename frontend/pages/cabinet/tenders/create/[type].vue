@@ -13,7 +13,7 @@
       <div class="flex-1 min-w-0 overflow-y-auto">
         <UCard class="overflow-hidden">
           <template #header>
-            <h3 class="text-lg font-semibold text-gray-900">Паспорт тендера</h3>
+            <h3 class="text-lg font-semibold text-gray-900">{{ passportTitle }}</h3>
           </template>
           <UForm :state="form" class="space-y-6">
             <div class="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-6 lg:gap-8">
@@ -234,6 +234,10 @@ const pageTitle = computed(() =>
 );
 
 // Динамічно оновлюємо title сторінки
+const passportTitle = computed(() =>
+  isSales.value ? "Паспорт тендера продажу" : "Паспорт тендера закупівлі",
+);
+
 useHead({
   title: pageTitle,
 });
