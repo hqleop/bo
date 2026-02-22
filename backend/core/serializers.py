@@ -660,6 +660,7 @@ class TenderCriterionSerializer(serializers.ModelSerializer):
 
     type_label = serializers.CharField(source="get_type_display", read_only=True)
     application_label = serializers.CharField(source="get_application_display", read_only=True)
+    tender_type_label = serializers.CharField(source="get_tender_type_display", read_only=True)
 
     class Meta:
         model = TenderCriterion
@@ -669,6 +670,8 @@ class TenderCriterionSerializer(serializers.ModelSerializer):
             "name",
             "type",
             "type_label",
+            "tender_type",
+            "tender_type_label",
             "application",
             "application_label",
             "options",
@@ -682,9 +685,15 @@ class TenderCriterionSerializer(serializers.ModelSerializer):
         company = attrs.get("company") or (self.instance.company if self.instance else None)
         name = (attrs.get("name") or (self.instance.name if self.instance else "") or "").strip()
         ctype = attrs.get("type") or (self.instance.type if self.instance else None)
-        if not company or not name or not ctype:
+        tender_type = attrs.get("tender_type") or (self.instance.tender_type if self.instance else None)
+        if not company or not name or not ctype or not tender_type:
             return attrs
-        qs = TenderCriterion.objects.filter(company=company, name__iexact=name, type=ctype)
+        qs = TenderCriterion.objects.filter(
+            company=company,
+            name__iexact=name,
+            type=ctype,
+            tender_type=tender_type,
+        )
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
@@ -776,6 +785,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
     expense_article_name = serializers.SerializerMethodField()
     branch_name = serializers.SerializerMethodField()
     department_name = serializers.SerializerMethodField()
+    created_by_display = serializers.SerializerMethodField()
     positions = ProcurementTenderPositionSerializer(many=True, required=False)
 
     def validate(self, attrs):
@@ -791,14 +801,30 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             raise drf.ValidationError(
                 {"cpv_ids": "Оберіть хоча б одну категорію CPV."}
             )
+        criterion_ids = attrs.get("tender_criteria")
+        if criterion_ids is not None:
+            wrong_ids = [
+                c.id for c in criterion_ids if getattr(c, "tender_type", None) != "procurement"
+            ]
+            if wrong_ids:
+                from rest_framework import serializers as drf
+                raise drf.ValidationError(
+                    {"criterion_ids": "Selected criteria do not belong to procurement dictionary."}
+                )
         return attrs
 
     criterion_ids = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=TenderCriterion.objects.all(), required=False, source="tender_criteria"
+        many=True, queryset=TenderCriterion.objects.none(), required=False, source="tender_criteria"
     )
     criteria = serializers.SerializerMethodField()
     is_latest_tour = serializers.SerializerMethodField()
     current_user_has_proposal = serializers.SerializerMethodField()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["criterion_ids"].queryset = TenderCriterion.objects.filter(
+            tender_type="procurement"
+        )
 
     class Meta:
         model = ProcurementTender
@@ -832,6 +858,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             "currency_code",
             "general_terms",
             "created_by",
+            "created_by_display",
             "start_at",
             "end_at",
             "created_at",
@@ -848,6 +875,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
         read_only_fields = (
             "id",
             "number",
+            "created_by",
             "created_at",
             "updated_at",
             "stage_label",
@@ -860,6 +888,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             "expense_article_name",
             "branch_name",
             "department_name",
+            "created_by_display",
             "is_latest_tour",
             "current_user_has_proposal",
         )
@@ -911,6 +940,15 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
 
     def get_department_name(self, obj):
         return obj.department.name if obj.department else ""
+
+    def get_created_by_display(self, obj):
+        user = getattr(obj, "created_by", None)
+        if not user:
+            return ""
+        full_name = " ".join(
+            part for part in [user.last_name, user.first_name, user.middle_name] if part
+        ).strip()
+        return full_name or getattr(user, "email", "") or ""
 
     def get_criteria(self, obj):
         return [
@@ -1208,13 +1246,20 @@ class SalesTenderSerializer(serializers.ModelSerializer):
     expense_article_name = serializers.SerializerMethodField()
     branch_name = serializers.SerializerMethodField()
     department_name = serializers.SerializerMethodField()
+    created_by_display = serializers.SerializerMethodField()
     positions = SalesTenderPositionSerializer(many=True, required=False)
     criterion_ids = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=TenderCriterion.objects.all(), required=False, source="tender_criteria"
+        many=True, queryset=TenderCriterion.objects.none(), required=False, source="tender_criteria"
     )
     criteria = serializers.SerializerMethodField()
     is_latest_tour = serializers.SerializerMethodField()
     current_user_has_proposal = serializers.SerializerMethodField()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["criterion_ids"].queryset = TenderCriterion.objects.filter(
+            tender_type="sales"
+        )
 
     def validate(self, attrs):
         """Категорія CPV обовʼязкова: хоча б одна CPV має бути обрана."""
@@ -1229,6 +1274,16 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             raise drf.ValidationError(
                 {"cpv_ids": "Оберіть хоча б одну категорію CPV."}
             )
+        criterion_ids = attrs.get("tender_criteria")
+        if criterion_ids is not None:
+            wrong_ids = [
+                c.id for c in criterion_ids if getattr(c, "tender_type", None) != "sales"
+            ]
+            if wrong_ids:
+                from rest_framework import serializers as drf
+                raise drf.ValidationError(
+                    {"criterion_ids": "Selected criteria do not belong to sales dictionary."}
+                )
         return attrs
 
     class Meta:
@@ -1263,6 +1318,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             "currency_code",
             "general_terms",
             "created_by",
+            "created_by_display",
             "start_at",
             "end_at",
             "created_at",
@@ -1279,6 +1335,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
         read_only_fields = (
             "id",
             "number",
+            "created_by",
             "created_at",
             "updated_at",
             "stage_label",
@@ -1291,6 +1348,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             "expense_article_name",
             "branch_name",
             "department_name",
+            "created_by_display",
             "is_latest_tour",
             "current_user_has_proposal",
         )
@@ -1342,6 +1400,15 @@ class SalesTenderSerializer(serializers.ModelSerializer):
 
     def get_department_name(self, obj):
         return obj.department.name if obj.department else ""
+
+    def get_created_by_display(self, obj):
+        user = getattr(obj, "created_by", None)
+        if not user:
+            return ""
+        full_name = " ".join(
+            part for part in [user.last_name, user.first_name, user.middle_name] if part
+        ).strip()
+        return full_name or getattr(user, "email", "") or ""
 
     def get_criteria(self, obj):
         return [

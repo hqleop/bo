@@ -2132,13 +2132,28 @@ class TenderCriterionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if user.is_superuser:
-            return TenderCriterion.objects.all().select_related("company")
+            qs = TenderCriterion.objects.all().select_related("company")
+            tender_type = (self.request.query_params.get("tender_type") or "").strip()
+            if tender_type in {"procurement", "sales"}:
+                qs = qs.filter(tender_type=tender_type)
+            return qs
         user_companies = CompanyUser.objects.filter(
             user=user, status=CompanyUser.Status.APPROVED
         ).values_list("company_id", flat=True)
-        return TenderCriterion.objects.filter(
+        qs = TenderCriterion.objects.filter(
             company_id__in=user_companies
         ).select_related("company")
+        tender_type = (self.request.query_params.get("tender_type") or "").strip()
+        if tender_type in {"procurement", "sales"}:
+            qs = qs.filter(tender_type=tender_type)
+        return qs
+
+    def perform_create(self, serializer):
+        tender_type = (self.request.query_params.get("tender_type") or "").strip()
+        if tender_type in {"procurement", "sales"}:
+            serializer.save(tender_type=tender_type)
+            return
+        serializer.save()
 
 
 class ProcurementTenderViewSet(viewsets.ModelViewSet):

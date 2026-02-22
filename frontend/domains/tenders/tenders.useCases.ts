@@ -90,10 +90,15 @@ export function useTendersUseCases() {
     return tendersApi.getTenderCriteria(fetch)
   }
 
+  async function getTenderCriteriaByType(tenderType: 'procurement' | 'sales') {
+    return tendersApi.getTenderCriteriaByType(fetch, tenderType)
+  }
+
   async function createTenderCriterion(body: {
     company: number
     name: string
     type: string
+    tender_type: 'procurement' | 'sales'
     application?: string
     options?: Record<string, unknown>
   }) {
@@ -212,6 +217,7 @@ export function useTendersUseCases() {
     patchTenderFile,
     fixTenderDecision,
     getTenderCriteria,
+    getTenderCriteriaByType,
     createTenderCriterion,
     getUnits,
     createNomenclature,

@@ -144,9 +144,22 @@ export async function getTenderCriteria(request: RequestFn) {
   return request<TenderCriterion[]>('/tender-criteria/')
 }
 
+export type TenderCriteriaType = 'procurement' | 'sales'
+
+export async function getTenderCriteriaByType(request: RequestFn, tenderType: TenderCriteriaType) {
+  return request<TenderCriterion[]>(`/tender-criteria/?tender_type=${tenderType}`)
+}
+
 export async function createTenderCriterion(
   request: RequestFn,
-  body: { company: number; name: string; type: string; application?: string; options?: Record<string, unknown> }
+  body: {
+    company: number
+    name: string
+    type: string
+    tender_type: TenderCriteriaType
+    application?: string
+    options?: Record<string, unknown>
+  }
 ) {
   return request<TenderCriterion>('/tender-criteria/', {
     method: 'POST',

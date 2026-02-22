@@ -114,6 +114,7 @@ const currentPage = ref(1);
 const tableColumns = [
   { accessorKey: "number", header: "Номер" },
   { accessorKey: "name", header: "Назва" },
+  { accessorKey: "created_by_display", header: "Автор" },
   { accessorKey: "stage_label", header: "Етап" },
   { accessorKey: "conduct_type_label", header: "Тип проведення" },
   { accessorKey: "created_at", header: "Створено" },

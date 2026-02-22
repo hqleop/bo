@@ -2935,6 +2935,7 @@ async function saveCreateCriterion() {
       company: companyId,
       name,
       type: createCriterionForm.type,
+      tender_type: "procurement",
       application: createCriterionForm.application || "individual",
       options: createCriterionForm.options || {},
     });
@@ -3039,7 +3040,7 @@ function addCriterionFromTree(criterionId: number) {
 async function loadReferenceCriteria() {
   loadingReferenceCriteria.value = true;
   try {
-    const { data } = await tendersUC.getTenderCriteria();
+    const { data } = await tendersUC.getTenderCriteriaByType("procurement");
     referenceCriteria.value = Array.isArray(data) ? data : [];
   } finally {
     loadingReferenceCriteria.value = false;

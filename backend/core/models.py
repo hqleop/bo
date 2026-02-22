@@ -520,6 +520,15 @@ class TenderCriterion(models.Model):
     )
     name = models.CharField(max_length=255)
     type = models.CharField(max_length=20, choices=Type.choices)
+    tender_type = models.CharField(
+        max_length=20,
+        choices=(
+            ("procurement", "Procurement"),
+            ("sales", "Sales"),
+        ),
+        default="procurement",
+        help_text="Tender type for criterion dictionary: procurement or sales.",
+    )
     application = models.CharField(
         max_length=20,
         choices=Application.choices,
@@ -536,7 +545,7 @@ class TenderCriterion(models.Model):
         verbose_name = "Критерій тендеру"
         verbose_name_plural = "Критерії тендерів"
         ordering = ["name"]
-        unique_together = (("company", "name", "type"),)
+        unique_together = (("company", "name", "type", "tender_type"),)
 
     def __str__(self) -> str:
         return self.name

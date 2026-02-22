@@ -134,8 +134,8 @@ class CurrencyAdmin(admin.ModelAdmin):
 
 @admin.register(TenderCriterion)
 class TenderCriterionAdmin(admin.ModelAdmin):
-    list_display = ("name", "company", "type", "created_at")
-    list_filter = ("company", "type")
+    list_display = ("name", "company", "type", "tender_type", "created_at")
+    list_filter = ("company", "type", "tender_type")
     search_fields = ("name", "company__name")
 
 
