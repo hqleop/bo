@@ -45,7 +45,7 @@
                       @toggle="toggleCategory"
                       @update:search-term="categorySearch = $event"
                     />
-                    <CpvLazyMultiSearch
+                    <CpvTenderModalSelect
                       label="Категорія CPV"
                       placeholder="Оберіть CPV"
                       required

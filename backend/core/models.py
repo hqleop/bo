@@ -39,6 +39,7 @@ class User(AbstractUser):
     phone = models.CharField(max_length=32, blank=True, default="")
     middle_name = models.CharField(max_length=150, blank=True, default="")
     avatar = models.FileField(upload_to="avatars/%Y/%m/", blank=True, null=True)
+    registration_step = models.PositiveSmallIntegerField(default=4, db_index=True)
 
     objects = UserManager()
 
@@ -50,6 +51,12 @@ class User(AbstractUser):
 
 
 class Company(models.Model):
+    class SubjectType(models.TextChoices):
+        FOP_RESIDENT = "fop_resident", "ФОП (Резидент)"
+        LEGAL_RESIDENT = "legal_resident", "Юридична особа (Резидент)"
+        NON_RESIDENT = "non_resident", "Не резидент"
+        INDIVIDUAL = "individual", "Фізична особа"
+
     class Status(models.TextChoices):
         ACTIVE = "active", "Активна"
         INACTIVE = "inactive", "Неактивна"
@@ -58,6 +65,21 @@ class Company(models.Model):
     name = models.CharField(max_length=255)
     goal_tenders = models.BooleanField(default=False)
     goal_participation = models.BooleanField(default=False)
+    subject_type = models.CharField(
+        max_length=32,
+        choices=SubjectType.choices,
+        default=SubjectType.LEGAL_RESIDENT,
+    )
+    registration_country = models.CharField(max_length=50, blank=True, default="")
+    company_address = models.CharField(max_length=500, blank=True, default="")
+    identity_document = models.FileField(
+        upload_to="company_registration_docs/%Y/%m/",
+        blank=True,
+        null=True,
+    )
+    agree_trade_rules = models.BooleanField(default=False)
+    agree_privacy_policy = models.BooleanField(default=False)
+    agree_participation_visibility = models.BooleanField(default=False)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE)
 
     # CPV-категорії, закріплені за компанією
@@ -280,6 +302,20 @@ class CpvDictionary(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover
         return f"{self.cpv_code} - {self.name_ua}"
+
+
+class CountryBusinessNumber(models.Model):
+    country_code = models.CharField(max_length=20, blank=True, default="")
+    number_code = models.CharField(max_length=50, primary_key=True)
+    number_name = models.CharField(max_length=255)
+
+    class Meta:
+        db_table = "countrybusinessnumber"
+        managed = False
+        ordering = ["number_name", "number_code"]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.number_name} ({self.number_code})"
 
 
 class Category(models.Model):

@@ -7,12 +7,15 @@ import { createApiClient } from '~/shared/api/apiClient'
 export const useApi = () => {
   const config = useRuntimeConfig()
   const { getAuthHeaders, checkAuth, refreshAccessToken, logout } = useAuth()
+  const { start, stop } = useGlobalLoader()
 
   const apiClient = createApiClient({
     baseURL: config.public.apiBase,
     getAuthHeaders,
     refreshAccessToken,
-    logout
+    logout,
+    onRequestStart: start,
+    onRequestEnd: stop
   })
 
   const fetch = async <T>(endpoint: string, options: Record<string, unknown> = {}) => {

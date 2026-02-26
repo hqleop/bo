@@ -5,6 +5,8 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     CustomTokenObtainPairView,
     registration_step1,
+    registration_country_business_numbers,
+    registration_company_lookup,
     registration_step2_new_company,
     registration_step2_existing_company,
     registration_step3_company_cpvs,
@@ -72,6 +74,8 @@ urlpatterns = [
     path("auth/password-change/", password_change, name="password_change"),
     # Registration
     path("registration/step1/", registration_step1, name="registration_step1"),
+    path("registration/country-business-numbers/", registration_country_business_numbers, name="registration_country_business_numbers"),
+    path("registration/company-by-code/", registration_company_lookup, name="registration_company_lookup"),
     path("registration/step2/new/", registration_step2_new_company, name="registration_step2_new"),
     path("registration/step2/existing/", registration_step2_existing_company, name="registration_step2_existing"),
     path("registration/step3/company-cpvs/", registration_step3_company_cpvs, name="registration_step3_company_cpvs"),
@@ -84,4 +88,3 @@ urlpatterns = [
     # Router viewsets
     path("", include(router.urls)),
 ]
-

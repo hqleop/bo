@@ -13,12 +13,18 @@
         <div class="flex gap-4">
           <template v-if="isAuthenticated">
             <UButton to="/cabinet/dashboard" color="primary">Кабінет</UButton>
-            <UButton variant="ghost" color="gray" @click="handleLogout"
+            <UButton
+              variant="outline"
+              color="neutral"
+              @click="logoutUser"
+              to="/"
               >Вийти</UButton
             >
           </template>
           <template v-else>
-            <UButton to="/login" variant="ghost" color="gray">Вхід</UButton>
+            <UButton to="/login" variant="outline" color="neutral"
+              >Вхід</UButton
+            >
             <UButton to="/register" color="primary">Реєстрація</UButton>
           </template>
         </div>
@@ -45,7 +51,8 @@ const { isAuthenticated, checkAuth, logout } = useAuth();
 // Перевірка автентифікації при завантаженні
 await checkAuth();
 
-const handleLogout = () => {
+function logoutUser() {
+  const { logout } = useAuth();
   logout();
-};
+}
 </script>

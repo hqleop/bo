@@ -70,7 +70,7 @@ export async function registerStep1(request: RequestFn, body: Record<string, unk
   return request<{ user_id?: number }>('/registration/step1/', { method: 'POST', body })
 }
 
-export async function registerStep2New(request: RequestFn, body: Record<string, unknown>) {
+export async function registerStep2New(request: RequestFn, body: unknown) {
   return request<unknown>('/registration/step2/new/', { method: 'POST', body })
 }
 
@@ -80,6 +80,14 @@ export async function registerStep2Existing(request: RequestFn, body: Record<str
 
 export async function registerStep3CompanyCpvs(request: RequestFn, body: Record<string, unknown>) {
   return request<unknown>('/registration/step3/company-cpvs/', { method: 'POST', body })
+}
+
+export async function getRegistrationCountryBusinessNumbers(request: RequestFn) {
+  return request<unknown[]>('/registration/country-business-numbers/')
+}
+
+export async function lookupRegistrationCompanyByCode(request: RequestFn, edrpou: string) {
+  return request<unknown>(`/registration/company-by-code/?edrpou=${encodeURIComponent(edrpou)}`)
 }
 
 export async function getCurrentCompanyCpvs(request: RequestFn) {

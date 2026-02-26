@@ -48,6 +48,7 @@ definePageMeta({
 });
 
 const { login, isAuthenticated, checkAuth } = useAuth();
+const { refreshMe } = useMe();
 
 // Перевірка чи вже залогінений
 await checkAuth();
@@ -67,6 +68,17 @@ const onSubmit = async () => {
   loading.value = false;
 
   if (result.success) {
+    const me = await refreshMe();
+    const registrationStep = Number((me as any)?.registration_step ?? 4);
+    if (registrationStep < 4) {
+      await navigateTo(`/register?step=${Math.min(Math.max(registrationStep, 1), 3)}`);
+      return;
+    }
+    const hasMemberships = Array.isArray(me?.memberships) && me.memberships.length > 0;
+    if (!hasMemberships) {
+      await navigateTo("/register?step=2");
+      return;
+    }
     await navigateTo("/cabinet/dashboard");
   } else {
     // Show error (TODO: use toast/notification)

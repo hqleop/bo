@@ -102,7 +102,7 @@
                         @toggle="toggleCategory"
                         @update:search-term="categorySearch = $event"
                       />
-                      <CpvLazyMultiSearch
+                      <CpvTenderModalSelect
                         label="Категорія CPV"
                         placeholder="Оберіть CPV"
                         required
@@ -223,7 +223,8 @@
                   <p
                     class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
                   >
-                    Загальні умови проведення тендера
+                    Загальні умови проведення
+                    тендера
                   </p>
                   <UFormField
                     label="Опис умов та вимог"
@@ -271,7 +272,9 @@
             class="h-full min-h-0 flex flex-col rounded-lg p-4 bg-white"
           >
             <div class="flex items-center justify-between mb-4">
-              <h3 class="text-lg font-semibold">Запрошення учасників</h3>
+              <h3 class="text-lg font-semibold">
+                Запрошення учасників
+              </h3>
               <UButton
                 variant="ghost"
                 size="sm"
@@ -290,7 +293,8 @@
                 <h4
                   class="p-3 border-b border-gray-200 text-sm font-semibold text-gray-700"
                 >
-                  Обрання контрагента зі списку контрагентів компанії
+                  Обрання контрагента зі списку
+                  контрагентів компанії
                 </h4>
                 <div
                   class="flex-1 min-h-0 flex flex-col min-w-0 divide-y divide-gray-200"
@@ -299,7 +303,9 @@
                   <div
                     class="flex-1 min-h-0 flex flex-col p-3 overflow-hidden min-h-[200px]"
                   >
-                    <UFormField label="Пошук контрагента за назвою або кодом">
+                    <UFormField
+                      label="Пошук контрагента за назвою або кодом"
+                    >
                       <UInput
                         v-model="invitationContractorSearch"
                         placeholder="Назва або ЄДРПОУ"
@@ -366,7 +372,8 @@
                         </li>
                       </ul>
                       <p v-else class="text-sm text-gray-500 p-3">
-                        Немає постачальників за критеріями пошуку.
+                        Немає постачальників за
+                        критеріями пошуку.
                       </p>
                     </div>
                     <div
@@ -437,7 +444,9 @@
                         />
                       </li>
                     </ul>
-                    <p v-else class="text-sm text-gray-500 py-1">Порожньо.</p>
+                    <p v-else class="text-sm text-gray-500 py-1">
+                      Порожньо.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -501,7 +510,8 @@
                         Завантаження...
                       </p>
                       <p v-else class="text-sm text-gray-500 p-3">
-                        Немає категорій за критеріями пошуку.
+                        Немає категорій за критеріями
+                        пошуку.
                       </p>
                     </div>
                     <div
@@ -546,7 +556,8 @@
                   </div>
                   <div class="flex-1 min-h-0 flex flex-col p-3 min-h-[120px]">
                     <h4 class="text-sm font-semibold text-gray-700 mb-2">
-                      Категорії CPV, за якими запрошуються учасники
+                      Категорії CPV, за якими
+                      запрошуються учасники
                     </h4>
                     <ul
                       v-if="invitationCpvFilterIds.length"
@@ -571,7 +582,8 @@
                       </li>
                     </ul>
                     <p v-else class="text-sm text-gray-500 py-1">
-                      Оберіть категорії вище та натисніть Запросити.
+                      Оберіть категорії вище та
+                      натисніть Запросити.
                     </p>
                   </div>
                 </div>
@@ -609,7 +621,9 @@
                       />
                     </li>
                   </ul>
-                  <p v-else class="text-sm text-gray-500 py-2">Порожньо.</p>
+                  <p v-else class="text-sm text-gray-500 py-2">
+                    Порожньо.
+                  </p>
                 </div>
               </div>
             </div>
@@ -619,7 +633,9 @@
             v-else
             class="h-full min-h-0 flex flex-col rounded-lg p-4 bg-white"
           >
-            <h3 class="text-lg font-semibold mb-3">Підготовка процедури</h3>
+            <h3 class="text-lg font-semibold mb-3">
+              Підготовка процедури
+            </h3>
             <UTabs
               v-model="prepTab"
               :items="prepTabs"
@@ -632,10 +648,7 @@
                   v-if="item.value === 'positions'"
                   class="h-full min-h-0 flex flex-col gap-2"
                 >
-                  <div
-                    v-if="!isParticipant"
-                    class="flex justify-end shrink-0"
-                  >
+                  <div v-if="!isParticipant" class="flex justify-end shrink-0">
                     <UButton
                       variant="outline"
                       size="sm"
@@ -673,7 +686,8 @@
                           v-else-if="!nomenclatureTreeItems.length"
                           class="text-sm text-gray-500 py-4 text-center"
                         >
-                          Оберіть категорію або CPV у паспорті тендера.
+                          Оберіть категорію або CPV у
+                          паспорті тендера.
                         </div>
                         <UTree
                           v-else
@@ -691,7 +705,9 @@
                       <div class="flex-1 min-h-0 overflow-auto">
                         <UTable
                           :data="
-                            isParticipant ? displayTenderPositions : tenderPositions
+                            isParticipant
+                              ? displayTenderPositions
+                              : tenderPositions
                           "
                           :columns="positionsColumns"
                           class="w-full"
@@ -749,7 +765,10 @@
                           placeholder="Оберіть варіант"
                         />
                       </UFormField>
-                      <UFormField label="Доставка" class="min-w-[260px]">
+                      <UFormField
+                        label="Доставка"
+                        class="min-w-[260px]"
+                      >
                         <USelectMenu
                           v-model="priceCriterionDelivery"
                           :items="deliveryOptions"
@@ -814,9 +833,12 @@
                         </UButton>
                       </div>
                       <p class="text-sm text-gray-600 mb-3">
-                        Подвійний клік по критерію в списку зліва додає його
-                        сюди. Загальні критерії заповнюються один раз на тендер,
-                        індивідуальні — по кожній позиції.
+                        Подвійний клік по критерію в
+                        списку зліва додає його сюди.
+                        Загальні критерії
+                        заповнюються один раз на
+                        тендер, індивідуальні — по
+                        кожній позиції.
                       </p>
                       <div v-if="tenderCriteriaGeneral.length > 0" class="mb-4">
                         <h5
@@ -850,7 +872,8 @@
                         <h5
                           class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2"
                         >
-                          Індивідуальні критерії (по позиції)
+                          Індивідуальні критерії (по
+                          позиції)
                         </h5>
                         <ul
                           class="space-y-2 text-sm flex-1 min-h-0 overflow-auto"
@@ -893,15 +916,23 @@
         <template v-else-if="displayStage === 'acceptance'">
           <UCard>
             <template #header>
-              <h3 class="text-lg font-semibold">Прийом пропозицій</h3>
+              <h3 class="text-lg font-semibold">
+                Прийом пропозицій
+              </h3>
             </template>
             <div class="border rounded-lg overflow-hidden">
               <table class="w-full text-sm border-collapse">
                 <thead>
                   <tr class="border-b bg-gray-50">
-                    <th class="text-left p-2 font-medium">Контрагент</th>
-                    <th class="text-left p-2 font-medium">Час підтвердження участі</th>
-                    <th class="text-left p-2 font-medium">Час подачі пропозиції</th>
+                    <th class="text-left p-2 font-medium">
+                      Контрагент
+                    </th>
+                    <th class="text-left p-2 font-medium">
+                      Час підтвердження участі
+                    </th>
+                    <th class="text-left p-2 font-medium">
+                      Час подачі пропозиції
+                    </th>
                     <th class="text-left p-2 font-medium w-40">Дія</th>
                   </tr>
                 </thead>
@@ -912,19 +943,32 @@
                     class="border-b hover:bg-gray-50/50"
                   >
                     <td class="p-2">
-                      {{ proposal.supplier_company?.name || proposal.supplier_name || "—" }}
+                      {{
+                        proposal.supplier_company?.name ||
+                        proposal.supplier_name ||
+                        "—"
+                      }}
                     </td>
-                    <td class="p-2">{{ formatDateTime(proposal.created_at) }}</td>
-                    <td class="p-2">{{ formatDateTime(proposal.submitted_at) }}</td>
                     <td class="p-2">
-                      <UButton size="xs" variant="outline" @click="openParticipantProposalModal(proposal)">
+                      {{ formatDateTime(proposal.created_at) }}
+                    </td>
+                    <td class="p-2">
+                      {{ formatDateTime(proposal.submitted_at) }}
+                    </td>
+                    <td class="p-2">
+                      <UButton
+                        size="xs"
+                        variant="outline"
+                        @click="openParticipantProposalModal(proposal)"
+                      >
                         Пропозиція
                       </UButton>
                     </td>
                   </tr>
                   <tr v-if="!decisionProposals.length">
                     <td colspan="4" class="p-4 text-center text-gray-500">
-                      Немає контрагентів, що підтвердили участь.
+                      Немає контрагентів, що
+                      підтвердили участь.
                     </td>
                   </tr>
                 </tbody>
@@ -937,7 +981,10 @@
             <!-- Верхня область: орієнтовна ринкова та рішення -->
             <div class="rounded-lg p-4 bg-gray-50/50">
               <div class="flex flex-wrap items-end gap-6">
-                <UFormField label="Орієнтовна ринкова" class="min-w-[220px]">
+                <UFormField
+                  label="Орієнтовна ринкова"
+                  class="min-w-[220px]"
+                >
                   <USelectMenu
                     v-model="estimatedMarketMethod"
                     :items="estimatedMarketOptions"
@@ -999,16 +1046,21 @@
                 <h3 class="text-lg font-semibold">Затвердження</h3>
               </template>
               <p class="text-sm text-gray-600 mb-4">
-                Перегляньте переможців по позиціях та підтвердьте рішення для
-                завершення тендера.
+                Перегляньте переможців по
+                позиціях та підтвердьте рішення
+                для завершення тендера.
               </p>
               <div class="border rounded-lg overflow-hidden">
                 <table class="w-full text-sm border-collapse">
                   <thead>
                     <tr class="border-b bg-gray-50">
                       <th class="text-left p-2 font-medium">Позиція</th>
-                      <th class="text-left p-2 font-medium">Кількість</th>
-                      <th class="text-left p-2 font-medium">Переможець</th>
+                      <th class="text-left p-2 font-medium">
+                        Кількість
+                      </th>
+                      <th class="text-left p-2 font-medium">
+                        Переможець
+                      </th>
                       <th class="text-left p-2 font-medium">Ціна</th>
                       <th
                         v-for="c in tenderCriteria"
@@ -1029,7 +1081,9 @@
                       <td class="p-2">
                         {{ pos.quantity }} {{ pos.unit_name ?? "" }}
                       </td>
-                      <td class="p-2">{{ pos.winner_supplier_name ?? "—" }}</td>
+                      <td class="p-2">
+                        {{ pos.winner_supplier_name ?? "—" }}
+                      </td>
                       <td class="p-2">{{ pos.winner_price ?? "—" }}</td>
                       <td v-for="c in tenderCriteria" :key="c.id" class="p-2">
                         {{
@@ -1057,7 +1111,9 @@
             <template #header>
               <h3 class="text-lg font-semibold">Завершений</h3>
             </template>
-            <p class="text-sm text-gray-600">Тендер завершено.</p>
+            <p class="text-sm text-gray-600">
+              Тендер завершено.
+            </p>
           </UCard>
         </template>
       </div>
@@ -1119,7 +1175,11 @@
           >
             Змінити час проведення
           </UButton>
-          <UButton class="w-full" variant="outline" @click="openAttachedFilesModal">
+          <UButton
+            class="w-full"
+            variant="outline"
+            @click="openAttachedFilesModal"
+          >
             Прикріплені файли
           </UButton>
           <UButton
@@ -1132,7 +1192,12 @@
           </UButton>
         </template>
         <template v-else-if="displayStage === 'decision'">
-          <template v-if="displayStage === 'decision' && tender?.conduct_type === 'registration'">
+          <template
+            v-if="
+              displayStage === 'decision' &&
+              tender?.conduct_type === 'registration'
+            "
+          >
             <UButton
               class="w-full"
               variant="outline"
@@ -1142,7 +1207,13 @@
               Повернутись на підготовку
             </UButton>
           </template>
-          <template v-else-if="displayStage === 'decision' && (tender?.conduct_type === 'rfx' || tender?.conduct_type === 'online_auction')">
+          <template
+            v-else-if="
+              displayStage === 'decision' &&
+              (tender?.conduct_type === 'rfx' ||
+                tender?.conduct_type === 'online_auction')
+            "
+          >
             <UButton
               class="w-full"
               variant="outline"
@@ -1200,7 +1271,9 @@
     <UModal v-model:open="showPublishModal">
       <template #content>
         <UCard>
-          <template #header><h3>Період проведення</h3></template>
+          <template #header
+            ><h3>Період проведення</h3></template
+          >
           <div class="space-y-4">
             <UFormField label="Початок">
               <UInput v-model="timingForm.start_at" type="datetime-local" />
@@ -1279,7 +1352,9 @@
     <UModal v-model:open="showTimingModal">
       <template #content>
         <UCard>
-          <template #header><h3>Змінити час проведення</h3></template>
+          <template #header
+            ><h3>Змінити час проведення</h3></template
+          >
           <div class="space-y-4">
             <UFormField
               label="Початок"
@@ -1322,29 +1397,50 @@
     <UModal v-model:open="showResumeAcceptanceModal">
       <template #content>
         <UCard>
-          <template #header><h3>Відновити прийом пропозицій</h3></template>
+          <template #header
+            ><h3>
+              Відновити прийом пропозицій
+            </h3></template
+          >
           <p class="text-sm text-gray-600 mb-4">
-            Вкажіть час початку (не раніше поточного) та час завершення прийому пропозицій.
+            Вкажіть час початку (не раніше
+            поточного) та час завершення прийому
+            пропозицій.
           </p>
           <div class="space-y-4">
-            <UFormField label="Початок прийому пропозицій" required>
+            <UFormField
+              label="Початок прийому пропозицій"
+              required
+            >
               <UInput
                 v-model="resumeAcceptanceForm.start_at"
                 type="datetime-local"
                 :min="resumeAcceptanceMinStart"
               />
             </UFormField>
-            <UFormField label="Завершення прийому пропозицій" required>
+            <UFormField
+              label="Завершення прийому пропозицій"
+              required
+            >
               <UInput
                 v-model="resumeAcceptanceForm.end_at"
                 type="datetime-local"
               />
             </UFormField>
             <div class="flex gap-2">
-              <UButton class="flex-1" :disabled="resumeAcceptanceSaving" @click="submitResumeAcceptance">
+              <UButton
+                class="flex-1"
+                :disabled="resumeAcceptanceSaving"
+                @click="submitResumeAcceptance"
+              >
                 Відновити
               </UButton>
-              <UButton class="flex-1" variant="outline" :disabled="resumeAcceptanceSaving" @click="showResumeAcceptanceModal = false">
+              <UButton
+                class="flex-1"
+                variant="outline"
+                :disabled="resumeAcceptanceSaving"
+                @click="showResumeAcceptanceModal = false"
+              >
                 Скасувати
               </UButton>
             </div>
@@ -1356,9 +1452,12 @@
     <UModal v-model:open="showWinnerModal">
       <template #content>
         <UCard>
-          <template #header><h3>Ручний вибір переможця</h3></template>
+          <template #header
+            ><h3>Ручний вибір переможця</h3></template
+          >
           <p class="text-sm text-gray-600 mb-4">
-            Оберіть переможця по кожній позиції з контрагентів, які подали
+            Оберіть переможця по кожній позиції
+            з контрагентів, які подали
             пропозиції.
           </p>
           <div class="space-y-3 max-h-[60vh] overflow-auto">
@@ -1390,7 +1489,9 @@
     <UModal v-model:open="showDecisionModal">
       <template #content>
         <UCard>
-          <template #header><h3>Зафіксувати рішення</h3></template>
+          <template #header
+            ><h3>Зафіксувати рішення</h3></template
+          >
           <div class="space-y-2">
             <UButton class="w-full" @click="fixDecision('winner')">
               Закрити із переможцями
@@ -1428,31 +1529,63 @@
             style="resize: vertical"
           >
             <table
-              v-if="proposalComparisonPositions.length && decisionProposals.length"
+              v-if="
+                proposalComparisonPositions.length && decisionProposals.length
+              "
               class="w-full text-sm border-collapse"
             >
               <thead>
                 <tr class="border-b bg-gray-100">
-                  <th class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap">Назва позиції</th>
-                  <th class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap">Кількість</th>
-                  <template v-for="proposal in decisionProposals" :key="proposal.id">
+                  <th
+                    class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap"
+                  >
+                    Назва позиції
+                  </th>
+                  <th
+                    class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap"
+                  >
+                    Кількість
+                  </th>
+                  <template
+                    v-for="proposal in decisionProposals"
+                    :key="proposal.id"
+                  >
                     <th
                       :colspan="2 + (tender.value?.criteria?.length ?? 0)"
                       class="text-left p-2 font-medium bg-gray-200 border-l border-gray-300"
                     >
-                      {{ proposal.supplier_company?.name || proposal.supplier_name || "—" }}
-                      <span v-if="proposal.supplier_company?.edrpou" class="text-gray-600 font-normal">({{ proposal.supplier_company.edrpou }})</span>
+                      {{
+                        proposal.supplier_company?.name ||
+                        proposal.supplier_name ||
+                        "—"
+                      }}
+                      <span
+                        v-if="proposal.supplier_company?.edrpou"
+                        class="text-gray-600 font-normal"
+                        >({{ proposal.supplier_company.edrpou }})</span
+                      >
                     </th>
                   </template>
                 </tr>
                 <tr class="border-b bg-gray-50">
                   <th class="p-2 bg-gray-50"></th>
                   <th class="p-2 bg-gray-50"></th>
-                  <template v-for="proposal in decisionProposals" :key="proposal.id">
-                    <th class="text-left p-2 font-medium border-l border-gray-200 whitespace-nowrap">{{ proposalComparisonPriceHeader }}</th>
-                    <th class="text-left p-2 font-medium border-l border-gray-200 whitespace-nowrap">Сума</th>
+                  <template
+                    v-for="proposal in decisionProposals"
+                    :key="proposal.id"
+                  >
                     <th
-                      v-for="c in (tender.value?.criteria ?? [])"
+                      class="text-left p-2 font-medium border-l border-gray-200 whitespace-nowrap"
+                    >
+                      {{ proposalComparisonPriceHeader }}
+                    </th>
+                    <th
+                      class="text-left p-2 font-medium border-l border-gray-200 whitespace-nowrap"
+                    >
+                      Сума
+                    </th>
+                    <th
+                      v-for="c in tender.value?.criteria ?? []"
                       :key="c.id"
                       class="text-left p-2 font-medium border-l border-gray-200"
                     >
@@ -1468,40 +1601,70 @@
                   class="border-b hover:bg-gray-50/50"
                 >
                   <td class="p-2 bg-white whitespace-nowrap">{{ pos.name }}</td>
-                  <td class="p-2 bg-white whitespace-nowrap">{{ pos.quantity }} {{ pos.unit_name || "" }}</td>
-                  <template v-for="proposal in decisionProposals" :key="proposal.id">
+                  <td class="p-2 bg-white whitespace-nowrap">
+                    {{ pos.quantity }} {{ pos.unit_name || "" }}
+                  </td>
+                  <template
+                    v-for="proposal in decisionProposals"
+                    :key="proposal.id"
+                  >
                     <td
                       class="p-2 border-l border-gray-200"
-                      :class="(proposalComparisonByPosition[pos.id]?.bestId === proposal.id && 'bg-green-500/20') || (proposalComparisonByPosition[pos.id]?.worstId === proposal.id && proposalComparisonByPosition[pos.id]?.worstId !== proposalComparisonByPosition[pos.id]?.bestId && 'bg-red-500/20')"
+                      :class="
+                        (proposalComparisonByPosition[pos.id]?.bestId ===
+                          proposal.id &&
+                          'bg-green-500/20') ||
+                        (proposalComparisonByPosition[pos.id]?.worstId ===
+                          proposal.id &&
+                          proposalComparisonByPosition[pos.id]?.worstId !==
+                            proposalComparisonByPosition[pos.id]?.bestId &&
+                          'bg-red-500/20')
+                      "
                     >
-                      {{ getProposalPositionValue(proposal, pos.id)?.price ?? "—" }}
+                      {{
+                        getProposalPositionValue(proposal, pos.id)?.price ??
+                        "—"
+                      }}
                     </td>
                     <td
                       class="p-2 border-l border-gray-200"
-                      :class="(proposalComparisonByPosition[pos.id]?.bestId === proposal.id && 'bg-green-500/20') || (proposalComparisonByPosition[pos.id]?.worstId === proposal.id && proposalComparisonByPosition[pos.id]?.worstId !== proposalComparisonByPosition[pos.id]?.bestId && 'bg-red-500/20')"
+                      :class="
+                        (proposalComparisonByPosition[pos.id]?.bestId ===
+                          proposal.id &&
+                          'bg-green-500/20') ||
+                        (proposalComparisonByPosition[pos.id]?.worstId ===
+                          proposal.id &&
+                          proposalComparisonByPosition[pos.id]?.worstId !==
+                            proposalComparisonByPosition[pos.id]?.bestId &&
+                          'bg-red-500/20')
+                      "
                     >
                       {{ getProposalPositionSum(proposal, pos) ?? "—" }}
                     </td>
                     <td
-                      v-for="c in (tender.value?.criteria ?? [])"
+                      v-for="c in tender.value?.criteria ?? []"
                       :key="c.id"
                       class="p-2 border-l border-gray-200"
                     >
-                      {{ getProposalCriterionValue(proposal, pos.id, c.id) ?? "—" }}
+                      {{
+                        getProposalCriterionValue(proposal, pos.id, c.id) ??
+                        "—"
+                      }}
                     </td>
                   </template>
                 </tr>
               </tbody>
             </table>
             <p v-else class="text-gray-500 py-8 text-center">
-              Немає позицій або пропозицій для порівняння.
+              Немає позицій або пропозицій для
+              порівняння.
             </p>
           </div>
         </UCard>
       </template>
     </UModal>
 
-        <UModal
+    <UModal
       v-model:open="showParticipantProposalModal"
       :ui="{ width: 'max-w-[95vw]', height: 'max-h-[90vh]' }"
     >
@@ -1510,7 +1673,11 @@
           <template #header>
             <h3 class="text-lg font-semibold">
               Пропозиція:
-              {{ selectedParticipantProposal?.supplier_company?.name || selectedParticipantProposal?.supplier_name || "—" }}
+              {{
+                selectedParticipantProposal?.supplier_company?.name ||
+                selectedParticipantProposal?.supplier_name ||
+                "—"
+              }}
             </h3>
           </template>
           <div class="overflow-auto min-h-0 flex-1">
@@ -1519,9 +1686,11 @@
                 <tr class="border-b bg-gray-100">
                   <th class="text-left p-2 font-medium">Позиція</th>
                   <th class="text-left p-2 font-medium">Кількість</th>
-                  <th class="text-left p-2 font-medium">{{ proposalComparisonPriceHeader }}</th>
+                  <th class="text-left p-2 font-medium">
+                    {{ proposalComparisonPriceHeader }}
+                  </th>
                   <th
-                    v-for="c in (tender.value?.criteria ?? [])"
+                    v-for="c in tender.value?.criteria ?? []"
                     :key="c.id"
                     class="text-left p-2 font-medium"
                   >
@@ -1536,16 +1705,29 @@
                   class="border-b hover:bg-gray-50/50"
                 >
                   <td class="p-2">{{ pos.name }}</td>
-                  <td class="p-2">{{ pos.quantity }} {{ pos.unit_name || "" }}</td>
                   <td class="p-2">
-                    {{ getProposalPositionValue(selectedParticipantProposal, pos.id)?.price ?? "—" }}
+                    {{ pos.quantity }} {{ pos.unit_name || "" }}
+                  </td>
+                  <td class="p-2">
+                    {{
+                      getProposalPositionValue(
+                        selectedParticipantProposal,
+                        pos.id,
+                      )?.price ?? "—"
+                    }}
                   </td>
                   <td
-                    v-for="c in (tender.value?.criteria ?? [])"
+                    v-for="c in tender.value?.criteria ?? []"
                     :key="c.id"
                     class="p-2"
                   >
-                    {{ getProposalCriterionValue(selectedParticipantProposal, pos.id, c.id) ?? "—" }}
+                    {{
+                      getProposalCriterionValue(
+                        selectedParticipantProposal,
+                        pos.id,
+                        c.id,
+                      ) ?? "—"
+                    }}
                   </td>
                 </tr>
                 <tr v-if="!displayTenderPositions.length">
@@ -1559,13 +1741,15 @@
         </UCard>
       </template>
     </UModal>
-<UModal
+    <UModal
       v-model:open="showAttachedFilesModal"
       :ui="{ content: 'w-[calc(100vw-2rem)] !max-w-4xl' }"
     >
       <template #content>
         <UCard class="min-w-0">
-          <template #header><h3>Прикріплені файли</h3></template>
+          <template #header
+            ><h3>Прикріплені файли</h3></template
+          >
           <div class="space-y-4 min-w-0">
             <div>
               <input
@@ -1674,7 +1858,9 @@
     <UModal v-model:open="showCreateCriterionModal">
       <template #content>
         <UCard>
-          <template #header><h3>Створити критерій</h3></template>
+          <template #header
+            ><h3>Створити критерій</h3></template
+          >
           <div class="space-y-4">
             <UFormField label="Назва критерія" required>
               <UInput
@@ -1724,11 +1910,15 @@
     <UModal v-model:open="showCreateNomenclatureModal">
       <template #content>
         <UCard>
-          <template #header><h3>Створити номенклатуру</h3></template>
+          <template #header
+            ><h3>Створити номенклатуру</h3></template
+          >
           <div class="space-y-4">
             <p class="text-sm text-gray-600">
-              Номенклатура буде створена в довіднику, привʼязана до категорій
-              CPV з паспорта тендера та додана до позицій тендера.
+              Номенклатура буде створена в
+              довіднику, привʼязана до категорій
+              CPV з паспорта тендера та додана до
+              позицій тендера.
             </p>
             <UFormField label="Назва номенклатури" required>
               <UInput
@@ -1784,7 +1974,9 @@ const isSales = false;
 const tendersUC = useTendersUseCases();
 const { me } = useMe();
 const myCompanyId = computed(
-  () => (me.value as { memberships?: Array<{ company?: { id?: number } }> })?.memberships?.[0]?.company?.id ?? null,
+  () =>
+    (me.value as { memberships?: Array<{ company?: { id?: number } }> })
+      ?.memberships?.[0]?.company?.id ?? null,
 );
 const isParticipant = computed(
   () =>
@@ -1867,8 +2059,14 @@ const vatOptions = [
   { value: "without_vat", label: "без ПДВ" },
 ];
 const deliveryOptions = [
-  { value: "with_delivery", label: "із урахуванням доставки" },
-  { value: "without_delivery", label: "без урахування доставки" },
+  {
+    value: "with_delivery",
+    label: "із урахуванням доставки",
+  },
+  {
+    value: "without_delivery",
+    label: "без урахування доставки",
+  },
 ];
 
 // Критерії з довідника та додані до тендера
@@ -2352,7 +2550,12 @@ const selectedCategoryIds = computed(() =>
 const conductTypeOptions = computed(() => {
   // Для тендерів з типом "Реєстрація" завжди показуємо лише цей варіант
   if (isRegistration.value) {
-    return [{ value: "registration", label: "Реєстрація закупівлі" }];
+    return [
+      {
+        value: "registration",
+        label: "Реєстрація закупівлі",
+      },
+    ];
   }
   const tour = tender.value?.tour_number ?? 1;
   if (tour <= 1) {
@@ -2421,7 +2624,9 @@ function decisionWinnerOptionsForPosition(positionId: number) {
     .map((p) => ({
       value: p.id,
       label:
-        p.supplier_name ?? p.supplier_company?.name ?? `Пропозиція #${p.id}`,
+        p.supplier_name ??
+        p.supplier_company?.name ??
+        `Пропозиція #${p.id}`,
     }));
 }
 
@@ -2435,13 +2640,28 @@ function setDecisionWinner(positionId: number, proposalId: number | null) {
 const decisionTableColumns = [
   { accessorKey: "name", header: "Позиція" },
   { accessorKey: "quantity_unit", header: "Кількість" },
-  { accessorKey: "market_value", header: "Орієнтовна ринкова" },
-  { accessorKey: "best_counterparty", header: "Кращий контрагент" },
+  {
+    accessorKey: "market_value",
+    header: "Орієнтовна ринкова",
+  },
+  {
+    accessorKey: "best_counterparty",
+    header: "Кращий контрагент",
+  },
   { accessorKey: "best_price", header: "Краща ціна" },
-  { accessorKey: "selected_counterparty", header: "Контрагент що обирається" },
-  { accessorKey: "selected_price", header: "Ціна що обирається" },
+  {
+    accessorKey: "selected_counterparty",
+    header: "Контрагент що обирається",
+  },
+  {
+    accessorKey: "selected_price",
+    header: "Ціна що обирається",
+  },
   { accessorKey: "price_diff", header: "Розбіжність у ціні" },
-  { accessorKey: "economy_market", header: "Економія по орієнтовній ринковій" },
+  {
+    accessorKey: "economy_market",
+    header: "Економія по орієнтовній ринковій",
+  },
 ];
 
 const decisionTableRows = computed(() => {
@@ -2553,7 +2773,9 @@ const nomenclatureTreeItems = computed(() => {
   let label: string;
   let id: string;
   if (categoryId !== null && categoryId !== undefined) {
-    label = findCategoryNameById(categoryTree.value, categoryId) || "Категорія";
+    label =
+      findCategoryNameById(categoryTree.value, categoryId) ||
+      "Категорія";
     id = `cat-${categoryId}`;
   } else if (cpvIds.length > 0 && cpvLabels.length > 0) {
     label =
@@ -2641,7 +2863,10 @@ async function openSubmitProposal() {
           : !priceCriterionVat.value || !priceCriterionDelivery.value
             ? "Налаштуйте параметри цінового критерія (ПДВ та Доставка)."
             : "";
-      alert(msg || "Неможливо відкрити подачу пропозицій.");
+      alert(
+        msg ||
+          "Неможливо відкрити подачу пропозицій.",
+      );
       return;
     }
     await navigateTo(`/cabinet/tenders/proposals/${tenderId.value}`);
@@ -2689,7 +2914,8 @@ async function loadAttachedFiles() {
   attachedFilesLoading.value = false;
   if (error) {
     useToast().add({
-      title: "Помилка завантаження списку файлів",
+      title:
+        "Помилка завантаження списку файлів",
       description: error,
       color: "error",
     });
@@ -2735,7 +2961,8 @@ async function submitCreateNomenclature() {
   if (!companyId) {
     useToast().add({
       title: "Помилка",
-      description: "Тендер не привʼязаний до компанії.",
+      description:
+        "Тендер не привʼязаний до компанії.",
       color: "error",
     });
     return;
@@ -2783,7 +3010,8 @@ async function submitCreateNomenclature() {
     }
     showCreateNomenclatureModal.value = false;
     useToast().add({
-      title: "Номенклатуру створено та додано до позицій",
+      title:
+        "Номенклатуру створено та додано до позицій",
       color: "success",
     });
     await loadNomenclaturesForPreparation();
@@ -2918,7 +3146,10 @@ function openCreateCriterionModal() {
 async function saveCreateCriterion() {
   const name = (createCriterionForm.name || "").trim();
   if (!name) {
-    useToast().add({ title: "Вкажіть назву критерія", color: "error" });
+    useToast().add({
+      title: "Вкажіть назву критерія",
+      color: "error",
+    });
     return;
   }
   const companyId = tender.value?.company;
@@ -2970,7 +3201,8 @@ async function saveCreateCriterion() {
     }
     showCreateCriterionModal.value = false;
     useToast().add({
-      title: "Критерій створено та додано до тендера",
+      title:
+        "Критерій створено та додано до тендера",
       color: "success",
     });
     await loadReferenceCriteria();
@@ -2997,7 +3229,12 @@ const criteriaTreeItems = computed(() => {
     label: `${c.name || ""} (${criterionTypeLabel(c.type)})`,
   }));
   return [
-    { id: "criteria-root", label: "Критерії", defaultExpanded: true, children },
+    {
+      id: "criteria-root",
+      label: "Критерії",
+      defaultExpanded: true,
+      children,
+    },
   ];
 });
 
@@ -3101,9 +3338,16 @@ async function loadTender() {
   loading.value = true;
   try {
     const loadFromParticipationList = async () => {
-      const tabs: Array<"active" | "processing" | "completed"> = ["active", "processing", "completed"];
+      const tabs: Array<"active" | "processing" | "completed"> = [
+        "active",
+        "processing",
+        "completed",
+      ];
       for (const tab of tabs) {
-        const { data } = await tendersUC.getTendersForParticipation(isSales, tab);
+        const { data } = await tendersUC.getTendersForParticipation(
+          isSales,
+          tab,
+        );
         if (!Array.isArray(data)) continue;
         const found = data.find((t: any) => Number(t?.id) === tenderId.value);
         if (found) return found as any;
@@ -3145,7 +3389,8 @@ async function loadTender() {
       tenderPositions.value = [];
     }
     priceCriterionVat.value = tenderData.price_criterion_vat ?? undefined;
-    priceCriterionDelivery.value = tenderData.price_criterion_delivery ?? undefined;
+    priceCriterionDelivery.value =
+      tenderData.price_criterion_delivery ?? undefined;
     if (Array.isArray(tenderData.criteria)) {
       tenderCriteria.value = tenderData.criteria;
     }
@@ -3264,7 +3509,8 @@ function addPositionFromNomenclature(nomenclatureId: number) {
   if (isViewingPreviousTour.value) return;
   if (tenderPositions.value.some((p) => p.nomenclature_id === nomenclatureId)) {
     useToast().add({
-      title: "Ця номенклатура вже додана до позицій тендера",
+      title:
+        "Ця номенклатура вже додана до позицій тендера",
       color: "warning",
     });
     return;
@@ -3333,7 +3579,8 @@ async function savePassport() {
   if (cpvIds.length === 0) {
     useToast().add({
       title: "Заповніть обовʼязкове поле",
-      description: "Оберіть хоча б одну категорію CPV.",
+      description:
+        "Оберіть хоча б одну категорію CPV.",
       color: "error",
     });
     return;
@@ -3357,7 +3604,8 @@ async function savePassport() {
     if (!ok) {
       useToast().add({
         title: "Помилка збереження",
-        description: "Перевірте дані (зокрема категорію CPV).",
+        description:
+          "Перевірте дані (зокрема категорію CPV).",
         color: "error",
       });
     }
@@ -3398,8 +3646,10 @@ async function publishTender() {
   const prepared = await savePreparation();
   if (!prepared) {
     useToast().add({
-      title: "Не вдалося зберегти підготовку тендера",
-      description: "Перевірте позиції, критерії та параметри цінового критерію.",
+      title:
+        "Не вдалося зберегти підготовку тендера",
+      description:
+        "Перевірте позиції, критерії та параметри цінового критерію.",
       color: "error",
     });
     return;
@@ -3453,18 +3703,30 @@ async function submitResumeAcceptance() {
   const startStr = (resumeAcceptanceForm.start_at || "").trim();
   const endStr = (resumeAcceptanceForm.end_at || "").trim();
   if (!startStr || !endStr) {
-    useToast().add({ title: "Заповніть час початку та завершення", color: "error" });
+    useToast().add({
+      title:
+        "Заповніть час початку та завершення",
+      color: "error",
+    });
     return;
   }
   const start = new Date(startStr);
   const end = new Date(endStr);
   const now = new Date();
   if (start < now) {
-    useToast().add({ title: "Час початку не може бути меншим від поточного", color: "error" });
+    useToast().add({
+      title:
+        "Час початку не може бути меншим від поточного",
+      color: "error",
+    });
     return;
   }
   if (end <= start) {
-    useToast().add({ title: "Час завершення повинен бути пізніше за час початку", color: "error" });
+    useToast().add({
+      title:
+        "Час завершення повинен бути пізніше за час початку",
+      color: "error",
+    });
     return;
   }
   resumeAcceptanceSaving.value = true;
@@ -3476,7 +3738,10 @@ async function submitResumeAcceptance() {
     });
     if (ok) {
       showResumeAcceptanceModal.value = false;
-      useToast().add({ title: "Прийом пропозицій відновлено", color: "success" });
+      useToast().add({
+        title: "Прийом пропозицій відновлено",
+        color: "success",
+      });
       await loadTender();
     }
   } finally {
@@ -3539,28 +3804,46 @@ async function loadDecisionProposals() {
   selectedWinnerByPosition.value = next;
 }
 
-const proposalComparisonPositions = computed(() => tender.value?.positions ?? []);
+const proposalComparisonPositions = computed(
+  () => tender.value?.positions ?? [],
+);
 const proposalComparisonPriceHeader = computed(() => {
   const v = tender.value?.price_criterion_vat;
   const d = tender.value?.price_criterion_delivery;
-  const vatLabels: Record<string, string> = { with_vat: "з ПДВ", without_vat: "без ПДВ" };
-  const deliveryLabels: Record<string, string> = { with_delivery: "із урахуванням доставки", without_delivery: "без урахування доставки" };
+  const vatLabels: Record<string, string> = {
+    with_vat: "з ПДВ",
+    without_vat: "без ПДВ",
+  };
+  const deliveryLabels: Record<string, string> = {
+    with_delivery: "із урахуванням доставки",
+    without_delivery: "без урахування доставки",
+  };
   const vLabel = v && vatLabels[v] ? vatLabels[v] : v || "";
   const dLabel = d && deliveryLabels[d] ? deliveryLabels[d] : d || "";
   return ["Ціна", vLabel, dLabel].filter(Boolean).join(" ");
 });
 
-function getProposalPositionSum(proposal: any, pos: { id: number; quantity: number }) {
+function getProposalPositionSum(
+  proposal: any,
+  pos: { id: number; quantity: number },
+) {
   const pv = getProposalPositionValue(proposal, pos.id);
   const price = pv?.price;
   if (price == null || price === "") return null;
   const num = Number(price);
   if (Number.isNaN(num)) return null;
   const qty = Number(pos.quantity) || 0;
-  return (qty * num).toLocaleString("uk-UA", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return (qty * num).toLocaleString("uk-UA", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
 }
 
-function getProposalCriterionValue(proposal: any, positionId: number, criterionId: number) {
+function getProposalCriterionValue(
+  proposal: any,
+  positionId: number,
+  criterionId: number,
+) {
   const pv = getProposalPositionValue(proposal, positionId);
   const cv = pv?.criterion_values;
   if (!cv || typeof cv !== "object") return null;
@@ -3582,7 +3865,8 @@ function getBestWorstForProposalComparison(positionId: number) {
 }
 
 const proposalComparisonByPosition = computed(() => {
-  const out: Record<number, { bestId: number | null; worstId: number | null }> = {};
+  const out: Record<number, { bestId: number | null; worstId: number | null }> =
+    {};
   for (const pos of proposalComparisonPositions.value) {
     out[pos.id] = getBestWorstForProposalComparison(pos.id);
   }
@@ -3672,5 +3956,3 @@ watch(prepTab, (tab) => {
   opacity: 0;
 }
 </style>
-
-

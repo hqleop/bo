@@ -19,37 +19,54 @@
 
 ```
 bo/
-├── backend/                 # Django REST API
-│   ├── config/              # Налаштування Django (settings, urls)
-│   ├── core/                # Моделі, API, адмінка
-│   │   ├── models.py        # User, Company, тендери, довідники
-│   │   ├── views.py, serializers.py, urls.py
-│   │   ├── admin.py
-│   │   ├── migrations/
-│   │   └── management/commands/
-│   │       └── init_permissions.py
-│   ├── manage.py
-│   └── requirements.txt
-│
-└── frontend/                # Nuxt 4 SPA-кабінет
-    ├── layouts/
-    │   ├── default.vue      # Публічні сторінки
-    │   └── cabinet.vue      # Кабінет (меню, сповіщення, профіль)
-    ├── pages/
-    │   ├── index.vue, login.vue, register.vue
-    │   └── cabinet/         # Сторінки під layout cabinet
-    │       ├── dashboard.vue, profile.vue
-    │       ├── tenders/     # Журнал, створення, картка тендера, пропозиції
-    │       ├── tenders/sales/
-    │       ├── suppliers/   # Контрагенти
-    │       ├── reference/   # Номенклатури, категорії, статті витрат, філіали, критерії
-    │       ├── participation.vue, templates.vue
-    │       ├── users.vue, roles.vue, permissions.vue, settings.vue
-    │       └── ...
-    ├── composables/         # useAuth, useApi, useMe
-    ├── assets/
-    ├── nuxt.config.ts
-    └── package.json
+|-- backend/                         # Django REST API
+|   |-- config/                      # Django config (settings, urls, asgi/wsgi)
+|   |-- core/                        # Domain models, API, admin, migrations
+|   |   |-- management/commands/
+|   |   |   `-- init_permissions.py
+|   |   |-- migrations/
+|   |   |-- admin.py
+|   |   |-- models.py
+|   |   |-- serializers.py
+|   |   |-- tests.py
+|   |   |-- urls.py
+|   |   `-- views.py
+|   |-- import/                      # Utility scripts/files for CPV import
+|   |-- manage.py
+|   |-- requirements.txt
+|   `-- README.md
+|-- frontend/                        # Nuxt 4 app
+|   |-- assets/css/main.css
+|   |-- components/                  # Reusable UI components
+|   |-- composables/                 # useAuth/useApi/use*UseCases
+|   |-- core/apiClient.ts
+|   |-- docs/ESLINT-ARCHITECTURE.md
+|   |-- domains/                     # Feature modules (tenders/users/suppliers)
+|   |-- layouts/                     # default/cabinet/site layouts
+|   |-- middleware/auth.ts
+|   |-- pages/
+|   |   |-- index.vue
+|   |   |-- login.vue
+|   |   |-- register.vue
+|   |   `-- cabinet/
+|   |       |-- dashboard.vue
+|   |       |-- participation.vue
+|   |       |-- permissions.vue
+|   |       |-- profile.vue
+|   |       |-- roles.vue
+|   |       |-- settings.vue
+|   |       |-- templates.vue
+|   |       |-- users.vue
+|   |       |-- reference/           # attributes/branches/categories/...
+|   |       |-- suppliers/           # index + [id]
+|   |       `-- tenders/             # index/[id]/create/sales/proposals
+|   |-- plugins/
+|   |-- shared/api/apiClient.ts
+|   |-- app.vue
+|   |-- nuxt.config.ts
+|   |-- package.json
+|   `-- README.md
+`-- README.md
 ```
 
 ---

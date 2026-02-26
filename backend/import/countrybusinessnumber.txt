@@ -1,0 +1,80 @@
+CREATE TABLE countrybusinessnumber (
+    id           INTEGER PRIMARY KEY,
+    country_code VARCHAR NOT NULL,
+    number_code  VARCHAR NOT NULL,
+    number_name  VARCHAR NOT NULL
+);
+
+INSERT INTO countrybusinessnumber (country_code, number_code, number_name) VALUES
+
+-- 🇪🇺 Європа
+('UA', 'UA_EDRPOU', 'ЄДРПОУ'),
+('PL', 'PL_NIP', 'NIP (Tax Identification Number)'),
+('DE', 'DE_HRB', 'Handelsregister Number'),
+('FR', 'FR_SIREN', 'SIREN'),
+('IT', 'IT_PIVA', 'Partita IVA'),
+('ES', 'ES_NIF', 'NIF / CIF'),
+('PT', 'PT_NIPC', 'Número de Identificação de Pessoa Coletiva'),
+('NL', 'NL_KVK', 'KvK Number'),
+('BE', 'BE_KBO', 'KBO / BCE Number'),
+('LU', 'LU_RCS', 'Registre de Commerce et des Sociétés'),
+('AT', 'AT_FIRMA', 'Firmenbuchnummer'),
+('CH', 'CH_UID', 'UID Unternehmens-Identifikationsnummer'),
+('UK', 'UK_CRN', 'Company Registration Number'),
+('IE', 'IE_CRO', 'Company Registration Office Number'),
+('SE', 'SE_ORGNR', 'Organisationsnummer'),
+('NO', 'NO_ORGNR', 'Organisasjonsnummer'),
+('DK', 'DK_CVR', 'CVR Number'),
+('FI', 'FI_YTUNNUS', 'Business ID (Y-tunnus)'),
+('CZ', 'CZ_ICO', 'IČO'),
+('SK', 'SK_ICO', 'IČO'),
+('HU', 'HU_CEG', 'Cégjegyzékszám'),
+('RO', 'RO_CUI', 'CUI'),
+('BG', 'BG_EIK', 'EIK'),
+('GR', 'GR_GEMI', 'GEMI Number'),
+('HR', 'HR_OIB', 'OIB'),
+('SI', 'SI_MATICNA', 'Matična številka'),
+('RS', 'RS_MB', 'Matični broj'),
+('EE', 'EE_REGCODE', 'Registry Code'),
+('LV', 'LV_REGNR', 'Registration Number'),
+('LT', 'LT_REGNR', 'Registration Number'),
+
+-- 🌎 Північна Америка
+('US', 'US_EIN', 'Employer Identification Number'),
+('CA', 'CA_BN', 'Business Number'),
+('MX', 'MX_RFC', 'Registro Federal de Contribuyentes'),
+
+-- 🌎 Південна Америка
+('BR', 'BR_CNPJ', 'Cadastro Nacional da Pessoa Jurídica'),
+('AR', 'AR_CUIT', 'Código Único de Identificación Tributaria'),
+('CL', 'CL_RUT', 'Rol Único Tributario'),
+('CO', 'CO_NIT', 'Número de Identificación Tributaria'),
+('PE', 'PE_RUC', 'Registro Único de Contribuyentes'),
+
+-- 🌏 Азія
+('CN', 'CN_USCC', 'Unified Social Credit Code'),
+('JP', 'JP_CN', 'Corporate Number'),
+('KR', 'KR_BRN', 'Business Registration Number'),
+('IN', 'IN_CIN', 'Corporate Identification Number'),
+('SG', 'SG_UEN', 'Unique Entity Number'),
+('MY', 'MY_SSM', 'SSM Company Number'),
+('TH', 'TH_TAXID', 'Tax Identification Number'),
+('VN', 'VN_TAX', 'Enterprise Tax Code'),
+('ID', 'ID_NPWP', 'Nomor Pokok Wajib Pajak'),
+('PH', 'PH_SEC', 'SEC Registration Number'),
+
+-- 🌍 Близький Схід
+('AE', 'AE_TRN', 'Tax Registration Number'),
+('SA', 'SA_CR', 'Commercial Registration Number'),
+('IL', 'IL_HPN', 'Company Registration Number'),
+('QA', 'QA_CR', 'Commercial Registration'),
+
+-- 🌍 Африка
+('ZA', 'ZA_CIPC', 'CIPC Registration Number'),
+('EG', 'EG_CR', 'Commercial Register Number'),
+('NG', 'NG_RC', 'Corporate Affairs Commission Number'),
+('KE', 'KE_PIN', 'Personal Identification Number'),
+
+-- 🌏 Океанія
+('AU', 'AU_ABN', 'Australian Business Number'),
+('NZ', 'NZ_NZBN', 'New Zealand Business Number');

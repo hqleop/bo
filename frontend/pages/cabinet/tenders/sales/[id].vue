@@ -102,7 +102,7 @@
                         @toggle="toggleCategory"
                         @update:search-term="categorySearch = $event"
                       />
-                      <CpvLazyMultiSearch
+                      <CpvTenderModalSelect
                         label="Категорія CPV"
                         placeholder="Оберіть CPV"
                         required
@@ -3776,4 +3776,3 @@ watch(prepTab, (tab) => {
   opacity: 0;
 }
 </style>
-

@@ -13,6 +13,8 @@ export interface Me {
   user?: MeUser
   memberships?: unknown[]
   permissions?: string[]
+  registration_step?: number
+  registration_company_id?: number | null
 }
 
 /** Profile update payload (PATCH /auth/me/) */

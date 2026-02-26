@@ -94,3 +94,61 @@ class PasswordResetFlowTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
+
+
+class RegistrationCompanyLookupTests(APITestCase):
+    def test_returns_not_exists_when_company_absent(self):
+        response = self.client.get("/api/registration/company-by-code/?edrpou=99999999")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data.get("exists"), False)
+        self.assertEqual(response.data.get("has_registered_users"), False)
+        self.assertIsNone(response.data.get("company"))
+
+    def test_returns_company_and_registered_users_flag(self):
+        company = Company.objects.create(
+            edrpou="12345678",
+            name="Test Company",
+            subject_type=Company.SubjectType.LEGAL_RESIDENT,
+            company_address="Kyiv",
+            registration_country="UA",
+        )
+        user = User.objects.create_user(email="member@example.com", password="pass12345")
+        role = Role.objects.create(company=company, name="Адміністратор")
+        CompanyUser.objects.create(
+            user=user,
+            company=company,
+            role=role,
+            status=CompanyUser.Status.APPROVED,
+        )
+
+        response = self.client.get("/api/registration/company-by-code/?edrpou=12345678")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data.get("exists"), True)
+        self.assertEqual(response.data.get("has_registered_users"), True)
+        self.assertEqual(response.data.get("company", {}).get("edrpou"), "12345678")
+
+
+class RegistrationStep2ExistingFlowTests(APITestCase):
+    def test_join_existing_company_with_approved_users_sets_registration_step_4(self):
+        company = Company.objects.create(edrpou="55556666", name="Existing Co")
+        admin_user = User.objects.create_user(email="admin@existing.co", password="pass12345")
+        admin_role = Role.objects.create(company=company, name="Адміністратор")
+        CompanyUser.objects.create(
+            user=admin_user,
+            company=company,
+            role=admin_role,
+            status=CompanyUser.Status.APPROVED,
+        )
+
+        new_user = User.objects.create_user(email="new@existing.co", password="pass12345", registration_step=2)
+
+        response = self.client.post(
+            "/api/registration/step2/existing/",
+            {"user_id": new_user.id, "edrpou": company.edrpou},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+
+        new_user.refresh_from_db()
+        self.assertEqual(new_user.registration_step, 4)
+

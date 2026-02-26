@@ -15,6 +15,7 @@ from .models import (
     DepartmentUser,
     Category,
     CategoryUser,
+    CountryBusinessNumber,
     CpvDictionary,
     ExpenseArticle,
     ExpenseArticleUser,
@@ -44,7 +45,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ("id", "email", "first_name", "last_name", "middle_name", "phone", "avatar", "is_active")
+        fields = ("id", "email", "first_name", "last_name", "middle_name", "phone", "avatar", "is_active", "registration_step")
         read_only_fields = ("id", "email", "is_active")
 
     def get_avatar(self, obj):
@@ -71,22 +72,21 @@ class UserRegistrationStep1Serializer(serializers.Serializer):
         return value
 
     def validate_phone(self, value):
-        """
-        Очікуваний формат телефона: +380XXXXXXXXX (12 цифр, включно з кодом країни).
-        """
+        """Очікуваний формат телефону: +380XXXXXXXXX (12 цифр, включно з кодом країни)."""
         if not value:
             raise serializers.ValidationError("Телефон обов'язковий.")
         raw = (value or "").strip()
-        # Дозволяємо формати з пробілами/дефісами, але приводимо до цифр
+        # Дозволяємо формати з пробілами/дефісами, але приводимо до цифр.
         digits = re.sub(r"\D", "", raw)
         if not digits.startswith("380") or len(digits) != 12:
             raise serializers.ValidationError("Телефон має бути у форматі +380XXXXXXXXX.")
         return f"+{digits}"
 
     def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
+        email = (value or "").strip().lower()
+        if User.objects.filter(email__iexact=email).exists():
             raise serializers.ValidationError("Користувач з таким email вже існує.")
-        return value
+        return email
 
     def create(self, validated_data):
         password = validated_data.pop("password")
@@ -97,19 +97,45 @@ class UserRegistrationStep1Serializer(serializers.Serializer):
 class CompanySerializer(serializers.ModelSerializer):
     """Company serializer."""
 
+    registration_country = serializers.CharField(read_only=True)
+
     class Meta:
         model = Company
         fields = (
             "id",
             "edrpou",
             "name",
+            "subject_type",
+            "registration_country",
+            "company_address",
+            "identity_document",
             "goal_tenders",
             "goal_participation",
+            "agree_trade_rules",
+            "agree_privacy_policy",
+            "agree_participation_visibility",
             "status",
             "created_at",
             "updated_at",
         )
         read_only_fields = ("id", "created_at", "updated_at")
+
+
+class CountryBusinessNumberSerializer(serializers.ModelSerializer):
+    label = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CountryBusinessNumber
+        fields = ("number_code", "country_code", "number_name", "label")
+
+    def get_label(self, obj):
+        return f"{obj.number_name} ({obj.number_code})"
+
+
+class RegistrationCompanyLookupSerializer(serializers.Serializer):
+    exists = serializers.BooleanField()
+    has_registered_users = serializers.BooleanField()
+    company = CompanySerializer(required=False, allow_null=True)
 
 
 class CompanyCpvSerializer(serializers.ModelSerializer):
@@ -195,7 +221,7 @@ class CompanyCreateSerializer(serializers.ModelSerializer):
 
 
 class CompanySupplierSerializer(serializers.ModelSerializer):
-    """Зв'язок компанія → контрагент. Для списку контрагентів."""
+    """Зв'язок компанія в†’ контрагент. Для списку контрагентів."""
 
     supplier_company = CompanyListSerializer(read_only=True)
     supplier_company_id = serializers.IntegerField(write_only=True, required=False)
@@ -241,30 +267,108 @@ class AddCompanySupplierSerializer(serializers.Serializer):
 
 
 class CompanyRegistrationStep2Serializer(serializers.Serializer):
-    """Step 2: New company registration."""
+    """Step 2: Company details and legal agreements."""
+
+    SUBJECT_CHOICES = [
+        Company.SubjectType.FOP_RESIDENT,
+        Company.SubjectType.LEGAL_RESIDENT,
+        Company.SubjectType.NON_RESIDENT,
+        Company.SubjectType.INDIVIDUAL,
+    ]
 
     user_id = serializers.IntegerField(required=True)
+    subject_type = serializers.ChoiceField(choices=SUBJECT_CHOICES, required=True)
     edrpou = serializers.CharField(max_length=20, required=True)
-    name = serializers.CharField(max_length=255, required=True)
-    goal_tenders = serializers.BooleanField(required=True)
-    goal_participation = serializers.BooleanField(required=True)
+    name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    company_address = serializers.CharField(max_length=500, required=True)
+    registration_country = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    identity_document = serializers.FileField(required=False, allow_null=True)
+    agree_trade_rules = serializers.BooleanField(required=True)
+    agree_privacy_policy = serializers.BooleanField(required=True)
 
     def validate_edrpou(self, value):
         code = (value or "").strip()
         if not code:
             raise serializers.ValidationError("Код компанії обов'язковий.")
         if Company.objects.filter(edrpou=code).exists():
-            raise serializers.ValidationError("Компанія з таким ЄДРПОУ вже існує.")
+            raise serializers.ValidationError("Компанія з таким кодом вже існує.")
         return code
 
     def validate(self, attrs):
-        if not attrs.get("goal_tenders") and not attrs.get("goal_participation"):
-            raise serializers.ValidationError("Потрібно обрати хоча б одну ціль (тендери або участь).")
+        subject_type = attrs.get("subject_type")
+        code = (attrs.get("edrpou") or "").strip()
+        name = (attrs.get("name") or "").strip()
+        address = (attrs.get("company_address") or "").strip()
+        registration_country = (attrs.get("registration_country") or "").strip()
+        identity_document = attrs.get("identity_document")
+
+        if not attrs.get("agree_trade_rules"):
+            raise serializers.ValidationError({"agree_trade_rules": "Потрібно погодитися з регламентом торгів."})
+        if not attrs.get("agree_privacy_policy"):
+            raise serializers.ValidationError({"agree_privacy_policy": "Потрібно погодитися з політикою конфіденційності."})
+        if not address:
+            raise serializers.ValidationError({"company_address": "Адреса обов'язкова."})
+
+        if subject_type in (Company.SubjectType.FOP_RESIDENT, Company.SubjectType.INDIVIDUAL):
+            if not re.fullmatch(r"\d{10}", code):
+                raise serializers.ValidationError({"edrpou": "Код має містити 10 цифр."})
+        elif subject_type == Company.SubjectType.LEGAL_RESIDENT:
+            if not re.fullmatch(r"\d{8}", code):
+                raise serializers.ValidationError({"edrpou": "Код ЄДРПОУ має містити 8 цифр."})
+        elif subject_type == Company.SubjectType.NON_RESIDENT:
+            if not registration_country:
+                raise serializers.ValidationError({"registration_country": "Оберіть країну реєстрації."})
+            if not CountryBusinessNumber.objects.filter(number_code=registration_country).exists():
+                raise serializers.ValidationError({"registration_country": "Країну не знайдено."})
+        else:
+            raise serializers.ValidationError({"subject_type": "Некоректний тип суб'єкта."})
+
+        if subject_type != Company.SubjectType.INDIVIDUAL and not name:
+            raise serializers.ValidationError({"name": "Назва згідно уставних документів обов'язкова."})
+        if subject_type == Company.SubjectType.INDIVIDUAL and not identity_document:
+            raise serializers.ValidationError({"identity_document": "Завантажте документ, що підтверджує особу."})
+
+        attrs["name"] = name
+        attrs["company_address"] = address
+        attrs["registration_country"] = registration_country
         return attrs
 
 
+class CompanyRegistrationStep3Serializer(serializers.Serializer):
+    user_id = serializers.IntegerField(required=True)
+    company_id = serializers.IntegerField(required=True)
+    goal_tenders = serializers.BooleanField(required=True)
+    goal_participation = serializers.BooleanField(required=True)
+    agree_participation_visibility = serializers.BooleanField(required=True)
+    cpv_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        allow_empty=True,
+    )
+
+    def validate(self, attrs):
+        goal_tenders = attrs.get("goal_tenders")
+        goal_participation = attrs.get("goal_participation")
+        agree_visibility = attrs.get("agree_participation_visibility")
+        cpv_ids = attrs.get("cpv_ids") or []
+
+        if not goal_tenders and not goal_participation:
+            raise serializers.ValidationError("Оберіть хоча б один напрямок діяльності.")
+
+        if goal_participation:
+            if not agree_visibility:
+                raise serializers.ValidationError(
+                    {"agree_participation_visibility": "Потрібно підтвердити відображення реєстраційних даних."}
+                )
+            if not cpv_ids:
+                raise serializers.ValidationError({"cpv_ids": "Оберіть хоча б одну CPV-категорію."})
+        return attrs
+
+
+
+
 class ExistingCompanyStep2Serializer(serializers.Serializer):
-    """Step 2: Join existing company by code (ЄДРПОУ). Optional name — оновлює назву при першій реєстрації."""
+    """Крок 2: приєднання до існуючої компанії за кодом (ЄДРПОУ)."""
 
     user_id = serializers.IntegerField(required=True)
     edrpou = serializers.CharField(max_length=20, required=True)
@@ -344,14 +448,31 @@ class MeSerializer(serializers.Serializer):
     user = UserSerializer(read_only=True)
     memberships = CompanyUserSerializer(many=True, read_only=True)
     permissions = serializers.SerializerMethodField()
+    registration_step = serializers.SerializerMethodField()
+    registration_company_id = serializers.SerializerMethodField()
 
     def get_permissions(self, obj):
         """Aggregate permissions from all approved memberships."""
-        user = obj
+        user = obj.get("user") if isinstance(obj, dict) else obj
+        if not user:
+            return []
         permissions = set()
         for membership in user.memberships.filter(status=CompanyUser.Status.APPROVED).select_related("role"):
             permissions.update(membership.role.permissions.values_list("code", flat=True))
         return list(permissions)
+
+    def get_registration_step(self, obj):
+        user = obj.get("user") if isinstance(obj, dict) else obj
+        if not user:
+            return 4
+        return int(getattr(user, "registration_step", 4) or 4)
+
+    def get_registration_company_id(self, obj):
+        user = obj.get("user") if isinstance(obj, dict) else obj
+        if not user:
+            return None
+        membership = user.memberships.order_by("-created_at").first()
+        return membership.company_id if membership else None
 
 
 class ProfileUpdateSerializer(serializers.Serializer):
@@ -1597,3 +1718,7 @@ class SalesTenderFileSerializer(serializers.ModelSerializer):
         if not obj.uploaded_by:
             return ""
         return obj.uploaded_by.get_full_name() or obj.uploaded_by.email or str(obj.uploaded_by)
+
+
+
+

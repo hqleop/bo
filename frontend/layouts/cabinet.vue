@@ -13,7 +13,7 @@
       >
         <div
           :class="[
-            'h-14 flex-shrink-0 border-b flex items-center justify-between',
+            'h-14 flex-shrink-0 flex items-center justify-between',
             isSidebarCollapsed ? 'px-2' : 'px-3',
           ]"
         >
@@ -66,7 +66,7 @@
 
       <!-- Main: висота по екрану, скрол лише у робочій області -->
       <main class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
-        <header class="h-14 flex-shrink-0 bg-white shadow-sm border-b">
+        <header class="h-14 flex-shrink-0 bg-white shadow-sm">
           <div class="px-4 py-2 flex justify-between items-center h-full">
             <h1 class="text-lg font-semibold text-gray-900">{{ pageTitle }}</h1>
             <div class="flex items-center gap-3">
@@ -194,7 +194,17 @@ const { me, refreshMe } = useMe();
 const meLoading = ref(true);
 if (import.meta.client) {
   try {
-    await refreshMe();
+    const mePayload = await refreshMe();
+    const registrationStep = Number((mePayload as any)?.registration_step ?? 4);
+    if (registrationStep < 4) {
+      await navigateTo(`/register?step=${Math.min(Math.max(registrationStep, 1), 3)}`);
+    } else {
+      const hasMemberships =
+        Array.isArray(mePayload?.memberships) && mePayload.memberships.length > 0;
+      if (!hasMemberships) {
+        await navigateTo("/register?step=2");
+      }
+    }
   } finally {
     meLoading.value = false;
   }

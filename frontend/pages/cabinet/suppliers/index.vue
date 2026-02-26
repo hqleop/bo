@@ -94,7 +94,7 @@
                 :placeholder="
                   companyByCode
                     ? 'Підставлено з системи'
-                    : 'Якщо компанії немає — введіть назву; вона оновиться після реєстрації користувача'
+                    : 'Якщо компанії немає - введіть назву; вона оновиться після реєстрації користувача'
                 "
                 :readonly="!!companyByCode"
               />
@@ -211,17 +211,25 @@ async function onAdd() {
   try {
     const body: { edrpou: string; name?: string } = { edrpou: code };
     if (addForm.name.trim()) body.name = addForm.name.trim();
-    const { error } = await suppliersUC.addSupplier(body);
+    const { data, error } = await suppliersUC.addSupplier(body);
     if (error) {
       const msg = typeof error === "string" ? error : "Помилка додавання";
       alert(msg);
       return;
     }
+    if (data?.supplier_company?.id) {
+      const exists = supplierRelations.value.some(
+        (r) => r.supplier_company.id === data.supplier_company.id,
+      );
+      if (!exists) {
+        supplierRelations.value = [data, ...supplierRelations.value];
+      }
+    }
     showAddModal.value = false;
     addForm.edrpou = "";
     addForm.name = "";
     companyByCode.value = null;
-    await loadSuppliers();
+    void loadSuppliers();
   } finally {
     saving.value = false;
   }
@@ -240,3 +248,5 @@ watch(
 
 onMounted(() => loadSuppliers());
 </script>
+
+

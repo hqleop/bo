@@ -6,9 +6,14 @@ let refreshPromise: Promise<boolean> | null = null
 export const useAuth = () => {
   const config = useRuntimeConfig()
   const apiBase = config.public.apiBase
+  const { start, stop } = useGlobalLoader()
 
   // Клієнт для auth-запитів (login/refresh без Authorization)
-  const apiClient = createApiClient({ baseURL: apiBase })
+  const apiClient = createApiClient({
+    baseURL: apiBase,
+    onRequestStart: start,
+    onRequestEnd: stop
+  })
 
   // Cookies зберігаються до виходу або очищення кешу (maxAge: 7 днів для refresh token)
   const isProd = typeof import.meta !== 'undefined' ? !import.meta.dev : process.env.NODE_ENV === 'production'

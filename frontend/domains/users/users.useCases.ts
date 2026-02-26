@@ -17,7 +17,15 @@ function normalizeMeResponse(data: unknown): Me | null {
   return {
     user: user as Me['user'],
     memberships: Array.isArray(d.memberships) ? d.memberships : [],
-    permissions: Array.isArray(d.permissions) ? d.permissions : []
+    permissions: Array.isArray(d.permissions) ? d.permissions : [],
+    registration_step:
+      typeof d.registration_step === 'number'
+        ? d.registration_step
+        : undefined,
+    registration_company_id:
+      typeof d.registration_company_id === 'number'
+        ? d.registration_company_id
+        : undefined
   }
 }
 
@@ -163,7 +171,7 @@ export function useUsersUseCases() {
     return { data: data ?? null, error: error ?? null }
   }
 
-  async function registerStep2New(payload: Record<string, unknown>): Promise<{
+  async function registerStep2New(payload: unknown): Promise<{
     data?: unknown
     error: string | null
   }> {
@@ -171,18 +179,49 @@ export function useUsersUseCases() {
     return { ...(data ? { data } : {}), error: error ?? null }
   }
 
-  async function registerStep2Existing(payload: Record<string, unknown>): Promise<{ error: string | null }> {
-    const { error } = await usersApi.registerStep2Existing(fetch, payload)
-    return { error: error ?? null }
+  async function registerStep2Existing(payload: Record<string, unknown>): Promise<{
+    data?: unknown
+    error: string | null
+  }> {
+    const { data, error } = await usersApi.registerStep2Existing(fetch, payload)
+    return { ...(data ? { data } : {}), error: error ?? null }
   }
 
   async function registerStep3CompanyCpvs(payload: {
     user_id: number
     company_id: number
+    goal_tenders: boolean
+    goal_participation: boolean
+    agree_participation_visibility: boolean
     cpv_ids: number[]
   }): Promise<{ error: string | null }> {
     const { error } = await usersApi.registerStep3CompanyCpvs(fetch, payload)
     return { error: error ?? null }
+  }
+
+  async function getRegistrationCountryBusinessNumbers(): Promise<{ data: unknown[] }> {
+    const { data } = await usersApi.getRegistrationCountryBusinessNumbers(fetch)
+    return { data: Array.isArray(data) ? data : [] }
+  }
+
+  async function lookupRegistrationCompanyByCode(edrpou: string): Promise<{
+    data: {
+      exists: boolean
+      has_registered_users: boolean
+      company?: {
+        id?: number
+        edrpou?: string
+        name?: string
+        subject_type?: 'fop_resident' | 'legal_resident' | 'non_resident' | 'individual'
+        registration_country?: string
+        company_address?: string
+      } | null
+    } | null
+    error: string | null
+  }> {
+    const { data, error } = await usersApi.lookupRegistrationCompanyByCode(fetch, edrpou)
+    if (error || !data) return { data: null, error: error ?? null }
+    return { data: data as any, error: null }
   }
 
   async function getCurrentCompanyCpvs(): Promise<{
@@ -235,6 +274,8 @@ export function useUsersUseCases() {
     registerStep2New,
     registerStep2Existing,
     registerStep3CompanyCpvs,
+    getRegistrationCountryBusinessNumbers,
+    lookupRegistrationCompanyByCode,
     getCurrentCompanyCpvs,
     updateCurrentCompanyCpvs,
     getNotifications,
