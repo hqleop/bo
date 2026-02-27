@@ -32,6 +32,7 @@ export interface TenderCriterion {
   name?: string
   type?: string
   tender_type?: 'procurement' | 'sales'
+  is_required?: boolean
   [key: string]: unknown
 }
 

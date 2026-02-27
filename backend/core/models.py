@@ -572,6 +572,10 @@ class TenderCriterion(models.Model):
         help_text="Загальний — одне значення на тендер; індивідуальний — по кожній позиції.",
     )
     # Додаткові параметри за типом: range_min/range_max, numeric_choices, text_choices
+    is_required = models.BooleanField(
+        default=False,
+        help_text="Ознака обов'язковості заповнення критерію при подачі пропозиції.",
+    )
     options = models.JSONField(default=dict, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)

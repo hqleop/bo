@@ -222,7 +222,74 @@ def _filter_participation_qs_by_tab(qs, tab):
         )
     if tab == "completed":
         return qs.filter(stage="completed")
+    if tab == "journal":
+        return qs
     return qs.none()
+
+
+def _has_non_empty_criterion_value(value):
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return value.strip() != ""
+    if isinstance(value, (list, tuple, dict, set)):
+        return len(value) > 0
+    return True
+
+
+def _validate_required_criteria_before_submit(tender, proposal, proposal_position_model):
+    required_criteria = list(
+        tender.tender_criteria.filter(is_required=True).values("id", "name", "application")
+    )
+    if not required_criteria:
+        return None
+
+    position_values = list(
+        proposal_position_model.objects.filter(proposal=proposal).select_related("tender_position")
+    )
+
+    def _criterion_value_from_dict(raw, criterion_id):
+        if not isinstance(raw, dict):
+            return None
+        return raw.get(criterion_id, raw.get(str(criterion_id)))
+
+    missing = []
+
+    required_general = [c for c in required_criteria if c.get("application") == "general"]
+    for criterion in required_general:
+        is_filled = any(
+            _has_non_empty_criterion_value(
+                _criterion_value_from_dict(getattr(pv, "criterion_values", {}), criterion["id"])
+            )
+            for pv in position_values
+        )
+        if not is_filled:
+            missing.append(f"{criterion['name']} (загальний)")
+
+    required_individual = [c for c in required_criteria if c.get("application") == "individual"]
+    if required_individual:
+        for pv in position_values:
+            if getattr(pv, "price", None) is None:
+                continue
+            for criterion in required_individual:
+                value = _criterion_value_from_dict(
+                    getattr(pv, "criterion_values", {}), criterion["id"]
+                )
+                if _has_non_empty_criterion_value(value):
+                    continue
+                pos_name = (
+                    getattr(getattr(pv, "tender_position", None), "name", "")
+                    or f"позиція #{getattr(pv, 'tender_position_id', '?')}"
+                )
+                missing.append(f"{criterion['name']} ({pos_name})")
+
+    if not missing:
+        return None
+
+    return {
+        "detail": "Неможливо подати пропозицію. Заповніть обов'язкові критерії.",
+        "missing_required_criteria": missing,
+    }
 
 
 def _build_cpv_tree_for_tenders_queryset(qs):
@@ -681,6 +748,17 @@ class CompanyViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
+    @action(detail=True, methods=["get"], permission_classes=[permissions.IsAuthenticated])
+    def members(self, request, pk=None):
+        """Список користувачів (агентів) компанії."""
+        company = self.get_object()
+        memberships = CompanyUser.objects.filter(
+            company=company,
+            status=CompanyUser.Status.APPROVED,
+        ).select_related("user", "role").order_by("-created_at")
+        serializer = CompanyUserSerializer(memberships, many=True)
+        return Response(serializer.data)
+
 
 @extend_schema(
     summary="CPV-категорії поточної компанії",
@@ -720,16 +798,6 @@ def company_current_cpvs(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     serializer.save()
     return Response(CompanyCpvSerializer(company).data)
-
-    @action(detail=True, methods=["get"], permission_classes=[permissions.IsAuthenticated])
-    def members(self, request, pk=None):
-        """Список користувачів (агентів) компанії."""
-        company = self.get_object()
-        memberships = CompanyUser.objects.filter(company=company).select_related(
-            "user", "role"
-        ).order_by("-created_at")
-        serializer = CompanyUserSerializer(memberships, many=True)
-        return Response(serializer.data)
 
 
 def _user_owner_company_ids(request):
@@ -1946,7 +2014,11 @@ class CpvWithCompaniesView(APIView):
     )
     def get(self, request):
         qs = (
-            CpvDictionary.objects.filter(companies_by_cpvs__isnull=False)
+            CpvDictionary.objects.filter(
+                companies_by_cpvs__status=Company.Status.ACTIVE,
+                companies_by_cpvs__goal_participation=True,
+                companies_by_cpvs__agree_participation_visibility=True,
+            )
             .distinct()
             .order_by("cpv_code")
         )
@@ -2309,12 +2381,15 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="tab", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="active | processing | completed"),
+            OpenApiParameter(name="tab", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="active | processing | completed | journal"),
             OpenApiParameter(name="page", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY),
             OpenApiParameter(name="company_id", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY),
             OpenApiParameter(name="cpv_ids", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="Comma-separated CPV ids"),
             OpenApiParameter(name="reception_started", type=OpenApiTypes.BOOL, location=OpenApiParameter.QUERY, description="Available only for tab=active"),
             OpenApiParameter(name="conduct_type", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="rfx | online_auction"),
+            OpenApiParameter(name="tender_number", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="Tender number exact match"),
+            OpenApiParameter(name="submitted_only", type=OpenApiTypes.BOOL, location=OpenApiParameter.QUERY, description="Only tenders with submitted proposal by current company"),
+            OpenApiParameter(name="participation_result", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="participation | win"),
         ],
         responses=OpenApiTypes.OBJECT,
     )
@@ -2343,6 +2418,9 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         page_size = 20
         reception_started = str(request.query_params.get("reception_started", "")).strip().lower() in ("1", "true", "yes")
         conduct_type = (request.query_params.get("conduct_type") or "").strip().lower()
+        tender_number = (request.query_params.get("tender_number") or "").strip()
+        submitted_only = str(request.query_params.get("submitted_only", "")).strip().lower() in ("1", "true", "yes")
+        participation_result = (request.query_params.get("participation_result") or "").strip().lower()
         company_id = _parse_int_param(request.query_params.get("company_id"), default=0, min_value=0)
         cpv_ids = _parse_int_list_param(request.query_params.getlist("cpv_ids"))
         expanded_cpv_ids = _expand_cpv_ids_with_descendants(cpv_ids)
@@ -2351,6 +2429,8 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             tender_id=OuterRef("pk"),
             supplier_company_id__in=user_company_ids,
         )
+        submitted_proposal_subquery = proposal_subquery.filter(submitted_at__isnull=False)
+        won_proposal_subquery = proposal_subquery.filter(won_positions__isnull=False)
 
         qs = (
             ProcurementTender.objects.filter(
@@ -2362,15 +2442,36 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 "company",
             )
             .prefetch_related("cpv_categories")
-            .annotate(current_user_has_proposal=Exists(proposal_subquery))
+            .annotate(
+                current_user_has_proposal=Exists(proposal_subquery),
+                current_user_has_submitted_proposal=Exists(submitted_proposal_subquery),
+                current_user_has_win=Exists(won_proposal_subquery),
+            )
         )
         qs = _filter_participation_qs_by_tab(qs, tab)
         if tab == "active" and reception_started:
             qs = qs.filter(start_at__isnull=False, start_at__lte=timezone.now())
         if conduct_type in ("rfx", "online_auction"):
             qs = qs.filter(conduct_type=conduct_type)
+        if submitted_only:
+            qs = qs.filter(current_user_has_submitted_proposal=True)
+        if participation_result == "win":
+            qs = qs.filter(
+                current_user_has_submitted_proposal=True,
+                current_user_has_win=True,
+            )
+        elif participation_result == "participation":
+            qs = qs.filter(
+                current_user_has_submitted_proposal=True,
+                current_user_has_win=False,
+            )
         if company_id:
             qs = qs.filter(company_id=company_id)
+        if tender_number:
+            try:
+                qs = qs.filter(number=int(tender_number))
+            except (TypeError, ValueError):
+                qs = qs.none()
 
         cpv_tree = _build_cpv_tree_for_tenders_queryset(qs)
 
@@ -2500,8 +2601,21 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 {"detail": "Пропозицію не знайдено. Спочатку підтвердіть участь."},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        proposal.submitted_at = timezone.now()
-        proposal.save(update_fields=["submitted_at"])
+        required_criteria_error = _validate_required_criteria_before_submit(
+            tender=tender,
+            proposal=proposal,
+            proposal_position_model=TenderProposalPosition,
+        )
+        if required_criteria_error:
+            return Response(required_criteria_error, status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            proposal.submitted_at = timezone.now()
+            proposal.save(update_fields=["submitted_at"])
+            CompanySupplier.objects.get_or_create(
+                owner_company_id=tender.company_id,
+                supplier_company_id=supplier_company_id,
+                defaults={"source": CompanySupplier.Source.PARTICIPATION},
+            )
         serializer = TenderProposalSerializer(proposal)
         return Response(serializer.data)
 
@@ -2867,12 +2981,15 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="tab", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="active | processing | completed"),
+            OpenApiParameter(name="tab", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="active | processing | completed | journal"),
             OpenApiParameter(name="page", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY),
             OpenApiParameter(name="company_id", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY),
             OpenApiParameter(name="cpv_ids", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="Comma-separated CPV ids"),
             OpenApiParameter(name="reception_started", type=OpenApiTypes.BOOL, location=OpenApiParameter.QUERY, description="Available only for tab=active"),
             OpenApiParameter(name="conduct_type", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="rfx | online_auction"),
+            OpenApiParameter(name="tender_number", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="Tender number exact match"),
+            OpenApiParameter(name="submitted_only", type=OpenApiTypes.BOOL, location=OpenApiParameter.QUERY, description="Only tenders with submitted proposal by current company"),
+            OpenApiParameter(name="participation_result", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="participation | win"),
         ],
         responses=OpenApiTypes.OBJECT,
     )
@@ -2901,6 +3018,9 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
         page_size = 20
         reception_started = str(request.query_params.get("reception_started", "")).strip().lower() in ("1", "true", "yes")
         conduct_type = (request.query_params.get("conduct_type") or "").strip().lower()
+        tender_number = (request.query_params.get("tender_number") or "").strip()
+        submitted_only = str(request.query_params.get("submitted_only", "")).strip().lower() in ("1", "true", "yes")
+        participation_result = (request.query_params.get("participation_result") or "").strip().lower()
         company_id = _parse_int_param(request.query_params.get("company_id"), default=0, min_value=0)
         cpv_ids = _parse_int_list_param(request.query_params.getlist("cpv_ids"))
         expanded_cpv_ids = _expand_cpv_ids_with_descendants(cpv_ids)
@@ -2909,6 +3029,8 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             tender_id=OuterRef("pk"),
             supplier_company_id__in=user_company_ids,
         )
+        submitted_proposal_subquery = proposal_subquery.filter(submitted_at__isnull=False)
+        won_proposal_subquery = proposal_subquery.filter(won_positions__isnull=False)
 
         qs = (
             SalesTender.objects.filter(
@@ -2920,15 +3042,36 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                 "company",
             )
             .prefetch_related("cpv_categories")
-            .annotate(current_user_has_proposal=Exists(proposal_subquery))
+            .annotate(
+                current_user_has_proposal=Exists(proposal_subquery),
+                current_user_has_submitted_proposal=Exists(submitted_proposal_subquery),
+                current_user_has_win=Exists(won_proposal_subquery),
+            )
         )
         qs = _filter_participation_qs_by_tab(qs, tab)
         if tab == "active" and reception_started:
             qs = qs.filter(start_at__isnull=False, start_at__lte=timezone.now())
         if conduct_type in ("rfx", "online_auction"):
             qs = qs.filter(conduct_type=conduct_type)
+        if submitted_only:
+            qs = qs.filter(current_user_has_submitted_proposal=True)
+        if participation_result == "win":
+            qs = qs.filter(
+                current_user_has_submitted_proposal=True,
+                current_user_has_win=True,
+            )
+        elif participation_result == "participation":
+            qs = qs.filter(
+                current_user_has_submitted_proposal=True,
+                current_user_has_win=False,
+            )
         if company_id:
             qs = qs.filter(company_id=company_id)
+        if tender_number:
+            try:
+                qs = qs.filter(number=int(tender_number))
+            except (TypeError, ValueError):
+                qs = qs.none()
 
         cpv_tree = _build_cpv_tree_for_tenders_queryset(qs)
 
@@ -3058,8 +3201,21 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                 {"detail": "Пропозицію не знайдено. Спочатку підтвердіть участь."},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        proposal.submitted_at = timezone.now()
-        proposal.save(update_fields=["submitted_at"])
+        required_criteria_error = _validate_required_criteria_before_submit(
+            tender=tender,
+            proposal=proposal,
+            proposal_position_model=SalesTenderProposalPosition,
+        )
+        if required_criteria_error:
+            return Response(required_criteria_error, status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            proposal.submitted_at = timezone.now()
+            proposal.save(update_fields=["submitted_at"])
+            CompanySupplier.objects.get_or_create(
+                owner_company_id=tender.company_id,
+                supplier_company_id=supplier_company_id,
+                defaults={"source": CompanySupplier.Source.PARTICIPATION},
+            )
         serializer = SalesTenderProposalSerializer(proposal)
         return Response(serializer.data)
 

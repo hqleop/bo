@@ -1887,6 +1887,13 @@
                 :disabled="createCriterionSaving"
               />
             </UFormField>
+            <UFormField>
+              <UCheckbox
+                v-model="createCriterionForm.is_required"
+                label="Обов'язковий критерій"
+                :disabled="createCriterionSaving"
+              />
+            </UFormField>
             <div class="flex gap-2 justify-end pt-2">
               <UButton
                 variant="outline"
@@ -1988,6 +1995,8 @@ const isParticipant = computed(
 const tender = ref<any | null>(null);
 const loading = ref(true);
 const saving = ref(false);
+const ACCEPTANCE_REFRESH_MS = 10000;
+let acceptanceRefreshInterval: ReturnType<typeof setInterval> | null = null;
 const tourOptions = ref<{ value: number; label: string }[]>([]);
 const prepTab = ref<"positions" | "criteria">("positions");
 const prepTabs = [
@@ -3121,6 +3130,7 @@ const createCriterionForm = reactive({
   name: "",
   type: "numeric",
   application: "individual",
+  is_required: false,
   options: {} as Record<string, unknown>,
 });
 const createCriterionSaving = ref(false);
@@ -3139,6 +3149,7 @@ function openCreateCriterionModal() {
   createCriterionForm.name = "";
   createCriterionForm.type = "numeric";
   createCriterionForm.application = "individual";
+  createCriterionForm.is_required = false;
   createCriterionForm.options = {};
   showCreateCriterionModal.value = true;
 }
@@ -3168,6 +3179,7 @@ async function saveCreateCriterion() {
       type: createCriterionForm.type,
       tender_type: "procurement",
       application: createCriterionForm.application || "individual",
+      is_required: Boolean(createCriterionForm.is_required),
       options: createCriterionForm.options || {},
     });
     if (error || !created?.id) {
@@ -3196,6 +3208,7 @@ async function saveCreateCriterion() {
           name: created.name,
           type: created.type,
           application: created.application ?? "individual",
+          is_required: Boolean(created.is_required),
         },
       ];
     }
@@ -3804,6 +3817,23 @@ async function loadDecisionProposals() {
   selectedWinnerByPosition.value = next;
 }
 
+function stopAcceptanceRefresh() {
+  if (!acceptanceRefreshInterval) return;
+  clearInterval(acceptanceRefreshInterval);
+  acceptanceRefreshInterval = null;
+}
+
+function startAcceptanceRefresh() {
+  if (isParticipant.value || displayStage.value !== "acceptance") {
+    stopAcceptanceRefresh();
+    return;
+  }
+  if (acceptanceRefreshInterval) return;
+  acceptanceRefreshInterval = setInterval(() => {
+    void loadDecisionProposals();
+  }, ACCEPTANCE_REFRESH_MS);
+}
+
 const proposalComparisonPositions = computed(
   () => tender.value?.positions ?? [],
 );
@@ -3888,6 +3918,7 @@ onMounted(async () => {
   if (["acceptance", "decision", "approval"].includes(displayStage.value)) {
     await loadDecisionProposals();
   }
+  startAcceptanceRefresh();
 });
 
 watch(tenderId, () => loadTender());
@@ -3895,6 +3926,10 @@ watch(displayStage, async (stage) => {
   if (stage === "acceptance" || stage === "decision" || stage === "approval") {
     await loadDecisionProposals();
   }
+  startAcceptanceRefresh();
+});
+watch(isParticipant, () => {
+  startAcceptanceRefresh();
 });
 watch([isRegistration, () => displayStage.value], () => {
   if (isRegistration.value && displayStage.value === "acceptance") {
@@ -3911,6 +3946,10 @@ watch(
 );
 watch(prepTab, (tab) => {
   if (tab === "criteria") loadReferenceCriteria();
+});
+
+onUnmounted(() => {
+  stopAcceptanceRefresh();
 });
 </script>
 

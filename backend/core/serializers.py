@@ -795,6 +795,7 @@ class TenderCriterionSerializer(serializers.ModelSerializer):
             "tender_type_label",
             "application",
             "application_label",
+            "is_required",
             "options",
             "created_at",
             "updated_at",
@@ -1079,6 +1080,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
                 "type": c.type,
                 "application": getattr(c, "application", "individual"),
                 "application_label": getattr(c, "get_application_display", lambda: "Індивідуальний")(),
+                "is_required": bool(getattr(c, "is_required", False)),
             }
             for c in obj.tender_criteria.all()
         ]
@@ -1539,6 +1541,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
                 "type": c.type,
                 "application": getattr(c, "application", "individual"),
                 "application_label": getattr(c, "get_application_display", lambda: "Індивідуальний")(),
+                "is_required": bool(getattr(c, "is_required", False)),
             }
             for c in obj.tender_criteria.all()
         ]
@@ -1718,7 +1721,3 @@ class SalesTenderFileSerializer(serializers.ModelSerializer):
         if not obj.uploaded_by:
             return ""
         return obj.uploaded_by.get_full_name() or obj.uploaded_by.email or str(obj.uploaded_by)
-
-
-
-

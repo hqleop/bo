@@ -75,7 +75,7 @@
                 variant="ghost"
                 color="neutral"
                 title="Завдання користувача"
-                @click="showTasks = !showTasks"
+                @click="openTasksPage"
               />
               <UButton
                 icon="i-heroicons-bell"
@@ -128,21 +128,6 @@
         </div>
       </main>
     </div>
-
-    <!-- Notifications Panel -->
-    <UModal v-model:open="showTasks">
-      <template #content>
-        <UCard>
-          <template #header>
-            <h3 class="text-lg font-semibold">Завдання користувача</h3>
-          </template>
-          <div class="text-center py-8 text-gray-500">
-            Тут буде відображатись список завдань.
-          </div>
-        </UCard>
-      </template>
-    </UModal>
-
     <!-- Notifications Panel -->
     <UModal v-model:open="showNotifications">
       <template #content>
@@ -220,7 +205,6 @@ const headerName = computed(() => {
 const headerAvatar = computed(() => me.value?.user?.avatar ?? null);
 const userEmail = computed(() => me.value?.user?.email ?? "");
 const permissions = computed(() => me.value?.permissions || []);
-const showTasks = ref(false);
 const showNotifications = ref(false);
 const isSidebarCollapsed = ref(true);
 
@@ -259,6 +243,11 @@ const menuLinks = computed(() => {
       label: "Закупівлі",
       to: "/cabinet/participation?type=purchase",
       icon: "i-heroicons-shopping-cart",
+    },
+    {
+      label: "Журнал участей",
+      to: "/cabinet/participation/journal",
+      icon: "i-heroicons-clipboard-document-check",
     },
   ];
   links.push({
@@ -493,6 +482,10 @@ const userMenuItems = [
 function logoutUser() {
   const { logout } = useAuth();
   logout();
+}
+
+function openTasksPage() {
+  void navigateTo("/cabinet/tasks");
 }
 
 const companyName = computed(

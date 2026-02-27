@@ -24,7 +24,7 @@ export async function getTenderList(request: RequestFn, isSales: boolean) {
   return request<TenderListItem[]>(listEndpoint(isSales))
 }
 
-export type ParticipationTab = 'active' | 'processing' | 'completed'
+export type ParticipationTab = 'active' | 'processing' | 'completed' | 'journal'
 
 export async function getTendersForParticipation(
   request: RequestFn,
@@ -36,6 +36,9 @@ export async function getTendersForParticipation(
     cpvIds?: number[]
     receptionStarted?: boolean
     conductType?: 'all' | 'rfx' | 'online_auction'
+    tenderNumber?: string
+    submittedOnly?: boolean
+    participationResult?: 'participation' | 'win'
   }
 ) {
   const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
@@ -46,6 +49,9 @@ export async function getTendersForParticipation(
   if (filters?.cpvIds?.length) params.set('cpv_ids', filters.cpvIds.join(','))
   if (filters?.receptionStarted && tab === 'active') params.set('reception_started', 'true')
   if (filters?.conductType && filters.conductType !== 'all') params.set('conduct_type', filters.conductType)
+  if (filters?.tenderNumber?.trim()) params.set('tender_number', filters.tenderNumber.trim())
+  if (filters?.submittedOnly) params.set('submitted_only', 'true')
+  if (filters?.participationResult) params.set('participation_result', filters.participationResult)
   return request<ParticipationListResponse>(`${prefix}/for-participation/?${params.toString()}`)
 }
 
@@ -158,6 +164,7 @@ export async function createTenderCriterion(
     type: string
     tender_type: TenderCriteriaType
     application?: string
+    is_required?: boolean
     options?: Record<string, unknown>
   }
 ) {

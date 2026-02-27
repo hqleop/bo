@@ -123,6 +123,13 @@
               />
             </UFormField>
 
+            <UFormField>
+              <UCheckbox
+                v-model="form.is_required"
+                label="Обов'язковий критерій"
+              />
+            </UFormField>
+
             <template v-if="form.type === 'numeric'">
               <div class="grid grid-cols-2 gap-4">
                 <UFormField label="Мін. значення" name="range_min">
@@ -230,6 +237,7 @@ const form = reactive<{
   type: string;
   tender_type: "sales" | "procurement";
   application: string;
+  is_required: boolean;
   options: {
     range_min?: number | null;
     range_max?: number | null;
@@ -242,6 +250,7 @@ const form = reactive<{
   type: "numeric",
   tender_type: "sales",
   application: "individual",
+  is_required: false,
   options: {},
 });
 
@@ -251,6 +260,7 @@ function resetForm(tenderType: "sales" | "procurement") {
   form.type = "numeric";
   form.tender_type = tenderType;
   form.application = "individual";
+  form.is_required = false;
   form.options = {
     range_min: null,
     range_max: null,
@@ -267,6 +277,7 @@ function openModal(item?: any, tenderType: "sales" | "procurement" = "sales") {
     form.type = item.type;
     form.tender_type = item.tender_type || tenderType;
     form.application = item.application ?? "individual";
+    form.is_required = Boolean(item.is_required);
     const opt = item.options || {};
     form.options = {
       range_min: opt.range_min ?? null,
@@ -314,6 +325,7 @@ const tableColumns = [
   { accessorKey: "name", header: "Назва" },
   { accessorKey: "type_label", header: "Тип" },
   { accessorKey: "application_label", header: "Застосування" },
+  { accessorKey: "is_required_label", header: "Обов'язковий" },
   { accessorKey: "options_summary", header: "Параметри" },
   { id: "actions", header: "Дії" },
 ];
@@ -330,6 +342,7 @@ const tableMeta = computed(() => ({
 const salesTableData = computed(() =>
   salesCriteria.value.map((c: any) => ({
     ...c,
+    is_required_label: c.is_required ? "Так" : "Ні",
     options_summary: formatOptionsSummary(c),
   })),
 );
@@ -337,6 +350,7 @@ const salesTableData = computed(() =>
 const procurementTableData = computed(() =>
   procurementCriteria.value.map((c: any) => ({
     ...c,
+    is_required_label: c.is_required ? "Так" : "Ні",
     options_summary: formatOptionsSummary(c),
   })),
 );
@@ -414,6 +428,7 @@ async function save() {
       type: form.type,
       tender_type: form.tender_type,
       application: form.application || "individual",
+      is_required: Boolean(form.is_required),
       options,
     };
 

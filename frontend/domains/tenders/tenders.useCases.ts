@@ -9,13 +9,16 @@ export function useTendersUseCases() {
 
   async function getTendersForParticipation(
     isSales: boolean,
-    tab: 'active' | 'processing' | 'completed',
+    tab: 'active' | 'processing' | 'completed' | 'journal',
     filters?: {
       page?: number
       companyId?: number | null
       cpvIds?: number[]
       receptionStarted?: boolean
       conductType?: 'all' | 'rfx' | 'online_auction'
+      tenderNumber?: string
+      submittedOnly?: boolean
+      participationResult?: 'participation' | 'win'
     }
   ) {
     const response = await tendersApi.getTendersForParticipation(fetch, isSales, tab, filters)
@@ -100,6 +103,7 @@ export function useTendersUseCases() {
     type: string
     tender_type: 'procurement' | 'sales'
     application?: string
+    is_required?: boolean
     options?: Record<string, unknown>
   }) {
     return tendersApi.createTenderCriterion(fetch, body)

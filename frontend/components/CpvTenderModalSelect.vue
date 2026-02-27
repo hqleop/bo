@@ -17,9 +17,14 @@
     </div>
   </UFormField>
 
-  <UModal v-model:open="isOpen">
+  <UModal
+    v-model:open="isOpen"
+    :ui="{
+      content: 'sm:max-w-[72rem] w-[96vw]',
+    }"
+  >
     <template #content>
-      <UCard class="w-[98vw] max-w-[1800px]">
+      <UCard class="w-full max-h-[90vh] flex-1 flex-col">
         <template #header>
           <div class="flex items-center justify-between gap-4">
             <h3 class="text-lg font-semibold">{{ modalTitle }}</h3>
@@ -29,14 +34,16 @@
           </div>
         </template>
 
-        <div class="space-y-4">
+        <div class="space-y-4 overflow-y-auto flex-1 min-h-0">
           <UInput
             v-model="search"
             icon="i-heroicons-magnifying-glass"
             placeholder="Пошук CPV за кодом або назвою"
           />
 
-          <div class="border rounded-md p-2 h-[52vh] overflow-auto">
+          <div
+            class="border rounded-md p-2 h-[48vh] overflow-y-auto overflow-x-auto"
+          >
             <div v-if="loadingRoot" class="py-8 text-center text-gray-500">
               <UIcon
                 name="i-heroicons-arrow-path"
@@ -44,11 +51,14 @@
               />
             </div>
 
-            <div v-else-if="visibleNodes.length === 0" class="py-8 text-center text-gray-500 text-sm">
+            <div
+              v-else-if="visibleNodes.length === 0"
+              class="py-8 text-center text-gray-500 text-sm"
+            >
               Нічого не знайдено.
             </div>
 
-            <div v-else class="space-y-1">
+            <div v-else class="space-y-1 min-w-max">
               <CpvTenderTreeNode
                 v-for="node in visibleNodes"
                 :key="node.id"
@@ -66,7 +76,10 @@
           <div class="border rounded-md p-3 space-y-2">
             <div class="text-sm font-medium">Обрані категорії</div>
 
-            <div v-if="selectedItems.length === 0" class="text-sm text-gray-500">
+            <div
+              v-if="selectedItems.length === 0"
+              class="text-sm text-gray-500"
+            >
               Немає обраних категорій.
             </div>
 
@@ -142,7 +155,9 @@ const rootNodes = ref<CpvNode[]>([]);
 const expanded = ref<Set<number>>(new Set());
 const loadingChildren = ref<Set<number>>(new Set());
 
-const draftSelectedMap = ref<Record<number, { label: string; code?: string }>>({});
+const draftSelectedMap = ref<Record<number, { label: string; code?: string }>>(
+  {},
+);
 const draftSelectedCodes = ref<Set<string>>(new Set());
 
 const committedLabelsById = computed<Record<number, string>>(() => {
@@ -165,9 +180,7 @@ const buttonText = computed(() => {
 const previewText = computed(() => {
   const ids = props.selectedIds || [];
   if (!ids.length) return "";
-  return ids
-    .map((id) => committedLabelsById.value[id] || `#${id}`)
-    .join(", ");
+  return ids.map((id) => committedLabelsById.value[id] || `#${id}`).join(", ");
 });
 
 const selectedItems = computed(() => {
@@ -198,7 +211,10 @@ function setNodeChildren(
       node.children = children;
       return true;
     }
-    if (node.children?.length && setNodeChildren(targetId, node.children, children)) {
+    if (
+      node.children?.length &&
+      setNodeChildren(targetId, node.children, children)
+    ) {
       return true;
     }
   }
@@ -353,7 +369,8 @@ function bootstrapDraft() {
   const map: Record<number, { label: string; code?: string }> = {};
   ids.forEach((id, i) => {
     map[id] = {
-      label: props.selectedLabels?.[i] || committedLabelsById.value[id] || `#${id}`,
+      label:
+        props.selectedLabels?.[i] || committedLabelsById.value[id] || `#${id}`,
     };
   });
   draftSelectedMap.value = map;

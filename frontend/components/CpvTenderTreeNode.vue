@@ -1,7 +1,7 @@
 <template>
   <div>
     <div
-      class="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-gray-50"
+      class="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-gray-50 min-w-max"
       :style="{ paddingLeft: `${depth * 16 + 8}px` }"
     >
       <UButton
@@ -28,7 +28,7 @@
 
       <button
         type="button"
-        class="text-left flex-1 truncate text-sm"
+        class="text-left flex-1 text-sm whitespace-nowrap"
         :class="selectedIds.has(node.id) ? 'font-semibold text-primary' : ''"
         @click="emit('toggle-select', node.id)"
       >

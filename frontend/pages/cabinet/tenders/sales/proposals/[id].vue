@@ -129,7 +129,7 @@
                           :key="c.id"
                           class="text-left p-2 font-medium"
                         >
-                          {{ c.name }}
+                          {{ c.name }}<span v-if="c.is_required" class="text-red-600"> *</span>
                         </th>
                       </tr>
                     </thead>
@@ -505,6 +505,8 @@ const savingPositions = ref(false);
 const submitWithdrawLoading = ref(false);
 const now = ref(new Date());
 let nowInterval: ReturnType<typeof setInterval> | null = null;
+const PROPOSALS_REFRESH_MS = 10000;
+let proposalsRefreshInterval: ReturnType<typeof setInterval> | null = null;
 
 const isSales = true;
 const tendersUC = useTendersUseCases();
@@ -752,6 +754,23 @@ async function loadTender() {
 async function loadProposals() {
   const { data } = await tendersUC.getTenderProposals(tenderId.value, isSales);
   if (data) proposals.value = Array.isArray(data) ? data : [];
+}
+
+function stopProposalsRefresh() {
+  if (!proposalsRefreshInterval) return;
+  clearInterval(proposalsRefreshInterval);
+  proposalsRefreshInterval = null;
+}
+
+function startProposalsRefresh() {
+  if (isParticipant.value || tender.value?.stage !== "acceptance") {
+    stopProposalsRefresh();
+    return;
+  }
+  if (proposalsRefreshInterval) return;
+  proposalsRefreshInterval = setInterval(() => {
+    void loadProposals();
+  }, PROPOSALS_REFRESH_MS);
 }
 
 async function loadTenderFiles() {
@@ -1021,6 +1040,7 @@ onMounted(async () => {
         now.value = new Date();
       }, 1000);
     }
+    startProposalsRefresh();
   } finally {
     loading.value = false;
   }
@@ -1028,7 +1048,15 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (nowInterval) clearInterval(nowInterval);
+  stopProposalsRefresh();
 });
+
+watch(
+  () => tender.value?.stage,
+  () => {
+    startProposalsRefresh();
+  },
+);
 
 watch(showFilesModal, async (open) => {
   if (!open) return;
