@@ -131,15 +131,13 @@
           @toggle="toggleCompanyFilter"
         />
 
-        <LazyContentSearch
+        <CpvTenderModalSelect
           label="Категорія CPV"
-          placeholder="Пошук по CPV"
-          search-placeholder="Пошук категорії CPV"
-          :tree="cpvFilterTree"
+          placeholder="Оберіть CPV"
           :selected-ids="cpvSelectedIds"
-          :search-term="cpvSearchTerm"
-          @update:search-term="cpvSearchTerm = $event"
-          @toggle="toggleCpvFilter"
+          :selected-labels="cpvSelectedLabels"
+          @update:selected-ids="cpvSelectedIds = $event"
+          @update:selected-labels="cpvSelectedLabels = $event"
         />
 
         <UCheckbox
@@ -313,12 +311,11 @@ const totalCount = ref(0);
 const companyOptions = ref<
   Array<{ id: number; label: string; name?: string; edrpou?: string }>
 >([]);
-const cpvFilterTree = ref<any[]>([]);
 
 const selectedCompanyId = ref<number | null>(null);
 const companySearchTerm = ref("");
 const cpvSelectedIds = ref<number[]>([]);
-const cpvSearchTerm = ref("");
+const cpvSelectedLabels = ref<string[]>([]);
 const receptionStartedOnly = ref(false);
 const conductTypeFilter = ref<"all" | "rfx" | "online_auction">("all");
 const tenderNumberFilter = ref("");
@@ -436,19 +433,10 @@ async function loadList() {
   companyOptions.value = Array.isArray(payload.companies)
     ? payload.companies
     : [];
-  cpvFilterTree.value = Array.isArray(payload.cpv_tree) ? payload.cpv_tree : [];
 }
 
 function toggleCompanyFilter(id: number) {
   selectedCompanyId.value = selectedCompanyId.value === id ? null : id;
-}
-
-function toggleCpvFilter(id: number) {
-  if (cpvSelectedIds.value.includes(id)) {
-    cpvSelectedIds.value = cpvSelectedIds.value.filter((x) => x !== id);
-    return;
-  }
-  cpvSelectedIds.value = [...cpvSelectedIds.value, id];
 }
 
 async function openModal(tender: any) {
@@ -556,7 +544,7 @@ function clearFilters() {
   selectedCompanyId.value = null;
   companySearchTerm.value = "";
   cpvSelectedIds.value = [];
-  cpvSearchTerm.value = "";
+  cpvSelectedLabels.value = [];
   receptionStartedOnly.value = false;
   conductTypeFilter.value = "all";
   tenderNumberFilter.value = "";

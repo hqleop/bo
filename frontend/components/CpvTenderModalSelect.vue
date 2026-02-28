@@ -24,7 +24,7 @@
     }"
   >
     <template #content>
-      <UCard class="w-full max-h-[90vh] flex-1 flex-col">
+      <UCard class="w-full max-h-[90vh] flex flex-col">
         <template #header>
           <div class="flex items-center justify-between gap-4">
             <h3 class="text-lg font-semibold">{{ modalTitle }}</h3>
@@ -42,9 +42,12 @@
           />
 
           <div
-            class="border rounded-md p-2 h-[48vh] overflow-y-auto overflow-x-auto"
+            class="border rounded-md p-2 h-[34vh] sm:h-[38vh] overflow-y-auto overflow-x-auto"
           >
-            <div v-if="loadingRoot" class="py-8 text-center text-gray-500">
+            <div
+              v-if="searchMode ? loadingSearch : loadingRoot"
+              class="py-8 text-center text-gray-500"
+            >
               <UIcon
                 name="i-heroicons-arrow-path"
                 class="animate-spin size-5 mx-auto"
@@ -52,15 +55,29 @@
             </div>
 
             <div
-              v-else-if="visibleNodes.length === 0"
+              v-else-if="searchMode ? searchResults.length === 0 : rootNodes.length === 0"
               class="py-8 text-center text-gray-500 text-sm"
             >
               Нічого не знайдено.
             </div>
 
+            <div v-else-if="searchMode" class="space-y-1 min-w-max">
+              <CpvTenderTreeNode
+                v-for="node in searchTree"
+                :key="node.id"
+                :node="node"
+                :depth="0"
+                :expanded="searchExpanded"
+                :loading-children="emptyLoadingChildren"
+                :selected-ids="loadedSelectedIds"
+                @toggle-expand="() => {}"
+                @toggle-select="toggleSelectById"
+              />
+            </div>
+
             <div v-else class="space-y-1 min-w-max">
               <CpvTenderTreeNode
-                v-for="node in visibleNodes"
+                v-for="node in rootNodes"
                 :key="node.id"
                 :node="node"
                 :depth="0"
@@ -83,7 +100,7 @@
               Немає обраних категорій.
             </div>
 
-            <div v-else class="max-h-32 overflow-auto flex flex-wrap gap-2">
+            <div v-else class="max-h-14 overflow-y-auto overflow-x-hidden flex flex-wrap gap-2">
               <UBadge
                 v-for="item in selectedItems"
                 :key="item.id"
@@ -117,7 +134,15 @@ type CpvNode = {
   id: number;
   cpv_level_code: string;
   label: string;
+  hierarchy_label?: string;
+  hierarchy_path?: Array<{
+    id: number;
+    cpv_level_code: string;
+    label: string;
+    has_children: boolean;
+  }>;
   has_children: boolean;
+  children_loaded?: boolean;
   children?: CpvNode[];
 };
 
@@ -150,15 +175,20 @@ const tendersUC = useTendersUseCases();
 
 const isOpen = ref(false);
 const search = ref("");
+const searchMode = computed(() => Boolean(search.value.trim()));
+
 const loadingRoot = ref(false);
 const rootNodes = ref<CpvNode[]>([]);
 const expanded = ref<Set<number>>(new Set());
 const loadingChildren = ref<Set<number>>(new Set());
 
-const draftSelectedMap = ref<Record<number, { label: string; code?: string }>>(
-  {},
-);
-const draftSelectedCodes = ref<Set<string>>(new Set());
+const loadingSearch = ref(false);
+const searchResults = ref<CpvNode[]>([]);
+const emptyLoadingChildren = ref<Set<number>>(new Set());
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+let searchRequestId = 0;
+
+const draftSelectedMap = ref<Record<number, { label: string }>>({});
 
 const committedLabelsById = computed<Record<number, string>>(() => {
   const map: Record<number, string> = {};
@@ -184,10 +214,74 @@ const previewText = computed(() => {
 });
 
 const selectedItems = computed(() => {
-  const entries = Object.entries(draftSelectedMap.value)
+  return Object.entries(draftSelectedMap.value)
     .map(([id, item]) => ({ id: Number(id), label: item.label }))
     .sort((a, b) => a.label.localeCompare(b.label));
-  return entries;
+});
+
+const loadedSelectedIds = computed(() => {
+  return new Set<number>(Object.keys(draftSelectedMap.value).map(Number));
+});
+
+const searchTree = computed<CpvNode[]>(() => {
+  const roots: CpvNode[] = [];
+  const nodesById = new Map<number, CpvNode>();
+
+  for (const match of searchResults.value) {
+    const path =
+      Array.isArray(match.hierarchy_path) && match.hierarchy_path.length
+        ? match.hierarchy_path
+        : [
+            {
+              id: match.id,
+              cpv_level_code: match.cpv_level_code,
+              label: match.label,
+              has_children: match.has_children,
+            },
+          ];
+
+    let parent: CpvNode | null = null;
+    for (const step of path) {
+      let node = nodesById.get(step.id);
+      if (!node) {
+        node = {
+          id: step.id,
+          cpv_level_code: step.cpv_level_code,
+          label: step.label,
+          has_children: step.has_children,
+          children_loaded: false,
+          children: [],
+        };
+        nodesById.set(step.id, node);
+      }
+
+      if (parent) {
+        if (!parent.children?.some((c) => c.id === node!.id)) {
+          parent.children = [...(parent.children || []), node];
+        }
+      } else if (!roots.some((r) => r.id === node.id)) {
+        roots.push(node);
+      }
+      parent = node;
+    }
+  }
+
+  return roots;
+});
+
+function collectTreeIds(nodes: CpvNode[], out: Set<number>) {
+  for (const node of nodes) {
+    out.add(node.id);
+    if (node.children?.length) {
+      collectTreeIds(node.children, out);
+    }
+  }
+}
+
+const searchExpanded = computed(() => {
+  const ids = new Set<number>();
+  collectTreeIds(searchTree.value, ids);
+  return ids;
 });
 
 function findNodeById(nodes: CpvNode[], id: number): CpvNode | null {
@@ -209,12 +303,10 @@ function setNodeChildren(
   for (const node of nodes) {
     if (node.id === targetId) {
       node.children = children;
+      node.children_loaded = true;
       return true;
     }
-    if (
-      node.children?.length &&
-      setNodeChildren(targetId, node.children, children)
-    ) {
+    if (node.children?.length && setNodeChildren(targetId, node.children, children)) {
       return true;
     }
   }
@@ -224,100 +316,81 @@ function setNodeChildren(
 async function loadRoot() {
   loadingRoot.value = true;
   const { data } = await tendersUC.getCpvChildren();
-  rootNodes.value = (data as CpvNode[]) || [];
-  hydrateCodesFromLoadedNodes();
+  rootNodes.value = ((data as CpvNode[]) || []).map((node) => ({
+    ...node,
+    children_loaded: false,
+  }));
   loadingRoot.value = false;
 }
 
 async function loadChildren(node: CpvNode) {
   if (!node.has_children) return;
-  if (node.children?.length) return;
+  if (node.children_loaded) return;
 
   loadingChildren.value = new Set([...loadingChildren.value, node.id]);
   const { data } = await tendersUC.getCpvChildren(node.cpv_level_code);
-  const children = (data as CpvNode[]) || [];
+  const children = ((data as CpvNode[]) || []).map((child) => ({
+    ...child,
+    children_loaded: false,
+  }));
+  node.children = children;
+  node.children_loaded = true;
   setNodeChildren(node.id, rootNodes.value, children);
-  hydrateCodesFromLoadedNodes();
 
   const next = new Set(loadingChildren.value);
   next.delete(node.id);
   loadingChildren.value = next;
 }
 
-function traverse(nodes: CpvNode[], visitor: (node: CpvNode) => void) {
-  for (const node of nodes) {
-    visitor(node);
-    if (node.children?.length) {
-      traverse(node.children, visitor);
-    }
-  }
-}
-
-function isCodeSelected(code?: string): boolean {
-  if (!code) return false;
-  for (const selectedCode of draftSelectedCodes.value) {
-    if (code === selectedCode || code.startsWith(selectedCode)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function hydrateCodesFromLoadedNodes() {
+async function addNodeAndDescendantsToSelection(node: CpvNode): Promise<void> {
   const nextMap = { ...draftSelectedMap.value };
-  const nextCodes = new Set(draftSelectedCodes.value);
-  traverse(rootNodes.value, (node) => {
-    const selected = nextMap[node.id];
-    if (selected && !selected.code) {
-      nextMap[node.id] = { ...selected, code: node.cpv_level_code };
-      nextCodes.add(node.cpv_level_code);
+  const stack: CpvNode[] = [node];
+
+  while (stack.length) {
+    const current = stack.pop()!;
+    nextMap[current.id] = { label: current.label };
+
+    if (!current.has_children) continue;
+    await loadChildren(current);
+    for (const child of current.children || []) {
+      stack.push(child);
     }
-  });
+  }
+
   draftSelectedMap.value = nextMap;
-  draftSelectedCodes.value = nextCodes;
+}
+
+async function removeNodeAndDescendantsFromSelection(node: CpvNode): Promise<void> {
+  const nextMap = { ...draftSelectedMap.value };
+  const stack: CpvNode[] = [node];
+
+  while (stack.length) {
+    const current = stack.pop()!;
+    delete nextMap[current.id];
+
+    if (!current.has_children) continue;
+    await loadChildren(current);
+    for (const child of current.children || []) {
+      stack.push(child);
+    }
+  }
+
+  draftSelectedMap.value = nextMap;
+}
+
+async function toggleSelectNode(node: CpvNode) {
+  const currentlySelected = Boolean(draftSelectedMap.value[node.id]);
+  if (currentlySelected) {
+    await removeNodeAndDescendantsFromSelection(node);
+    return;
+  }
+  await addNodeAndDescendantsToSelection(node);
 }
 
 async function toggleSelectById(id: number) {
-  const node = findNodeById(rootNodes.value, id);
+  const node = findNodeById(rootNodes.value, id) ?? findNodeById(searchTree.value, id);
   if (!node) return;
-
-  const code = node.cpv_level_code;
-  const currentlySelected = isCodeSelected(code);
-
-  if (!currentlySelected) {
-    const nextMap = { ...draftSelectedMap.value };
-    nextMap[node.id] = { label: node.label, code };
-    draftSelectedMap.value = nextMap;
-
-    const nextCodes = new Set(draftSelectedCodes.value);
-    for (const selectedCode of Array.from(nextCodes)) {
-      if (selectedCode.startsWith(code)) nextCodes.delete(selectedCode);
-    }
-    nextCodes.add(code);
-    draftSelectedCodes.value = nextCodes;
-    return;
-  }
-
-  const nextMap: Record<number, { label: string; code?: string }> = {};
-  for (const [rawId, item] of Object.entries(draftSelectedMap.value)) {
-    const itemCode = item.code;
-    if (!itemCode) {
-      nextMap[Number(rawId)] = item;
-      continue;
-    }
-    if (!(itemCode === code || itemCode.startsWith(code))) {
-      nextMap[Number(rawId)] = item;
-    }
-  }
-  draftSelectedMap.value = nextMap;
-
-  const nextCodes = new Set(draftSelectedCodes.value);
-  for (const selectedCode of Array.from(nextCodes)) {
-    if (selectedCode === code || selectedCode.startsWith(code)) {
-      nextCodes.delete(selectedCode);
-    }
-  }
-  draftSelectedCodes.value = nextCodes;
+  await toggleSelectNode(node);
 }
 
 async function toggleExpandById(id: number) {
@@ -335,53 +408,26 @@ async function toggleExpandById(id: number) {
   expanded.value = new Set([...expanded.value, id]);
 }
 
-const loadedSelectedIds = computed(() => {
-  const ids = new Set<number>();
-  traverse(rootNodes.value, (node) => {
-    if (isCodeSelected(node.cpv_level_code)) {
-      ids.add(node.id);
-    }
-  });
-  return ids;
-});
-
-function filterTree(nodes: CpvNode[], term: string): CpvNode[] {
-  const normalized = term.trim().toLowerCase();
-  if (!normalized) return nodes;
-
-  const out: CpvNode[] = [];
-  for (const node of nodes) {
-    const children = filterTree(node.children || [], normalized);
-    const selfMatch = node.label.toLowerCase().includes(normalized);
-    if (selfMatch || children.length) {
-      out.push({ ...node, children });
-    }
-  }
-  return out;
-}
-
-const visibleNodes = computed(() => {
-  return filterTree(rootNodes.value, search.value);
-});
-
 function bootstrapDraft() {
   const ids = props.selectedIds || [];
-  const map: Record<number, { label: string; code?: string }> = {};
+  const map: Record<number, { label: string }> = {};
   ids.forEach((id, i) => {
     map[id] = {
-      label:
-        props.selectedLabels?.[i] || committedLabelsById.value[id] || `#${id}`,
+      label: props.selectedLabels?.[i] || committedLabelsById.value[id] || `#${id}`,
     };
   });
   draftSelectedMap.value = map;
-  draftSelectedCodes.value = new Set();
-  hydrateCodesFromLoadedNodes();
 }
 
 async function openModal() {
   if (props.disabled) return;
+
   bootstrapDraft();
   search.value = "";
+  searchResults.value = [];
+  loadingSearch.value = false;
+  searchRequestId += 1;
+
   isOpen.value = true;
   if (!rootNodes.value.length) {
     await loadRoot();
@@ -392,9 +438,49 @@ function closeModal() {
   isOpen.value = false;
 }
 
+async function loadSearchResults(term: string) {
+  const requestId = ++searchRequestId;
+  loadingSearch.value = true;
+  const { data } = await tendersUC.getCpvChildren(undefined, term);
+
+  if (requestId !== searchRequestId) return;
+  searchResults.value = (data as CpvNode[]) || [];
+  loadingSearch.value = false;
+}
+
+watch(
+  () => search.value,
+  (value) => {
+    if (searchTimer) {
+      clearTimeout(searchTimer);
+      searchTimer = null;
+    }
+
+    const term = value.trim();
+    if (!term) {
+      searchRequestId += 1;
+      loadingSearch.value = false;
+      searchResults.value = [];
+      return;
+    }
+
+    searchTimer = setTimeout(() => {
+      void loadSearchResults(term);
+    }, 250);
+  },
+);
+
+onBeforeUnmount(() => {
+  if (searchTimer) {
+    clearTimeout(searchTimer);
+    searchTimer = null;
+  }
+});
+
 function applySelection() {
-  const ids = Object.keys(draftSelectedMap.value).map((id) => Number(id));
-  const labels = ids.map((id) => draftSelectedMap.value[id]?.label || `#${id}`);
+  const ids = selectedItems.value.map((item) => item.id);
+  const labels = selectedItems.value.map((item) => item.label);
+
   emit("update:selectedIds", ids);
   emit("update:selectedLabels", labels);
   closeModal();

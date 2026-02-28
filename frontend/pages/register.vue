@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="container mx-auto px-4 py-12 max-w-3xl">
     <UCard>
       <template #header>
@@ -190,7 +190,7 @@
               label="Погоджуюсь, що мої реєстраційні дані відображатимуться організаторам тендерів"
             />
 
-            <CpvLazyMultiSearch
+            <CpvTenderModalSelect
               label="Категорії CPV"
               placeholder="Оберіть одну або кілька CPV-категорій"
               :selected-ids="cpvSelectedIds"

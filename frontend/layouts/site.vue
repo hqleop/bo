@@ -12,7 +12,7 @@
         </div>
         <div class="flex gap-4">
           <template v-if="isAuthenticated">
-            <UButton to="/cabinet/dashboard" color="primary">Кабінет</UButton>
+            <UButton to="/cabinet/tasks" color="primary">Кабінет</UButton>
             <UButton
               variant="outline"
               color="neutral"

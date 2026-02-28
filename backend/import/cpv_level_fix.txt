@@ -1,0 +1,23 @@
+WITH norm AS (
+  SELECT
+    id,
+    printf('%08d', CAST(cpv_code AS INTEGER)) AS code8
+  FROM cpv_dictionary
+)
+UPDATE cpv_dictionary AS t
+SET
+  cpv_code = n.code8,
+  cpv_level_code = CASE
+    WHEN substr(n.code8, 3, 6) = '000000' THEN substr(n.code8, 1, 2)  -- XX000000
+    WHEN substr(n.code8, 4, 5) = '00000'  THEN substr(n.code8, 1, 3)  -- XXX00000
+    WHEN substr(n.code8, 5, 4) = '0000'   THEN substr(n.code8, 1, 4)  -- XXXX0000
+    ELSE '0'                                                      -- категорія (повний код)
+  END,
+  cpv_parent_code = CASE
+    WHEN substr(n.code8, 3, 6) = '000000' THEN '0'                -- розділ: батька немає
+    WHEN substr(n.code8, 4, 5) = '00000'  THEN substr(n.code8, 1, 2)
+    WHEN substr(n.code8, 5, 4) = '0000'   THEN substr(n.code8, 1, 3)
+    ELSE substr(n.code8, 1, 4)
+  END
+FROM norm n
+WHERE t.id = n.id;

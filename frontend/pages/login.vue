@@ -53,7 +53,7 @@ const { refreshMe } = useMe();
 // Перевірка чи вже залогінений
 await checkAuth();
 if (isAuthenticated.value) {
-  await navigateTo("/cabinet/dashboard");
+  await navigateTo("/cabinet/tasks");
 }
 
 const form = reactive({
@@ -79,7 +79,7 @@ const onSubmit = async () => {
       await navigateTo("/register?step=2");
       return;
     }
-    await navigateTo("/cabinet/dashboard");
+    await navigateTo("/cabinet/tasks");
   } else {
     // Show error (TODO: use toast/notification)
     alert(result.error);

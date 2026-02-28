@@ -154,8 +154,8 @@ export function useTendersUseCases() {
     return tendersApi.getCategory(fetch, categoryId)
   }
 
-  async function getCpvChildren(parentLevelCode?: string) {
-    return tendersApi.getCpvChildren(fetch, parentLevelCode)
+  async function getCpvChildren(parentLevelCode?: string, search?: string) {
+    return tendersApi.getCpvChildren(fetch, parentLevelCode, search)
   }
 
   async function getCpvWithCompanies() {

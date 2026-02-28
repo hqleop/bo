@@ -221,10 +221,15 @@ export async function getCategory(request: RequestFn, categoryId: number) {
   return request<unknown>(`/categories/${categoryId}/`)
 }
 
-export async function getCpvChildren(request: RequestFn, parentLevelCode?: string) {
-  const query = parentLevelCode
-    ? `?parent_level_code=${encodeURIComponent(parentLevelCode)}`
-    : ''
+export async function getCpvChildren(
+  request: RequestFn,
+  parentLevelCode?: string,
+  search?: string
+) {
+  const params = new URLSearchParams()
+  if (parentLevelCode) params.set('parent_level_code', parentLevelCode)
+  if (search?.trim()) params.set('search', search.trim())
+  const query = params.toString() ? `?${params.toString()}` : ''
   return request<unknown[]>(`/cpv/children/${query}`.replace(/\/\?/, '?'))
 }
 

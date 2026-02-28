@@ -1965,8 +1965,15 @@ class CpvDictionaryChildrenView(APIView):
     )
     def get(self, request):
         parent_level_code = (request.query_params.get("parent_level_code") or "").strip()
+        search = (request.query_params.get("search") or "").strip()
 
-        if parent_level_code:
+        if search:
+            qs = CpvDictionary.objects.filter(
+                Q(cpv_code__icontains=search)
+                | Q(name_ua__icontains=search)
+                | Q(name_en__icontains=search)
+            )
+        elif parent_level_code:
             qs = CpvDictionary.objects.filter(cpv_parent_code=parent_level_code)
         else:
             qs = CpvDictionary.objects.filter(
@@ -1976,6 +1983,68 @@ class CpvDictionaryChildrenView(APIView):
         qs = qs.order_by("cpv_code")
         items = list(qs)
         level_codes = [item.cpv_level_code for item in items if item.cpv_level_code]
+
+        ancestors_by_level_code = {}
+        if search and items:
+            pending_parent_codes = {
+                (item.cpv_parent_code or "").strip()
+                for item in items
+                if (item.cpv_parent_code or "").strip()
+            }
+            while pending_parent_codes:
+                parent_items = list(
+                    CpvDictionary.objects.filter(cpv_level_code__in=pending_parent_codes)
+                )
+                pending_parent_codes = set()
+                for parent in parent_items:
+                    parent_level_code = (parent.cpv_level_code or "").strip()
+                    if parent_level_code:
+                        ancestors_by_level_code[parent_level_code] = parent
+                    next_parent_code = (parent.cpv_parent_code or "").strip()
+                    if next_parent_code and next_parent_code not in ancestors_by_level_code:
+                        pending_parent_codes.add(next_parent_code)
+
+        def _label(item):
+            return f"{item.cpv_code} - {item.name_ua}"
+
+        def _hierarchy_label(item):
+            parts = [_label(item)]
+            parent_code = (item.cpv_parent_code or "").strip()
+            guard = 0
+            while parent_code and guard < 30:
+                parent = ancestors_by_level_code.get(parent_code)
+                if not parent:
+                    break
+                parts.append(_label(parent))
+                parent_code = (parent.cpv_parent_code or "").strip()
+                guard += 1
+            parts.reverse()
+            return " / ".join(parts)
+
+        def _hierarchy_path(item):
+            path_items = [item]
+            parent_code = (item.cpv_parent_code or "").strip()
+            guard = 0
+            while parent_code and guard < 30:
+                parent = ancestors_by_level_code.get(parent_code)
+                if not parent:
+                    break
+                path_items.append(parent)
+                parent_code = (parent.cpv_parent_code or "").strip()
+                guard += 1
+            path_items.reverse()
+            result = []
+            for idx, node in enumerate(path_items):
+                is_last = idx == len(path_items) - 1
+                result.append(
+                    {
+                        "id": node.id,
+                        "cpv_level_code": node.cpv_level_code,
+                        "label": _label(node),
+                        "has_children": (not is_last) or (node.cpv_level_code in child_parent_codes),
+                    }
+                )
+            return result
 
         child_parent_codes = set()
         if level_codes:
@@ -1991,7 +2060,9 @@ class CpvDictionaryChildrenView(APIView):
                 "cpv_code": item.cpv_code,
                 "name_ua": item.name_ua,
                 "name_en": item.name_en,
-                "label": f"{item.cpv_code} - {item.name_ua}",
+                "label": _label(item),
+                "hierarchy_label": _hierarchy_label(item) if search else _label(item),
+                "hierarchy_path": _hierarchy_path(item) if search else [],
                 "has_children": item.cpv_level_code in child_parent_codes,
                 "children": [],
             }

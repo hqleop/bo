@@ -40,7 +40,7 @@
             class="flex-1 min-h-0 flex flex-col gap-4"
           >
             <div class="max-w-xl">
-              <CpvLazyMultiSearch
+              <CpvTenderModalSelect
                 label="Додати категорії CPV"
                 placeholder="Пошук та обрання категорій CPV"
                 :selected-ids="assignedCpvIds"

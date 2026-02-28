@@ -227,7 +227,7 @@
               />
             </UFormField>
 
-            <CpvLazyMultiSearch
+            <CpvTenderModalSelect
               label="Категорія CPV"
               placeholder="Оберіть CPV-категорії (доступні, якщо не обрана звичайна категорія)"
               :disabled="!!nomenclatureForm.category"

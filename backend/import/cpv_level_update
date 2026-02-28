@@ -1,0 +1,38 @@
+UPDATE cpv_dictionary
+SET
+  cpv_level_code =
+    CASE
+      -- 2 (розділ): XX000000
+      WHEN substr(substr(cpv_code, 1, 8), 3, 6) = '000000' THEN substr(substr(cpv_code, 1, 8), 1, 2)
+
+      -- 3 (група): XXX00000
+      WHEN substr(substr(cpv_code, 1, 8), 4, 5) = '00000' THEN substr(substr(cpv_code, 1, 8), 1, 3)
+
+      -- 4 (клас): XXXX0000
+      WHEN substr(substr(cpv_code, 1, 8), 5, 4) = '0000' THEN substr(substr(cpv_code, 1, 8), 1, 4)
+
+      -- 5 (категорія): XXXXX000
+      WHEN substr(substr(cpv_code, 1, 8), 6, 3) = '000' THEN substr(substr(cpv_code, 1, 8), 1, 5)
+
+      -- якщо не підпадає (наприклад, “позиція” без нулів) — теж можна лишити 5
+      ELSE substr(substr(cpv_code, 1, 8), 1, 5)
+    END,
+  cpv_parent_code =
+    CASE
+      -- для 2 рівня батька нема
+      WHEN substr(substr(cpv_code, 1, 8), 3, 6) = '000000' THEN '0'
+
+      -- 3 рівень: батько = 2 (XX)
+      WHEN substr(substr(cpv_code, 1, 8), 4, 5) = '00000' THEN substr(substr(cpv_code, 1, 8), 1, 2)
+
+      -- 4 рівень: батько = 3 (XXX)
+      WHEN substr(substr(cpv_code, 1, 8), 5, 4) = '0000' THEN substr(substr(cpv_code, 1, 8), 1, 3)
+
+      -- 5 рівень: батько = 4 (XXXX)
+      WHEN substr(substr(cpv_code, 1, 8), 6, 3) = '000' THEN substr(substr(cpv_code, 1, 8), 1, 4)
+
+      ELSE substr(substr(cpv_code, 1, 8), 1, 4)
+    END
+WHERE
+  cpv_code IS NOT NULL
+  AND length(cpv_code) >= 8

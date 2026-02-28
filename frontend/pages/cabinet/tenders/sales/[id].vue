@@ -442,6 +442,7 @@
 
               <!-- Область 2 (2/5): зверху пошук + список CPV (системні) з пагінацією та Запросити, знизу — категорії по яким запрошуються -->
               <div
+                v-if="false"
                 class="flex-[2] min-w-0 flex flex-col border border-gray-200 rounded-lg bg-white overflow-hidden divide-y divide-gray-200"
               >
                 <h4
@@ -579,6 +580,14 @@
               <div
                 class="flex-1 min-w-0 flex flex-col border border-gray-200 rounded-lg bg-white p-4 overflow-hidden"
               >
+                <CpvTenderModalSelect
+                  label=""
+                  placeholder="Запросити по CPV"
+                  :selected-ids="invitationCpvFilterIds"
+                  :selected-labels="invitationCpvSelectedLabels"
+                  @update:selected-ids="invitationCpvFilterIds = $event"
+                  @update:selected-labels="invitationCpvSelectedLabels = $event"
+                />
                 <UButton
                   class="w-full shrink-0"
                   icon="i-heroicons-envelope"
@@ -1097,6 +1106,15 @@
             >
               Запросити учасників
             </UButton>
+            <CpvTenderModalSelect
+              label=""
+              placeholder="Запросити по CPV"
+              :disabled="isViewingPreviousTour"
+              :selected-ids="invitationCpvFilterIds"
+              :selected-labels="invitationCpvSelectedLabels"
+              @update:selected-ids="invitationCpvFilterIds = $event"
+              @update:selected-labels="invitationCpvSelectedLabels = $event"
+            />
           </template>
           <UButton
             class="w-full"
@@ -2034,6 +2052,7 @@ const invitationContractors = ref<
   }>
 >([]);
 const invitationCpvFilterIds = ref<number[]>([]);
+const invitationCpvSelectedLabels = ref<string[]>([]);
 const invitationCpvSearchTerm = ref("");
 const cpvWithCompaniesList = ref<
   Array<{ id: number; cpv_code: string; name_ua: string; label: string }>
@@ -2185,6 +2204,16 @@ function invitationCpvLabelById(id: number): string {
     `#${id}`
   );
 }
+
+watch(
+  () => [invitationCpvFilterIds.value.join(","), invitationCpvOptions.value.length],
+  () => {
+    invitationCpvSelectedLabels.value = invitationCpvFilterIds.value.map((id) =>
+      invitationCpvLabelById(id),
+    );
+  },
+  { immediate: true },
+);
 
 function inviteOneContractor(
   rel: (typeof invitationContractors.value)[number],

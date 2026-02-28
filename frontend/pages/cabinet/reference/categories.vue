@@ -108,7 +108,7 @@
                 placeholder="Без батьківської категорії"
               />
             </UFormField>
-            <CpvLazyMultiSearch
+            <CpvTenderModalSelect
               label="CPV"
               placeholder="Оберіть CPV"
               :selected-ids="selectedCpvIds"
