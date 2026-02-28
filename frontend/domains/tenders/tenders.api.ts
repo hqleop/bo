@@ -213,6 +213,18 @@ export async function getNomenclaturesByCpv(request: RequestFn, cpvId: number) {
   return request<unknown[]>(`/nomenclatures/?cpv_id=${cpvId}`)
 }
 
+export async function getNomenclaturesByCpvs(request: RequestFn, cpvIds: number[]) {
+  const normalized = Array.from(
+    new Set(
+      (cpvIds || [])
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    )
+  )
+  if (!normalized.length) return Promise.resolve({ data: [] as unknown[], error: null })
+  return request<unknown[]>(`/nomenclatures/?cpv_ids=${normalized.join(",")}`)
+}
+
 export async function getNomenclaturesByCategory(request: RequestFn, categoryId: number) {
   return request<unknown[]>(`/nomenclatures/?category_id=${categoryId}`)
 }

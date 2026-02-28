@@ -902,7 +902,7 @@
                           >
                             <span class="font-medium">{{ c.name }}</span>
                             <span class="text-gray-500 text-xs">{{
-                              criterionTypeLabel(c.type)
+                              `Тип: ${criterionTypeLabel(c.type)} | Застосування: ${criterionApplicationLabel(c.application, c.application_label)} | Обов'язковий: ${c.is_required ? "Так" : "Ні"}`
                             }}</span>
                             <UButton
                               icon="i-heroicons-trash"
@@ -933,7 +933,7 @@
                           >
                             <span class="font-medium">{{ c.name }}</span>
                             <span class="text-gray-500 text-xs">{{
-                              criterionTypeLabel(c.type)
+                              `Тип: ${criterionTypeLabel(c.type)} | Застосування: ${criterionApplicationLabel(c.application, c.application_label)} | Обов'язковий: ${c.is_required ? "Так" : "Ні"}`
                             }}</span>
                             <UButton
                               icon="i-heroicons-trash"
@@ -2943,7 +2943,14 @@ function normalizedCriterionIds(rawIds: unknown[]): number[] {
 }
 
 function criterionRefId(value: any): number | null {
-  return toValidCriterionId(value?.reference_criterion_id ?? value?.id);
+  if (
+    value &&
+    typeof value === "object" &&
+    Object.prototype.hasOwnProperty.call(value, "reference_criterion_id")
+  ) {
+    return toValidCriterionId(value.reference_criterion_id);
+  }
+  return toValidCriterionId(value?.id);
 }
 
 const priceCriteriaAutosaveInFlight = ref(false);
@@ -3255,6 +3262,20 @@ function criterionTypeLabel(type: string) {
     boolean: "Булевий",
   };
   return map[type] ?? type;
+}
+
+function criterionApplicationLabel(
+  application?: string,
+  explicitLabel?: string,
+) {
+  const label = (explicitLabel || "").trim();
+  if (label) return label;
+  const map: Record<string, string> = {
+    general: "Загальний",
+    individual: "Індивідуальний",
+  };
+  const key = application || "individual";
+  return map[key] ?? key;
 }
 
 const tenderCriteriaGeneral = computed(() =>
@@ -3676,26 +3697,24 @@ async function loadNomenclaturesForPreparation() {
     let items: any[] = [];
 
     if ((form.cpv_ids?.length ?? 0) > 0) {
-      const merged = new Map<number, any>();
-      for (const cpvId of form.cpv_ids) {
-        const { data: byCpv } = await tendersUC.getNomenclaturesByCpv(cpvId);
-        for (const n of (byCpv as any[]) || []) merged.set(n.id, n);
-      }
-      items = Array.from(merged.values());
-    } else if (form.category) {
-      const { data: byCategory } = await tendersUC.getNomenclaturesByCategory(
-        form.category,
+      const { data: byCpvs } = await tendersUC.getNomenclaturesByCpvs(
+        form.cpv_ids,
       );
+      items = (byCpvs as any[]) || [];
+    } else if (form.category) {
+      const [{ data: byCategory }, { data: categoryData }] = await Promise.all([
+        tendersUC.getNomenclaturesByCategory(form.category),
+        tendersUC.getCategory(form.category),
+      ]);
       const merged = new Map<number, any>();
       for (const n of (byCategory as any[]) || []) merged.set(n.id, n);
 
-      const { data: categoryData } = await tendersUC.getCategory(form.category);
-      const cpvIds: number[] = ((categoryData as any)?.cpvs || []).map(
-        (c: any) => c.id,
-      );
-      for (const cpvId of cpvIds) {
-        const { data: byCpv } = await tendersUC.getNomenclaturesByCpv(cpvId);
-        for (const n of (byCpv as any[]) || []) merged.set(n.id, n);
+      const cpvIds: number[] = ((categoryData as any)?.cpvs || [])
+        .map((c: any) => Number(c.id))
+        .filter((id: number) => Number.isInteger(id) && id > 0);
+      if (cpvIds.length) {
+        const { data: byCpvs } = await tendersUC.getNomenclaturesByCpvs(cpvIds);
+        for (const n of (byCpvs as any[]) || []) merged.set(n.id, n);
       }
       items = Array.from(merged.values());
     }

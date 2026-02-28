@@ -2289,12 +2289,17 @@ class NomenclatureViewSet(viewsets.ModelViewSet):
         name = self.request.query_params.get("name")
         category_id = self.request.query_params.get("category_id")
         cpv_id = self.request.query_params.get("cpv_id")
+        cpv_ids = _parse_int_list_param(self.request.query_params.getlist("cpv_ids"))
 
         if name:
             qs = qs.filter(name__icontains=name)
         if category_id:
             qs = qs.filter(category_id=category_id)
-        if cpv_id:
+        if cpv_ids:
+            qs = qs.filter(
+                Q(cpv_category_id__in=cpv_ids) | Q(cpv_categories__id__in=cpv_ids)
+            ).distinct()
+        elif cpv_id:
             qs = qs.filter(
                 Q(cpv_category_id=cpv_id) | Q(cpv_categories__id=cpv_id)
             ).distinct()

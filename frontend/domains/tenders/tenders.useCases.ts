@@ -146,6 +146,10 @@ export function useTendersUseCases() {
     return tendersApi.getNomenclaturesByCpv(fetch, cpvId)
   }
 
+  async function getNomenclaturesByCpvs(cpvIds: number[]) {
+    return tendersApi.getNomenclaturesByCpvs(fetch, cpvIds)
+  }
+
   async function getNomenclaturesByCategory(categoryId: number) {
     return tendersApi.getNomenclaturesByCategory(fetch, categoryId)
   }
@@ -231,6 +235,7 @@ export function useTendersUseCases() {
     getCurrencies,
     getDepartments,
     getNomenclaturesByCpv,
+    getNomenclaturesByCpvs,
     getNomenclaturesByCategory,
     getCategory,
     getCpvChildren,

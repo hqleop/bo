@@ -944,9 +944,73 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["criterion_ids"].queryset = TenderCriterion.objects.filter(
-            tender_type="procurement"
+        qs = TenderCriterion.objects.filter(tender_type="procurement")
+        self.fields["criterion_ids"].queryset = qs
+        if hasattr(self.fields["criterion_ids"], "child_relation"):
+            self.fields["criterion_ids"].child_relation.queryset = qs
+
+    def _normalize_criterion_ids_payload(self, data):
+        if not self.instance:
+            return data
+
+        raw_ids = []
+        if hasattr(data, "getlist"):
+            raw_ids = data.getlist("criterion_ids")
+        elif isinstance(data, dict):
+            raw_ids = data.get("criterion_ids") or []
+        else:
+            return data
+
+        if raw_ids is None:
+            return data
+        if not isinstance(raw_ids, (list, tuple)):
+            raw_ids = [raw_ids]
+
+        parsed_ids = []
+        for raw in raw_ids:
+            try:
+                parsed = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if parsed > 0:
+                parsed_ids.append(parsed)
+        if not parsed_ids:
+            return data
+
+        valid_ref_ids = set(
+            TenderCriterion.objects.filter(
+                id__in=parsed_ids, tender_type="procurement"
+            ).values_list("id", flat=True)
         )
+        missing_ids = [item_id for item_id in parsed_ids if item_id not in valid_ref_ids]
+        if not missing_ids:
+            return data
+
+        replacement_by_snapshot_id = {
+            snapshot_id: ref_id
+            for snapshot_id, ref_id in self.instance.criteria_items.filter(
+                id__in=missing_ids
+            ).values_list("id", "reference_criterion_id")
+            if ref_id
+        }
+        normalized_ids = [replacement_by_snapshot_id.get(item_id, item_id) for item_id in parsed_ids]
+        if normalized_ids == parsed_ids:
+            return data
+
+        if hasattr(data, "copy"):
+            mutable = data.copy()
+            if hasattr(mutable, "setlist"):
+                mutable.setlist("criterion_ids", [str(item_id) for item_id in normalized_ids])
+            else:
+                mutable["criterion_ids"] = normalized_ids
+            return mutable
+
+        normalized = dict(data)
+        normalized["criterion_ids"] = normalized_ids
+        return normalized
+
+    def to_internal_value(self, data):
+        return super().to_internal_value(self._normalize_criterion_ids_payload(data))
 
     class Meta:
         model = ProcurementTender
@@ -1424,9 +1488,73 @@ class SalesTenderSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["criterion_ids"].queryset = TenderCriterion.objects.filter(
-            tender_type="sales"
+        qs = TenderCriterion.objects.filter(tender_type="sales")
+        self.fields["criterion_ids"].queryset = qs
+        if hasattr(self.fields["criterion_ids"], "child_relation"):
+            self.fields["criterion_ids"].child_relation.queryset = qs
+
+    def _normalize_criterion_ids_payload(self, data):
+        if not self.instance:
+            return data
+
+        raw_ids = []
+        if hasattr(data, "getlist"):
+            raw_ids = data.getlist("criterion_ids")
+        elif isinstance(data, dict):
+            raw_ids = data.get("criterion_ids") or []
+        else:
+            return data
+
+        if raw_ids is None:
+            return data
+        if not isinstance(raw_ids, (list, tuple)):
+            raw_ids = [raw_ids]
+
+        parsed_ids = []
+        for raw in raw_ids:
+            try:
+                parsed = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if parsed > 0:
+                parsed_ids.append(parsed)
+        if not parsed_ids:
+            return data
+
+        valid_ref_ids = set(
+            TenderCriterion.objects.filter(
+                id__in=parsed_ids, tender_type="sales"
+            ).values_list("id", flat=True)
         )
+        missing_ids = [item_id for item_id in parsed_ids if item_id not in valid_ref_ids]
+        if not missing_ids:
+            return data
+
+        replacement_by_snapshot_id = {
+            snapshot_id: ref_id
+            for snapshot_id, ref_id in self.instance.criteria_items.filter(
+                id__in=missing_ids
+            ).values_list("id", "reference_criterion_id")
+            if ref_id
+        }
+        normalized_ids = [replacement_by_snapshot_id.get(item_id, item_id) for item_id in parsed_ids]
+        if normalized_ids == parsed_ids:
+            return data
+
+        if hasattr(data, "copy"):
+            mutable = data.copy()
+            if hasattr(mutable, "setlist"):
+                mutable.setlist("criterion_ids", [str(item_id) for item_id in normalized_ids])
+            else:
+                mutable["criterion_ids"] = normalized_ids
+            return mutable
+
+        normalized = dict(data)
+        normalized["criterion_ids"] = normalized_ids
+        return normalized
+
+    def to_internal_value(self, data):
+        return super().to_internal_value(self._normalize_criterion_ids_payload(data))
 
     def validate(self, attrs):
         """Категорія CPV обовʼязкова: хоча б одна CPV має бути обрана."""
