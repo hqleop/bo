@@ -38,11 +38,13 @@ from .models import (
     Currency,
     TenderCriterion,
     ProcurementTender,
+    ProcurementTenderCriterion,
     ProcurementTenderPosition,
     TenderProposal,
     TenderProposalPosition,
     ProcurementTenderFile,
     SalesTender,
+    SalesTenderCriterion,
     SalesTenderPosition,
     SalesTenderProposal,
     SalesTenderProposalPosition,
@@ -237,10 +239,22 @@ def _has_non_empty_criterion_value(value):
     return True
 
 
-def _validate_required_criteria_before_submit(tender, proposal, proposal_position_model):
-    required_criteria = list(
-        tender.tender_criteria.filter(is_required=True).values("id", "name", "application")
+def _get_tender_criteria_rows(tender):
+    criteria_items_manager = getattr(tender, "criteria_items", None)
+    snapshots = list(criteria_items_manager.all()) if criteria_items_manager is not None else []
+    if snapshots:
+        return [
+            {"id": c.id, "name": c.name, "application": c.application, "is_required": bool(c.is_required)}
+            for c in snapshots
+            if bool(c.is_required)
+        ]
+    return list(
+        tender.tender_criteria.filter(is_required=True).values("id", "name", "application", "is_required")
     )
+
+
+def _validate_required_criteria_before_submit(tender, proposal, proposal_position_model):
+    required_criteria = _get_tender_criteria_rows(tender)
     if not required_criteria:
         return None
 
@@ -2399,7 +2413,11 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             return ProcurementTender.objects.all().select_related(
                 "company", "category", "cpv_category", "expense_article",
                 "branch", "department", "currency", "created_by", "parent",
-            ).prefetch_related("positions__nomenclature__unit", "tender_criteria")
+            ).prefetch_related(
+                "positions__nomenclature__unit",
+                "tender_criteria",
+                "criteria_items__reference_criterion",
+            )
         user_companies = CompanyUser.objects.filter(
             user=user, status=CompanyUser.Status.APPROVED
         ).values_list("company_id", flat=True)
@@ -2408,7 +2426,11 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         ).select_related(
             "company", "category", "cpv_category", "expense_article",
             "branch", "department", "currency", "created_by", "parent",
-        ).prefetch_related("positions__nomenclature__unit", "tender_criteria")
+        ).prefetch_related(
+            "positions__nomenclature__unit",
+            "tender_criteria",
+            "criteria_items__reference_criterion",
+        )
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -2433,7 +2455,11 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             ).select_related(
                 "company", "category", "cpv_category", "expense_article",
                 "branch", "department", "currency", "created_by", "parent",
-            ).prefetch_related("positions__nomenclature__unit", "tender_criteria").first()
+            ).prefetch_related(
+                "positions__nomenclature__unit",
+                "tender_criteria",
+                "criteria_items__reference_criterion",
+            ).first()
             if obj:
                 return obj
             # Дозволяємо перегляд деталей тендера, доступного для участі, ще до підтвердження участі.
@@ -2445,7 +2471,11 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             ).select_related(
                 "company", "category", "cpv_category", "expense_article",
                 "branch", "department", "currency", "created_by", "parent",
-            ).prefetch_related("positions__nomenclature__unit", "tender_criteria").first()
+            ).prefetch_related(
+                "positions__nomenclature__unit",
+                "tender_criteria",
+                "criteria_items__reference_criterion",
+            ).first()
             if obj:
                 return obj
         raise Http404("Тендер не знайдено.")
@@ -2821,6 +2851,28 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         )
         new_tender.cpv_categories.set(parent.cpv_categories.all())
         new_tender.tender_criteria.set(parent.tender_criteria.all())
+        if parent.criteria_items.exists():
+            for crit in parent.criteria_items.all():
+                ProcurementTenderCriterion.objects.create(
+                    tender=new_tender,
+                    reference_criterion=crit.reference_criterion,
+                    name=crit.name,
+                    type=crit.type,
+                    application=crit.application,
+                    is_required=bool(crit.is_required),
+                    options=crit.options or {},
+                )
+        else:
+            for crit in parent.tender_criteria.all():
+                ProcurementTenderCriterion.objects.create(
+                    tender=new_tender,
+                    reference_criterion=crit,
+                    name=crit.name,
+                    type=crit.type,
+                    application=getattr(crit, "application", TenderCriterion.Application.INDIVIDUAL),
+                    is_required=bool(getattr(crit, "is_required", False)),
+                    options=getattr(crit, "options", {}) or {},
+                )
         for pos in parent.positions.all():
             ProcurementTenderPosition.objects.create(
                 tender=new_tender,
@@ -2999,7 +3051,11 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             return SalesTender.objects.all().select_related(
                 "company", "category", "cpv_category", "expense_article",
                 "branch", "department", "currency", "created_by", "parent",
-            ).prefetch_related("positions__nomenclature__unit", "tender_criteria")
+            ).prefetch_related(
+                "positions__nomenclature__unit",
+                "tender_criteria",
+                "criteria_items__reference_criterion",
+            )
         user_companies = CompanyUser.objects.filter(
             user=user, status=CompanyUser.Status.APPROVED
         ).values_list("company_id", flat=True)
@@ -3008,7 +3064,11 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
         ).select_related(
             "company", "category", "cpv_category", "expense_article",
             "branch", "department", "currency", "created_by", "parent",
-        ).prefetch_related("positions__nomenclature__unit", "tender_criteria")
+        ).prefetch_related(
+            "positions__nomenclature__unit",
+            "tender_criteria",
+            "criteria_items__reference_criterion",
+        )
 
     def get_object(self):
         """Дозволити доступ до тендера організатора або до тендера, де компанія користувача має пропозицію (учасник)."""
@@ -3030,7 +3090,11 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             ).select_related(
                 "company", "category", "cpv_category", "expense_article",
                 "branch", "department", "currency", "created_by", "parent",
-            ).prefetch_related("positions__nomenclature__unit", "tender_criteria").first()
+            ).prefetch_related(
+                "positions__nomenclature__unit",
+                "tender_criteria",
+                "criteria_items__reference_criterion",
+            ).first()
             if obj:
                 return obj
             # Дозволяємо перегляд деталей тендера, доступного для участі, ще до підтвердження участі.
@@ -3042,7 +3106,11 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             ).select_related(
                 "company", "category", "cpv_category", "expense_article",
                 "branch", "department", "currency", "created_by", "parent",
-            ).prefetch_related("positions__nomenclature__unit", "tender_criteria").first()
+            ).prefetch_related(
+                "positions__nomenclature__unit",
+                "tender_criteria",
+                "criteria_items__reference_criterion",
+            ).first()
             if obj:
                 return obj
         raise Http404("Тендер не знайдено.")
@@ -3420,6 +3488,28 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
         )
         new_tender.cpv_categories.set(parent.cpv_categories.all())
         new_tender.tender_criteria.set(parent.tender_criteria.all())
+        if parent.criteria_items.exists():
+            for crit in parent.criteria_items.all():
+                SalesTenderCriterion.objects.create(
+                    tender=new_tender,
+                    reference_criterion=crit.reference_criterion,
+                    name=crit.name,
+                    type=crit.type,
+                    application=crit.application,
+                    is_required=bool(crit.is_required),
+                    options=crit.options or {},
+                )
+        else:
+            for crit in parent.tender_criteria.all():
+                SalesTenderCriterion.objects.create(
+                    tender=new_tender,
+                    reference_criterion=crit,
+                    name=crit.name,
+                    type=crit.type,
+                    application=getattr(crit, "application", TenderCriterion.Application.INDIVIDUAL),
+                    is_required=bool(getattr(crit, "is_required", False)),
+                    options=getattr(crit, "options", {}) or {},
+                )
         for pos in parent.positions.all():
             SalesTenderPosition.objects.create(
                 tender=new_tender,

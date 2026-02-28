@@ -30,7 +30,7 @@
     </div>
     <div
       v-if="!isParticipant"
-      class="tender-stepper tender-stepper--compact mb-6"
+      class="tender-stepper tender-stepper--compact mb-1"
     >
       <UStepper
         v-model="currentStepValue"
@@ -409,7 +409,10 @@
                       </UButton>
                     </div>
                   </div>
-                  <div class="flex-1 min-h-0 flex flex-col p-3 min-h-[120px]">
+                  <div
+                    v-if="false"
+                    class="flex-1 min-h-0 flex flex-col p-3 min-h-[120px]"
+                  >
                     <h4 class="text-sm font-semibold text-gray-700 mb-2">
                       Запрошені компанії
                     </h4>
@@ -438,6 +441,38 @@
                     <p v-else class="text-sm text-gray-500 py-1">Порожньо.</p>
                   </div>
                 </div>
+              </div>
+
+              <!-- Центральна область: запрошені компанії -->
+              <div
+                class="flex-1 min-w-0 flex flex-col border border-gray-200 rounded-lg bg-white p-4 overflow-hidden"
+              >
+                <h4 class="text-sm font-semibold text-gray-700 mb-2">
+                  Запрошені компанії
+                </h4>
+                <ul
+                  v-if="invitedCompanies.length"
+                  class="space-y-1.5 overflow-auto min-h-0 flex-1"
+                >
+                  <li
+                    v-for="(company, idx) in invitedCompanies"
+                    :key="company.id"
+                    class="flex items-center justify-between gap-2 py-1.5 px-2 rounded bg-gray-50 border border-gray-200 text-sm"
+                  >
+                    <span class="truncate flex-1 min-w-0">{{
+                      company.name || company.edrpou || "—"
+                    }}</span>
+                    <UButton
+                      icon="i-heroicons-trash"
+                      size="xs"
+                      variant="ghost"
+                      color="error"
+                      aria-label="Видалити"
+                      @click="removeInvitedCompany(idx)"
+                    />
+                  </li>
+                </ul>
+                <p v-else class="text-sm text-gray-500 py-1">Порожньо.</p>
               </div>
 
               <!-- Область 2 (2/5): зверху пошук + список CPV (системні) з пагінацією та Запросити, знизу — категорії по яким запрошуються -->
@@ -585,11 +620,11 @@
                   placeholder="Запросити по CPV"
                   :selected-ids="invitationCpvFilterIds"
                   :selected-labels="invitationCpvSelectedLabels"
-                  @update:selected-ids="invitationCpvFilterIds = $event"
-                  @update:selected-labels="invitationCpvSelectedLabels = $event"
+                  @update:selected-ids="onInvitationCpvIdsUpdate"
+                  @update:selected-labels="onInvitationCpvLabelsUpdate"
                 />
                 <UButton
-                  class="w-full shrink-0"
+                  class="w-full shrink-0 mt-2"
                   icon="i-heroicons-envelope"
                   @click="showInviteByEmailModal = true"
                 >
@@ -754,6 +789,8 @@
                           :items="vatOptions"
                           value-key="value"
                           placeholder="Оберіть варіант"
+                          :disabled="isViewingPreviousTour || isParticipant"
+                          @update:model-value="onPriceCriterionVatChange"
                         />
                       </UFormField>
                       <UFormField label="Доставка" class="min-w-[260px]">
@@ -762,6 +799,8 @@
                           :items="deliveryOptions"
                           value-key="value"
                           placeholder="Оберіть варіант"
+                          :disabled="isViewingPreviousTour || isParticipant"
+                          @update:model-value="onPriceCriterionDeliveryChange"
                         />
                       </UFormField>
                     </div>
@@ -1099,6 +1138,7 @@
               Опублікувати
             </UButton>
             <UButton
+              v-if="!showInvitationPanel"
               class="w-full"
               variant="outline"
               :disabled="isViewingPreviousTour"
@@ -1106,15 +1146,6 @@
             >
               Запросити учасників
             </UButton>
-            <CpvTenderModalSelect
-              label=""
-              placeholder="Запросити по CPV"
-              :disabled="isViewingPreviousTour"
-              :selected-ids="invitationCpvFilterIds"
-              :selected-labels="invitationCpvSelectedLabels"
-              @update:selected-ids="invitationCpvFilterIds = $event"
-              @update:selected-labels="invitationCpvSelectedLabels = $event"
-            />
           </template>
           <UButton
             class="w-full"
@@ -1897,7 +1928,7 @@ const isParticipant = computed(
 const tender = ref<any | null>(null);
 const loading = ref(true);
 const saving = ref(false);
-const ACCEPTANCE_REFRESH_MS = 10000;
+const ACCEPTANCE_REFRESH_MS = 30000;
 let acceptanceRefreshInterval: ReturnType<typeof setInterval> | null = null;
 const tourOptions = ref<{ value: number; label: string }[]>([]);
 const prepTab = ref<"positions" | "criteria">("positions");
@@ -2052,7 +2083,7 @@ const invitationContractors = ref<
   }>
 >([]);
 const invitationCpvFilterIds = ref<number[]>([]);
-const invitationCpvSelectedLabels = ref<string[]>([]);
+const invitationCpvLabelsById = ref<Record<number, string>>({});
 const invitationCpvSearchTerm = ref("");
 const cpvWithCompaniesList = ref<
   Array<{ id: number; cpv_code: string; name_ua: string; label: string }>
@@ -2150,6 +2181,22 @@ function removeInvitedCpv(id: number) {
   );
 }
 
+function onInvitationCpvIdsUpdate(ids: Array<number | string>) {
+  invitationCpvFilterIds.value = (ids || [])
+    .map((id) => Number(id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+}
+
+function onInvitationCpvLabelsUpdate(labels: string[]) {
+  const next = { ...invitationCpvLabelsById.value };
+  for (let i = 0; i < invitationCpvFilterIds.value.length; i++) {
+    const id = invitationCpvFilterIds.value[i];
+    const label = (labels?.[i] || "").trim();
+    if (label && !/^#\d+$/.test(label)) next[id] = label;
+  }
+  invitationCpvLabelsById.value = next;
+}
+
 const invitationSupplierListFiltered = computed(() => {
   let list = invitationContractors.value;
   const q = (invitationContractorSearch.value || "").trim().toLowerCase();
@@ -2198,21 +2245,26 @@ function toggleContractorSelection(companyId: number | undefined) {
 }
 
 function invitationCpvLabelById(id: number): string {
+  if (invitationCpvLabelsById.value[id]) return invitationCpvLabelsById.value[id];
+  const tenderCpv = Array.isArray((tender.value as any)?.cpv_categories)
+    ? (tender.value as any).cpv_categories.find(
+        (c: any) => Number(c?.id) === Number(id),
+      )
+    : null;
+  const tenderLabel = tenderCpv
+    ? tenderCpv.label ||
+      `${tenderCpv.cpv_code || ""} - ${tenderCpv.name_ua || ""}`.trim()
+    : undefined;
   return (
     invitationCpvOptions.value.find((o) => o.id === id)?.label ??
     cpvWithCompaniesList.value.find((c) => c.id === id)?.label ??
+    tenderLabel ??
     `#${id}`
   );
 }
 
-watch(
-  () => [invitationCpvFilterIds.value.join(","), invitationCpvOptions.value.length],
-  () => {
-    invitationCpvSelectedLabels.value = invitationCpvFilterIds.value.map((id) =>
-      invitationCpvLabelById(id),
-    );
-  },
-  { immediate: true },
+const invitationCpvSelectedLabels = computed(() =>
+  invitationCpvFilterIds.value.map((id) => invitationCpvLabelById(id)),
 );
 
 function inviteOneContractor(
@@ -2727,6 +2779,67 @@ const canSubmitProposal = computed(() => {
   return hasPositions && hasPriceParams;
 });
 
+function toValidCriterionId(value: unknown): number | null {
+  const num = Number(value);
+  if (!Number.isInteger(num) || num <= 0) return null;
+  return num;
+}
+
+function normalizedCriterionIds(rawIds: unknown[]): number[] {
+  const unique = new Set<number>();
+  for (const rawId of rawIds || []) {
+    const id = toValidCriterionId(rawId);
+    if (id != null) unique.add(id);
+  }
+  return Array.from(unique);
+}
+
+function criterionRefId(value: any): number | null {
+  return toValidCriterionId(value?.reference_criterion_id ?? value?.id);
+}
+
+const priceCriteriaAutosaveInFlight = ref(false);
+const priceCriteriaAutosaveQueuedPayload = ref<Record<string, unknown> | null>(
+  null,
+);
+
+async function savePriceCriteriaImmediately(payload: Record<string, unknown>) {
+  if (!tender.value?.id || isParticipant.value || isViewingPreviousTour.value)
+    return;
+  if (!Object.keys(payload).length) return;
+  if (priceCriteriaAutosaveInFlight.value) {
+    priceCriteriaAutosaveQueuedPayload.value = {
+      ...(priceCriteriaAutosaveQueuedPayload.value || {}),
+      ...payload,
+    };
+    return;
+  }
+  priceCriteriaAutosaveInFlight.value = true;
+  try {
+    await patchTender(payload);
+  } finally {
+    priceCriteriaAutosaveInFlight.value = false;
+  }
+  const queued = priceCriteriaAutosaveQueuedPayload.value;
+  if (queued && Object.keys(queued).length) {
+    priceCriteriaAutosaveQueuedPayload.value = null;
+    await savePriceCriteriaImmediately(queued);
+  }
+}
+
+function onPriceCriterionVatChange(value: string | undefined) {
+  priceCriterionVat.value = value;
+  void savePriceCriteriaImmediately({
+    price_criterion_vat: value ?? "",
+  });
+}
+
+function onPriceCriterionDeliveryChange(value: string | undefined) {
+  priceCriterionDelivery.value = value;
+  void savePriceCriteriaImmediately({
+    price_criterion_delivery: value ?? "",
+  });
+}
 async function savePreparation() {
   if (!tender.value?.id) return false;
   const payload: Record<string, unknown> = {
@@ -2735,7 +2848,9 @@ async function savePreparation() {
       quantity: p.quantity,
       description: p.description ?? "",
     })),
-    criterion_ids: tenderCriteria.value.map((c) => c.id),
+    criterion_ids: normalizedCriterionIds(
+      (tenderCriteria.value || []).map((c: any) => criterionRefId(c)),
+    ),
     price_criterion_vat: priceCriterionVat.value ?? "",
     price_criterion_delivery: priceCriterionDelivery.value ?? "",
   };
@@ -3065,10 +3180,10 @@ async function saveCreateCriterion() {
       });
       return;
     }
-    const newIds = [
-      ...(tenderCriteria.value || []).map((c: any) => c.id),
+    const newIds = normalizedCriterionIds([
+      ...(tenderCriteria.value || []).map((c: any) => criterionRefId(c)),
       created.id,
-    ];
+    ]);
     const ok = await patchTender({ criterion_ids: newIds });
     if (ok && Array.isArray(tender.value?.criteria)) {
       tenderCriteria.value = tender.value.criteria;
@@ -3146,11 +3261,49 @@ function onCriteriaTreeSelect(
 }
 
 /** Додати критерій з довідника (подвійний клік у лівій панелі). Якщо вже є — нічого не робимо. */
-function addCriterionFromTree(criterionId: number) {
+const tenderCriteriaAutosaveInFlight = ref(false);
+const tenderCriteriaAutosaveQueued = ref(false);
+
+function currentTenderCriterionIds() {
+  return normalizedCriterionIds(
+    (tenderCriteria.value || []).map((c: any) => criterionRefId(c)),
+  );
+}
+
+async function persistTenderCriteriaImmediately() {
+  if (!tender.value?.id || isParticipant.value || isViewingPreviousTour.value)
+    return false;
+  if (tenderCriteriaAutosaveInFlight.value) {
+    tenderCriteriaAutosaveQueued.value = true;
+    return true;
+  }
+  tenderCriteriaAutosaveInFlight.value = true;
+  const ok = await patchTender({ criterion_ids: currentTenderCriterionIds() });
+  tenderCriteriaAutosaveInFlight.value = false;
+  if (tenderCriteriaAutosaveQueued.value) {
+    tenderCriteriaAutosaveQueued.value = false;
+    await persistTenderCriteriaImmediately();
+  }
+  return ok;
+}
+async function addCriterionFromTree(criterionId: number) {
   if (isViewingPreviousTour.value) return;
-  if (tenderCriteria.value.some((c) => c.id === criterionId)) return;
-  const c = referenceCriteria.value.find((x: any) => x.id === criterionId);
-  if (c) tenderCriteria.value = [...tenderCriteria.value, c];
+  const normalizedId = toValidCriterionId(criterionId);
+  if (normalizedId == null) return;
+  if (
+    tenderCriteria.value.some(
+      (c) => criterionRefId(c) === normalizedId,
+    )
+  )
+    return;
+  const c = referenceCriteria.value.find(
+    (x: any) => toValidCriterionId(x?.id) === normalizedId,
+  );
+  if (!c) return;
+  const prev = [...tenderCriteria.value];
+  tenderCriteria.value = [...tenderCriteria.value, c];
+  const ok = await persistTenderCriteriaImmediately();
+  if (!ok) tenderCriteria.value = prev;
 }
 
 async function loadReferenceCriteria() {
@@ -3163,9 +3316,21 @@ async function loadReferenceCriteria() {
   }
 }
 
-function removeCriterionFromTender(c: any) {
+async function removeCriterionFromTender(c: any) {
   if (isViewingPreviousTour.value) return;
-  tenderCriteria.value = tenderCriteria.value.filter((x) => x.id !== c.id);
+  const criterionRef = criterionRefId(c);
+  const criterionId = toValidCriterionId(c?.id);
+  if (criterionRef == null && criterionId == null) return;
+  const prev = [...tenderCriteria.value];
+  tenderCriteria.value = tenderCriteria.value.filter(
+    (x) =>
+      !(
+        (criterionId != null && toValidCriterionId((x as any)?.id) === criterionId) ||
+        (criterionRef != null && criterionRefId(x) === criterionRef)
+      ),
+  );
+  const ok = await persistTenderCriteriaImmediately();
+  if (!ok) tenderCriteria.value = prev;
 }
 
 function findCategoryNameById(tree: any[], id: number): string | null {
@@ -3433,9 +3598,9 @@ async function patchTender(payload: Record<string, unknown>) {
     isSales,
     payload,
   );
-  if (error || !data) return false;
-  tender.value = { ...tender.value, ...data };
-  if (data.stage != null) {
+  if (error) return false;
+  if (data) tender.value = { ...tender.value, ...data };
+  if (data?.stage != null) {
     displayStage.value = normalizeStageForUi(
       data.stage,
       tender.value?.conduct_type ?? form.conduct_type,
@@ -3679,6 +3844,7 @@ function startAcceptanceRefresh() {
   }
   if (acceptanceRefreshInterval) return;
   acceptanceRefreshInterval = setInterval(() => {
+    if (typeof document !== "undefined" && document.hidden) return;
     void loadDecisionProposals();
   }, ACCEPTANCE_REFRESH_MS);
 }

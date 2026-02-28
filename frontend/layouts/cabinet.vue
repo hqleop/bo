@@ -74,6 +74,7 @@
                 icon="i-heroicons-clipboard-document-list"
                 variant="ghost"
                 color="neutral"
+                :badge="activeTasksCount > 0 ? activeTasksCount : undefined"
                 title="Завдання користувача"
                 @click="openTasksPage"
               />
@@ -499,11 +500,62 @@ const pageTitle = computed(
 
 // Notifications (via users useCases)
 const usersUC = useUsersUseCases();
+const tendersUC = useTendersUseCases();
 const notifications = ref<{ id: number; is_read?: boolean }[]>([]);
+const activeTasksCount = ref(0);
+
+function countActiveTasksByStage(
+  list: Array<{ created_by?: number | null; stage?: string }>,
+  userId: number,
+): number {
+  const activeStages = new Set(["preparation", "decision", "approval"]);
+  return list.filter(
+    (item) =>
+      Number(item.created_by) === userId &&
+      activeStages.has(String(item.stage ?? "")),
+  ).length;
+}
+
+async function loadActiveTasksCount() {
+  const currentUserId = Number(me.value?.user?.id ?? 0);
+  if (!currentUserId) {
+    activeTasksCount.value = 0;
+    return;
+  }
+
+  try {
+    const [{ data: purchase }, { data: sales }] = await Promise.all([
+      tendersUC.getTenderList(false),
+      tendersUC.getTenderList(true),
+    ]);
+    const purchaseCount = countActiveTasksByStage(
+      Array.isArray(purchase) ? purchase : [],
+      currentUserId,
+    );
+    const salesCount = countActiveTasksByStage(
+      Array.isArray(sales) ? sales : [],
+      currentUserId,
+    );
+    activeTasksCount.value = purchaseCount + salesCount;
+  } catch {
+    activeTasksCount.value = 0;
+  }
+}
+
 onMounted(async () => {
-  const { data } = await usersUC.getNotifications();
+  const [{ data }] = await Promise.all([
+    usersUC.getNotifications(),
+    loadActiveTasksCount(),
+  ]);
   notifications.value = data ?? [];
 });
+
+watch(
+  () => route.fullPath,
+  () => {
+    void loadActiveTasksCount();
+  },
+);
 const unreadNotificationsCount = computed(
   () => notifications.value?.filter((n) => !n.is_read).length || 0,
 );

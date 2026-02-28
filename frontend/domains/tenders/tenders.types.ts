@@ -4,6 +4,7 @@ export interface TenderListItem {
   number?: string
   tour_number?: number
   name?: string
+  stage?: string
   created_by?: number | null
   created_by_display?: string
   stage_label?: string
@@ -29,6 +30,7 @@ export interface TenderProposal {
 
 export interface TenderCriterion {
   id: number
+  reference_criterion_id?: number | null
   name?: string
   type?: string
   tender_type?: 'procurement' | 'sales'

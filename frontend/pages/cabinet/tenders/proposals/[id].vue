@@ -88,15 +88,49 @@
                 :label="c.name"
                 class="mb-0 min-w-[200px]"
               >
-                <UInput
+                <template
                   v-if="currentProposal && !isViewingPreviousTour && (!isParticipant || participantCanEdit)"
-                  v-model="generalCriterionValues[c.id]"
-                  size="sm"
-                  class="w-full"
-                  @blur="savePositionValues"
-                />
+                >
+                  <UInput
+                    v-if="criterionInputKind(c) === 'text'"
+                    v-model="generalCriterionValues[c.id]"
+                    size="sm"
+                    class="w-full"
+                    @blur="savePositionValues"
+                  />
+                  <UInput
+                    v-else-if="criterionInputKind(c) === 'number'"
+                    v-model="generalCriterionValues[c.id]"
+                    type="number"
+                    step="0.01"
+                    size="sm"
+                    class="w-full"
+                    @blur="savePositionValues"
+                  />
+                  <USelectMenu
+                    v-else-if="criterionInputKind(c) === 'boolean'"
+                    v-model="generalCriterionValues[c.id]"
+                    :items="booleanCriterionOptions"
+                    value-key="value"
+                    label-key="label"
+                    placeholder="Оберіть"
+                    class="w-full"
+                    @update:model-value="savePositionValues"
+                  />
+                  <div v-else class="space-y-2">
+                    <UFileUpload
+                      :model-value="getGeneralCriterionFileModel(c.id)"
+                      :multiple="false"
+                      label="Оберіть файл"
+                      @update:model-value="onGeneralCriterionFileChange(c.id, $event)"
+                    />
+                    <p class="text-xs text-gray-600">
+                      {{ formatCriterionValue(c, generalCriterionValues[c.id]) || "Файл не обрано" }}
+                    </p>
+                  </div>
+                </template>
                 <span v-else class="block py-1.5 text-sm text-gray-700">{{
-                  generalCriterionValues[c.id] || "—"
+                  formatCriterionValue(c, generalCriterionValues[c.id]) || "-"
                 }}</span>
               </UFormField>
             </div>
@@ -161,15 +195,51 @@
                           }}</span>
                         </td>
                         <td v-for="c in tenderCriteriaIndividual" :key="c.id" class="p-2">
-                          <UInput
+                          <template
                             v-if="currentProposal && !isViewingPreviousTour && (!isParticipant || participantCanEdit)"
-                            v-model="row.criterion_values[c.id]"
-                            size="sm"
-                            class="min-w-[80px]"
-                            @blur="savePositionValues"
-                          />
+                          >
+                            <UInput
+                              v-if="criterionInputKind(c) === 'text'"
+                              v-model="row.criterion_values[c.id]"
+                              size="sm"
+                              class="min-w-[80px]"
+                              @blur="savePositionValues"
+                            />
+                            <UInput
+                              v-else-if="criterionInputKind(c) === 'number'"
+                              v-model="row.criterion_values[c.id]"
+                              type="number"
+                              step="0.01"
+                              size="sm"
+                              class="min-w-[80px]"
+                              @blur="savePositionValues"
+                            />
+                            <USelectMenu
+                              v-else-if="criterionInputKind(c) === 'boolean'"
+                              v-model="row.criterion_values[c.id]"
+                              :items="booleanCriterionOptions"
+                              value-key="value"
+                              label-key="label"
+                              placeholder="Оберіть"
+                              class="min-w-[120px]"
+                              @update:model-value="savePositionValues"
+                            />
+                            <div v-else class="space-y-2 min-w-[170px]">
+                              <UFileUpload
+                                :model-value="getPositionCriterionFileModel(row.id, c.id)"
+                                :multiple="false"
+                                label="Оберіть файл"
+                                @update:model-value="
+                                  onPositionCriterionFileChange(row.id, c.id, $event)
+                                "
+                              />
+                              <p class="text-xs text-gray-600">
+                                {{ formatCriterionValue(c, row.criterion_values[c.id]) || "Файл не обрано" }}
+                              </p>
+                            </div>
+                          </template>
                           <span v-else class="text-gray-700">{{
-                            row.criterion_values[c.id] || "—"
+                            formatCriterionValue(c, row.criterion_values[c.id]) || "-"
                           }}</span>
                         </td>
                       </tr>
@@ -528,7 +598,14 @@ const tenderCriteriaGeneral = computed(() =>
   tenderCriteria.value.filter((c: any) => (c.application || "individual") === "general"),
 );
 /** Значення загальних критеріїв (одне на весь тендер), ключ — id критерія */
-const generalCriterionValues = ref<Record<number, string>>({});
+type CriterionType = "text" | "numeric" | "file" | "boolean";
+type CriterionValue = string | number | boolean | string[] | null;
+const booleanCriterionOptions = [
+  { value: true, label: "Так" },
+  { value: false, label: "Ні" },
+];
+const fileCriterionModels = ref<Record<string, File[]>>({});
+const generalCriterionValues = ref<Record<number, CriterionValue>>({});
 
 const tenderPositions = computed(() => tender.value?.positions ?? []);
 
@@ -653,6 +730,130 @@ const priceColumnHeader = computed(() => {
   const parts = ["Ціна", vLabel, dLabel].filter(Boolean);
   return parts.join(" ");
 });
+
+function criterionInputKind(criterion: any): CriterionType {
+  const t = String(criterion?.type || "").toLowerCase();
+  if (t === "numeric") return "numeric";
+  if (t === "boolean") return "boolean";
+  if (t === "file") return "file";
+  return "text";
+}
+
+function normalizeCriterionBoolean(value: unknown): boolean | null {
+  if (value === true || value === false) return value;
+  if (typeof value === "string") {
+    const n = value.trim().toLowerCase();
+    if (["true", "1", "yes", "y", "так", "t"].includes(n)) return true;
+    if (["false", "0", "no", "n", "ні", "ni", "f"].includes(n)) return false;
+  }
+  if (typeof value === "number") {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  return null;
+}
+
+function normalizeCriterionValueForUi(
+  criterion: any,
+  rawValue: unknown,
+): CriterionValue | "" {
+  const kind = criterionInputKind(criterion);
+  if (kind === "numeric") {
+    if (rawValue == null || rawValue === "") return "";
+    const num = Number(rawValue);
+    return Number.isNaN(num) ? "" : num;
+  }
+  if (kind === "boolean") return normalizeCriterionBoolean(rawValue) ?? "";
+  if (kind === "file") {
+    if (Array.isArray(rawValue)) {
+      return rawValue.map((v) => String(v || "").trim()).filter(Boolean);
+    }
+    if (typeof rawValue === "string") {
+      const cleaned = rawValue.trim();
+      return cleaned ? [cleaned] : [];
+    }
+    return [];
+  }
+  return String(rawValue ?? "");
+}
+
+function normalizeCriterionValueForSave(
+  criterion: any,
+  rawValue: unknown,
+): string | number | boolean | string[] | null {
+  const kind = criterionInputKind(criterion);
+  if (kind === "numeric") {
+    if (rawValue == null || rawValue === "") return null;
+    const num = Number(rawValue);
+    return Number.isNaN(num) ? null : num;
+  }
+  if (kind === "boolean") return normalizeCriterionBoolean(rawValue);
+  if (kind === "file") {
+    if (Array.isArray(rawValue)) {
+      const names = rawValue.map((v) => String(v || "").trim()).filter(Boolean);
+      return names.length ? names : null;
+    }
+    if (typeof rawValue === "string") {
+      const cleaned = rawValue.trim();
+      return cleaned ? [cleaned] : null;
+    }
+    return null;
+  }
+  const text = String(rawValue ?? "");
+  return text.trim() !== "" ? text : null;
+}
+
+function formatCriterionValue(criterion: any, value: unknown): string {
+  if (value == null || value === "") return "";
+  const kind = criterionInputKind(criterion);
+  if (kind === "boolean") {
+    const boolValue = normalizeCriterionBoolean(value);
+    if (boolValue === null) return "";
+    return boolValue ? "Так" : "Ні";
+  }
+  if (kind === "file" && Array.isArray(value)) {
+    return value.map((v) => String(v || "").trim()).filter(Boolean).join(", ");
+  }
+  return String(value);
+}
+
+function fileModelKey(positionId: number | "g", criterionId: number) {
+  return `${positionId}:${criterionId}`;
+}
+
+function getGeneralCriterionFileModel(criterionId: number) {
+  return fileCriterionModels.value[fileModelKey("g", criterionId)] || [];
+}
+
+function getPositionCriterionFileModel(positionId: number, criterionId: number) {
+  return fileCriterionModels.value[fileModelKey(positionId, criterionId)] || [];
+}
+
+function extractFilesArray(value: unknown): File[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.filter((f): f is File => f instanceof File);
+  if (value instanceof File) return [value];
+  return [];
+}
+
+async function onGeneralCriterionFileChange(criterionId: number, value: unknown) {
+  const files = extractFilesArray(value);
+  fileCriterionModels.value[fileModelKey("g", criterionId)] = files;
+  generalCriterionValues.value[criterionId] = files.map((f) => f.name);
+  await savePositionValues();
+}
+
+async function onPositionCriterionFileChange(
+  positionId: number,
+  criterionId: number,
+  value: unknown,
+) {
+  const files = extractFilesArray(value);
+  fileCriterionModels.value[fileModelKey(positionId, criterionId)] = files;
+  const row = positionRows.value.find((r: any) => r.id === positionId);
+  if (row) row.criterion_values[criterionId] = files.map((f) => f.name);
+  await savePositionValues();
+}
 
 const supplierOptions = ref<
   { value: number; label: string; edrpou?: string }[]
@@ -849,14 +1050,15 @@ function buildPositionRowsFromTender() {
   const positions = tender.value?.positions || [];
   const criteria = tender.value?.criteria || [];
   const generalIds = (tender.value?.criteria || []).filter((c: any) => (c.application || "individual") === "general").map((c: any) => c.id);
-  generalCriterionValues.value = generalIds.reduce((acc: Record<number, string>, id: number) => {
+  fileCriterionModels.value = {};
+  generalCriterionValues.value = generalIds.reduce((acc: Record<number, CriterionValue>, id: number) => {
     acc[id] = "";
     return acc;
   }, {});
   positionRows.value = positions.map((pos: any) => {
-    const criterion_values: Record<number, string> = {};
+    const criterion_values: Record<number, CriterionValue | ""> = {};
     for (const c of criteria) {
-      criterion_values[c.id] = "";
+      criterion_values[c.id] = normalizeCriterionValueForUi(c, "");
     }
     return {
       id: pos.id,
@@ -883,16 +1085,19 @@ function buildPositionRows(proposal: any) {
   );
   const criteria = tender.value?.criteria || [];
   const generalCriteria = criteria.filter((c: any) => (c.application || "individual") === "general");
+  fileCriterionModels.value = {};
   const newRows = positions.map((pos: any) => {
     const pv = valuesByPos[pos.id];
-    const criterion_values: Record<number, string> = {};
+    const criterion_values: Record<number, CriterionValue | ""> = {};
     if (pv?.criterion_values && typeof pv.criterion_values === "object") {
       for (const [k, v] of Object.entries(pv.criterion_values)) {
-        criterion_values[Number(k)] = String(v ?? "");
+        const criterionMeta = criteria.find((c: any) => c.id === Number(k));
+        criterion_values[Number(k)] = normalizeCriterionValueForUi(criterionMeta, v);
       }
     }
     for (const c of criteria) {
-      if (criterion_values[c.id] === undefined) criterion_values[c.id] = "";
+      if (criterion_values[c.id] === undefined)
+        criterion_values[c.id] = normalizeCriterionValueForUi(c, "");
     }
     return {
       id: pos.id,
@@ -908,7 +1113,8 @@ function buildPositionRows(proposal: any) {
   // Заповнити загальні критерії з першої позиції (вони однакові для всіх)
   for (const c of generalCriteria) {
     const firstVal = newRows[0]?.criterion_values?.[c.id];
-    if (firstVal !== undefined) generalCriterionValues.value[c.id] = firstVal;
+    if (firstVal !== undefined)
+      generalCriterionValues.value[c.id] = normalizeCriterionValueForUi(c, firstVal);
   }
 }
 
@@ -919,12 +1125,13 @@ async function savePositionValues() {
   try {
     const position_values = positionRows.value.map((row) => {
       const cv = row.criterion_values || {};
-      const criterion_values: Record<string, string | number> = {};
+      const criterion_values: Record<string, string | number | boolean | string[]> = {};
       for (const c of tenderCriteria.value) {
         const val = (c.application || "individual") === "general"
           ? generalVals[c.id]
           : cv[c.id];
-        if (val !== "" && val != null) criterion_values[String(c.id)] = val;
+        const normalized = normalizeCriterionValueForSave(c, val);
+        if (normalized !== null) criterion_values[String(c.id)] = normalized;
       }
       return {
         tender_position_id: row.id,

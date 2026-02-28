@@ -1073,6 +1073,20 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
         return full_name or getattr(user, "email", "") or ""
 
     def get_criteria(self, obj):
+        snapshots = list(obj.criteria_items.all())
+        if snapshots:
+            return [
+                {
+                    "id": c.id,
+                    "reference_criterion_id": c.reference_criterion_id,
+                    "name": c.name,
+                    "type": c.type,
+                    "application": getattr(c, "application", "individual"),
+                    "application_label": c.get_application_display(),
+                    "is_required": bool(getattr(c, "is_required", False)),
+                }
+                for c in snapshots
+            ]
         return [
             {
                 "id": c.id,
@@ -1084,6 +1098,35 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             }
             for c in obj.tender_criteria.all()
         ]
+
+    def _sync_criteria_items(self, instance, criteria):
+        if criteria is None:
+            return
+        desired_ref_ids = set()
+        existing_by_ref = {
+            item.reference_criterion_id: item
+            for item in instance.criteria_items.all()
+            if item.reference_criterion_id
+        }
+        for criterion in criteria:
+            ref_id = getattr(criterion, "id", None)
+            if not ref_id:
+                continue
+            desired_ref_ids.add(ref_id)
+            if ref_id in existing_by_ref:
+                continue
+            instance.criteria_items.create(
+                reference_criterion=criterion,
+                name=criterion.name,
+                type=criterion.type,
+                application=getattr(criterion, "application", TenderCriterion.Application.INDIVIDUAL),
+                is_required=bool(getattr(criterion, "is_required", False)),
+                options=getattr(criterion, "options", {}) or {},
+            )
+        if desired_ref_ids:
+            instance.criteria_items.exclude(reference_criterion_id__in=desired_ref_ids).delete()
+        else:
+            instance.criteria_items.all().delete()
 
     @staticmethod
     def _validate_positions_no_duplicate_nomenclature(positions_data):
@@ -1136,6 +1179,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
         criterion_ids = validated_data.pop("tender_criteria", None)
         if criterion_ids is not None:
             instance.tender_criteria.set(criterion_ids)
+            self._sync_criteria_items(instance, criterion_ids)
         super().update(instance, validated_data)
         if positions_data is not None:
             self._update_positions(instance, positions_data)
@@ -1534,6 +1578,20 @@ class SalesTenderSerializer(serializers.ModelSerializer):
         return full_name or getattr(user, "email", "") or ""
 
     def get_criteria(self, obj):
+        snapshots = list(obj.criteria_items.all())
+        if snapshots:
+            return [
+                {
+                    "id": c.id,
+                    "reference_criterion_id": c.reference_criterion_id,
+                    "name": c.name,
+                    "type": c.type,
+                    "application": getattr(c, "application", "individual"),
+                    "application_label": c.get_application_display(),
+                    "is_required": bool(getattr(c, "is_required", False)),
+                }
+                for c in snapshots
+            ]
         return [
             {
                 "id": c.id,
@@ -1545,6 +1603,35 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             }
             for c in obj.tender_criteria.all()
         ]
+
+    def _sync_criteria_items(self, instance, criteria):
+        if criteria is None:
+            return
+        desired_ref_ids = set()
+        existing_by_ref = {
+            item.reference_criterion_id: item
+            for item in instance.criteria_items.all()
+            if item.reference_criterion_id
+        }
+        for criterion in criteria:
+            ref_id = getattr(criterion, "id", None)
+            if not ref_id:
+                continue
+            desired_ref_ids.add(ref_id)
+            if ref_id in existing_by_ref:
+                continue
+            instance.criteria_items.create(
+                reference_criterion=criterion,
+                name=criterion.name,
+                type=criterion.type,
+                application=getattr(criterion, "application", TenderCriterion.Application.INDIVIDUAL),
+                is_required=bool(getattr(criterion, "is_required", False)),
+                options=getattr(criterion, "options", {}) or {},
+            )
+        if desired_ref_ids:
+            instance.criteria_items.exclude(reference_criterion_id__in=desired_ref_ids).delete()
+        else:
+            instance.criteria_items.all().delete()
 
     def _update_positions(self, instance, positions_data):
         if positions_data is None:
@@ -1580,6 +1667,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
         criterion_ids = validated_data.pop("tender_criteria", None)
         if criterion_ids is not None:
             instance.tender_criteria.set(criterion_ids)
+            self._sync_criteria_items(instance, criterion_ids)
         super().update(instance, validated_data)
         if positions_data is not None:
             self._update_positions(instance, positions_data)

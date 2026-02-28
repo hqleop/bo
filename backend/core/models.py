@@ -747,6 +747,41 @@ class ProcurementTender(models.Model):
         return f"#{self.number or '?'} {self.name}"
 
 
+class ProcurementTenderCriterion(models.Model):
+    """Tender-scoped criterion snapshot for procurement tenders."""
+
+    tender = models.ForeignKey(
+        ProcurementTender,
+        on_delete=models.CASCADE,
+        related_name="criteria_items",
+    )
+    reference_criterion = models.ForeignKey(
+        TenderCriterion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="procurement_tender_snapshots",
+    )
+    name = models.CharField(max_length=255)
+    type = models.CharField(max_length=20, choices=TenderCriterion.Type.choices)
+    application = models.CharField(
+        max_length=20,
+        choices=TenderCriterion.Application.choices,
+        default=TenderCriterion.Application.INDIVIDUAL,
+    )
+    is_required = models.BooleanField(default=False)
+    options = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        verbose_name = "Критерій тендера на закупівлю (знімок)"
+        verbose_name_plural = "Критерії тендера на закупівлю (знімки)"
+        ordering = ["id"]
+        unique_together = (("tender", "reference_criterion"),)
+
+    def __str__(self) -> str:
+        return f"{self.tender} — {self.name}"
+
+
 class ProcurementTenderPosition(models.Model):
     """
     Позиція тендера на закупівлю.
@@ -1046,6 +1081,41 @@ class SalesTender(models.Model):
 
     def __str__(self) -> str:
         return f"#{self.number or '?'} {self.name}"
+
+
+class SalesTenderCriterion(models.Model):
+    """Tender-scoped criterion snapshot for sales tenders."""
+
+    tender = models.ForeignKey(
+        SalesTender,
+        on_delete=models.CASCADE,
+        related_name="criteria_items",
+    )
+    reference_criterion = models.ForeignKey(
+        TenderCriterion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sales_tender_snapshots",
+    )
+    name = models.CharField(max_length=255)
+    type = models.CharField(max_length=20, choices=TenderCriterion.Type.choices)
+    application = models.CharField(
+        max_length=20,
+        choices=TenderCriterion.Application.choices,
+        default=TenderCriterion.Application.INDIVIDUAL,
+    )
+    is_required = models.BooleanField(default=False)
+    options = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        verbose_name = "Критерій тендера на продаж (знімок)"
+        verbose_name_plural = "Критерії тендера на продаж (знімки)"
+        ordering = ["id"]
+        unique_together = (("tender", "reference_criterion"),)
+
+    def __str__(self) -> str:
+        return f"{self.tender} — {self.name}"
 
 
 class SalesTenderPosition(models.Model):

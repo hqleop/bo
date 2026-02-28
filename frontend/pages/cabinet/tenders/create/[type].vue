@@ -1,6 +1,6 @@
 <template>
   <div class="h-full flex flex-col">
-    <div class="tender-stepper tender-stepper--compact mb-6">
+    <div class="tender-stepper tender-stepper--compact mb-1">
       <UStepper
         v-model="currentStepValue"
         :items="stepperItems"
