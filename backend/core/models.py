@@ -816,6 +816,27 @@ class ProcurementTenderPosition(models.Model):
         max_digits=18, decimal_places=4, default=1,
     )
     description = models.TextField(blank=True, default="")
+    start_price = models.DecimalField(
+        max_digits=18,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Стартова ціна для класичних торгів.",
+    )
+    min_bid_step = models.DecimalField(
+        max_digits=18,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Мінімальний крок ставки для класичних торгів.",
+    )
+    max_bid_step = models.DecimalField(
+        max_digits=18,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Максимальний крок ставки для класичних торгів.",
+    )
     winner_proposal = models.ForeignKey(
         "TenderProposal",
         on_delete=models.SET_NULL,
@@ -1150,6 +1171,27 @@ class SalesTenderPosition(models.Model):
         max_digits=18, decimal_places=4, default=1,
     )
     description = models.TextField(blank=True, default="")
+    start_price = models.DecimalField(
+        max_digits=18,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Стартова ціна для класичних торгів.",
+    )
+    min_bid_step = models.DecimalField(
+        max_digits=18,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Мінімальний крок ставки для класичних торгів.",
+    )
+    max_bid_step = models.DecimalField(
+        max_digits=18,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Максимальний крок ставки для класичних торгів.",
+    )
     winner_proposal = models.ForeignKey(
         "SalesTenderProposal",
         on_delete=models.SET_NULL,

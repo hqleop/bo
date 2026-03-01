@@ -766,6 +766,36 @@
                               :disabled="isViewingPreviousTour || isParticipant"
                             />
                           </template>
+                          <template #start_price-cell="{ row }">
+                            <UInput
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              v-model.number="row.original.start_price"
+                              size="sm"
+                              :disabled="isViewingPreviousTour || isParticipant"
+                            />
+                          </template>
+                          <template #min_bid_step-cell="{ row }">
+                            <UInput
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              v-model.number="row.original.min_bid_step"
+                              size="sm"
+                              :disabled="isViewingPreviousTour || isParticipant"
+                            />
+                          </template>
+                          <template #max_bid_step-cell="{ row }">
+                            <UInput
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              v-model.number="row.original.max_bid_step"
+                              size="sm"
+                              :disabled="isViewingPreviousTour || isParticipant"
+                            />
+                          </template>
                           <template #description-cell="{ row }">
                             <UInput
                               v-model="row.original.description"
@@ -2135,6 +2165,9 @@ const categorySearch = ref("");
 const nomenclatureSearch = ref("");
 const loadingNomenclatures = ref(false);
 const tenderPositions = ref<any[]>([]);
+const isClassicAuctionMode = computed(
+  () => (tender.value?.conduct_type ?? form.conduct_type) === "online_auction",
+);
 /** Позиції для відображення: з API (tender.positions) або локальний ref (для власника після loadTender). */
 const displayTenderPositions = computed(() => {
   const raw = tender.value?.positions;
@@ -2146,6 +2179,9 @@ const displayTenderPositions = computed(() => {
       unit_name: p.unit_name ?? "",
       quantity: p.quantity ?? 1,
       description: p.description ?? "",
+      start_price: p.start_price ?? null,
+      min_bid_step: p.min_bid_step ?? null,
+      max_bid_step: p.max_bid_step ?? null,
     }));
   }
   return tenderPositions.value;
@@ -2672,14 +2708,26 @@ const expenseOptions = ref<{ value: number; label: string }[]>([]);
 const branchOptions = ref<{ value: number; label: string }[]>([]);
 const departmentOptions = ref<{ value: number; label: string }[]>([]);
 const currencyOptions = ref<{ value: number; label: string }[]>([]);
-const positionsColumns = [
-  { accessorKey: "name", header: "Назва" },
-  { accessorKey: "unit_name", header: "Од. виміру" },
-  { accessorKey: "quantity", header: "Кількість" },
-  { accessorKey: "description", header: "Опис" },
-  { accessorKey: "vat", header: "ПДВ" },
-  { accessorKey: "actions", header: "", cellClass: "w-12" },
-];
+const positionsColumns = computed(() => {
+  const base = [
+    { accessorKey: "name", header: "Назва" },
+    { accessorKey: "unit_name", header: "Од. виміру" },
+    { accessorKey: "quantity", header: "Кількість" },
+  ];
+  if (isClassicAuctionMode.value) {
+    base.push(
+      { accessorKey: "start_price", header: "Стартова ціна" },
+      { accessorKey: "min_bid_step", header: "Мін. крок ставки" },
+      { accessorKey: "max_bid_step", header: "Макс. крок ставки" },
+    );
+  }
+  base.push(
+    { accessorKey: "description", header: "Опис" },
+    { accessorKey: "vat", header: "ПДВ" },
+    { accessorKey: "actions", header: "", cellClass: "w-12" },
+  );
+  return base;
+});
 
 function getProposalPositionValue(proposal: any, positionId: number) {
   const list = proposal?.position_values || [];
@@ -2997,11 +3045,48 @@ function onPriceCriterionDeliveryChange(value: string | undefined) {
 }
 async function savePreparation() {
   if (!tender.value?.id) return false;
+  if (isClassicAuctionMode.value) {
+    const hasInvalidClassicParams = tenderPositions.value.some((p) => {
+      const start = Number(p.start_price);
+      const minStep = Number(p.min_bid_step);
+      const maxStep = Number(p.max_bid_step);
+      return (
+        Number.isNaN(start) ||
+        Number.isNaN(minStep) ||
+        Number.isNaN(maxStep) ||
+        start <= 0 ||
+        minStep <= 0 ||
+        maxStep <= 0 ||
+        minStep > maxStep
+      );
+    });
+    if (hasInvalidClassicParams) {
+      useToast().add({
+        title: "Некоректні параметри класичних торгів",
+        description:
+          "Для кожної позиції заповніть стартову ціну, мінімальний і максимальний крок ставки (значення > 0, мін. крок <= макс. крок).",
+        color: "error",
+      });
+      return false;
+    }
+  }
   const payload: Record<string, unknown> = {
     positions: tenderPositions.value.map((p) => ({
       nomenclature_id: p.nomenclature_id,
       quantity: p.quantity,
       description: p.description ?? "",
+      start_price:
+        p.start_price !== "" && p.start_price != null
+          ? Number(p.start_price)
+          : null,
+      min_bid_step:
+        p.min_bid_step !== "" && p.min_bid_step != null
+          ? Number(p.min_bid_step)
+          : null,
+      max_bid_step:
+        p.max_bid_step !== "" && p.max_bid_step != null
+          ? Number(p.max_bid_step)
+          : null,
     })),
     criterion_ids: normalizedCriterionIds(
       (tenderCriteria.value || []).map((c: any) => criterionRefId(c)),
@@ -3150,11 +3235,26 @@ async function submitCreateNomenclature() {
         nomenclature_id: p.nomenclature_id,
         quantity: p.quantity ?? 1,
         description: p.description ?? "",
+        start_price:
+          p.start_price !== "" && p.start_price != null
+            ? Number(p.start_price)
+            : null,
+        min_bid_step:
+          p.min_bid_step !== "" && p.min_bid_step != null
+            ? Number(p.min_bid_step)
+            : null,
+        max_bid_step:
+          p.max_bid_step !== "" && p.max_bid_step != null
+            ? Number(p.max_bid_step)
+            : null,
       })),
       {
         nomenclature_id: created.id,
         quantity: 1,
         description: "",
+        start_price: null,
+        min_bid_step: null,
+        max_bid_step: null,
       },
     ];
     const ok = await patchTender({ positions: newPositions });
@@ -3166,6 +3266,9 @@ async function submitCreateNomenclature() {
         unit_name: p.unit_name ?? "",
         quantity: p.quantity ?? 1,
         description: p.description ?? "",
+        start_price: p.start_price ?? null,
+        min_bid_step: p.min_bid_step ?? null,
+        max_bid_step: p.max_bid_step ?? null,
       }));
     }
     showCreateNomenclatureModal.value = false;
@@ -3612,6 +3715,9 @@ async function loadTender() {
         unit_name: p.unit_name ?? "",
         quantity: p.quantity ?? 1,
         description: p.description ?? "",
+        start_price: p.start_price ?? null,
+        min_bid_step: p.min_bid_step ?? null,
+        max_bid_step: p.max_bid_step ?? null,
       }));
     } else {
       tenderPositions.value = [];
@@ -3751,6 +3857,9 @@ function addPositionFromNomenclature(nomenclatureId: number) {
     unit_name: n.unit_name || "",
     quantity: 1,
     description: "",
+    start_price: null,
+    min_bid_step: null,
+    max_bid_step: null,
     vat: "",
   });
 }
@@ -4137,6 +4246,9 @@ onMounted(async () => {
 
 watch(tenderId, () => loadTender());
 watch(displayStage, async (stage) => {
+  if (stage === "preparation" && !isParticipant.value) {
+    await loadNomenclaturesForPreparation();
+  }
   if (stage === "acceptance" || stage === "decision" || stage === "approval") {
     await loadDecisionProposals();
   }
@@ -4151,9 +4263,9 @@ watch([isRegistration, () => displayStage.value], () => {
   }
 });
 watch(
-  () => [form.category, form.cpv_ids, tender.value?.stage],
+  () => [form.category, form.cpv_ids],
   async () => {
-    if (!isParticipant.value && tender.value?.stage === "preparation") {
+    if (!isParticipant.value && displayStage.value === "preparation") {
       await loadNomenclaturesForPreparation();
     }
   },

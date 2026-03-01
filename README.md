@@ -4,6 +4,18 @@
 
 ---
 
+## Recent updates (2026-03-01)
+
+- Auth forms (`/login`, `/register`) were switched to Nuxt UI `error`-driven validation rendering instead of slot-wrapper alerts.
+- Input fields in login/registration now use a black border in the default state and switch to red only when validation error is present.
+- Validation helpers were centralized in `frontend/composables/useAuthFormsValidation.ts` to keep UI behavior consistent and avoid duplication.
+- Tender preparation flow optimization:
+  - Removed redundant re-fetch trigger for `GET /api/nomenclatures/?cpv_ids=...` after passport save.
+  - Nomenclatures reload now happens only on actual CPV/category change or when entering `preparation` stage.
+  - Applied for both procurement and sales tender detail pages.
+
+---
+
 ## Технологічний стек
 
 | Частина   | Технології |

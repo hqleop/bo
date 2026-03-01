@@ -1,5 +1,6 @@
 from rest_framework import serializers
 import re
+from decimal import Decimal, InvalidOperation
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import get_user_model
 from .models import (
@@ -843,7 +844,7 @@ class ProcurementTenderPositionSerializer(serializers.ModelSerializer):
         model = ProcurementTenderPosition
         fields = (
             "id", "tender", "nomenclature", "nomenclature_id", "name", "unit_name",
-            "quantity", "description",
+            "quantity", "description", "start_price", "min_bid_step", "max_bid_step",
             "winner_proposal_id", "winner_supplier_name", "winner_price", "winner_criterion_values",
         )
         read_only_fields = ("id", "tender", "name", "unit_name", "winner_proposal_id", "winner_supplier_name", "winner_price", "winner_criterion_values")
@@ -1209,10 +1210,52 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
                     )
                 seen.add(nom_id)
 
+    @staticmethod
+    def _validate_online_auction_position_pricing(instance, positions_data):
+        if not positions_data:
+            return
+        from rest_framework import serializers as drf
+
+        is_online_auction = getattr(instance, "conduct_type", "") == "online_auction"
+        required_msg = (
+            "Для моделі «Класичні торги» заповніть стартову ціну, мінімальний та максимальний крок ставки по кожній позиції."
+        )
+        base_msg = "Перевірте параметри ставки по кожній позиції: значення мають бути > 0, а мінімальний крок не може перевищувати максимальний."
+
+        for item in positions_data:
+            start_price = item.get("start_price")
+            min_bid_step = item.get("min_bid_step")
+            max_bid_step = item.get("max_bid_step")
+
+            if is_online_auction and (
+                start_price in (None, "") or min_bid_step in (None, "") or max_bid_step in (None, "")
+            ):
+                raise drf.ValidationError({"positions": required_msg})
+
+            provided = any(v not in (None, "") for v in (start_price, min_bid_step, max_bid_step))
+            if not provided:
+                continue
+
+            if start_price in (None, "") or min_bid_step in (None, "") or max_bid_step in (None, ""):
+                raise drf.ValidationError({"positions": base_msg})
+
+            try:
+                start_price_dec = Decimal(str(start_price))
+                min_step_dec = Decimal(str(min_bid_step))
+                max_step_dec = Decimal(str(max_bid_step))
+            except (InvalidOperation, ValueError, TypeError):
+                raise drf.ValidationError({"positions": base_msg})
+
+            if start_price_dec <= 0 or min_step_dec <= 0 or max_step_dec <= 0:
+                raise drf.ValidationError({"positions": base_msg})
+            if min_step_dec > max_step_dec:
+                raise drf.ValidationError({"positions": base_msg})
+
     def _update_positions(self, instance, positions_data):
         if positions_data is None:
             return
         self._validate_positions_no_duplicate_nomenclature(positions_data)
+        self._validate_online_auction_position_pricing(instance, positions_data)
         nom_id_key = lambda x: x if isinstance(x, int) else getattr(x, "id", None)
         current = {p.nomenclature_id: p for p in instance.positions.all()}
         seen_ids = set()
@@ -1224,14 +1267,31 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             existing = current.get(nom_id)
             quantity = item.get("quantity", 1)
             description = item.get("description", "")
+            start_price = item.get("start_price")
+            min_bid_step = item.get("min_bid_step")
+            max_bid_step = item.get("max_bid_step")
             if existing:
                 existing.quantity = quantity
                 existing.description = description
+                existing.start_price = (
+                    start_price if start_price not in ("", None) else None
+                )
+                existing.min_bid_step = (
+                    min_bid_step if min_bid_step not in ("", None) else None
+                )
+                existing.max_bid_step = (
+                    max_bid_step if max_bid_step not in ("", None) else None
+                )
                 existing.save()
                 seen_ids.add(existing.id)
             else:
                 new_pos = instance.positions.create(
-                    nomenclature_id=nom_id, quantity=quantity, description=description
+                    nomenclature_id=nom_id,
+                    quantity=quantity,
+                    description=description,
+                    start_price=start_price if start_price not in ("", None) else None,
+                    min_bid_step=min_bid_step if min_bid_step not in ("", None) else None,
+                    max_bid_step=max_bid_step if max_bid_step not in ("", None) else None,
                 )
                 seen_ids.add(new_pos.id)
         for pos in list(instance.positions.all()):
@@ -1413,7 +1473,7 @@ class SalesTenderPositionSerializer(serializers.ModelSerializer):
         model = SalesTenderPosition
         fields = (
             "id", "tender", "nomenclature", "nomenclature_id", "name", "unit_name",
-            "quantity", "description",
+            "quantity", "description", "start_price", "min_bid_step", "max_bid_step",
             "winner_proposal_id", "winner_supplier_name", "winner_price", "winner_criterion_values",
         )
         read_only_fields = ("id", "tender", "name", "unit_name", "winner_proposal_id", "winner_supplier_name", "winner_price", "winner_criterion_values")
@@ -1765,6 +1825,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
         if positions_data is None:
             return
         ProcurementTenderSerializer._validate_positions_no_duplicate_nomenclature(positions_data)
+        ProcurementTenderSerializer._validate_online_auction_position_pricing(instance, positions_data)
         nom_id_key = lambda x: x if isinstance(x, int) else getattr(x, "id", None)
         current = {p.nomenclature_id: p for p in instance.positions.all()}
         seen_ids = set()
@@ -1776,14 +1837,31 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             existing = current.get(nom_id)
             quantity = item.get("quantity", 1)
             description = item.get("description", "")
+            start_price = item.get("start_price")
+            min_bid_step = item.get("min_bid_step")
+            max_bid_step = item.get("max_bid_step")
             if existing:
                 existing.quantity = quantity
                 existing.description = description
+                existing.start_price = (
+                    start_price if start_price not in ("", None) else None
+                )
+                existing.min_bid_step = (
+                    min_bid_step if min_bid_step not in ("", None) else None
+                )
+                existing.max_bid_step = (
+                    max_bid_step if max_bid_step not in ("", None) else None
+                )
                 existing.save()
                 seen_ids.add(existing.id)
             else:
                 new_pos = instance.positions.create(
-                    nomenclature_id=nom_id, quantity=quantity, description=description
+                    nomenclature_id=nom_id,
+                    quantity=quantity,
+                    description=description,
+                    start_price=start_price if start_price not in ("", None) else None,
+                    min_bid_step=min_bid_step if min_bid_step not in ("", None) else None,
+                    max_bid_step=max_bid_step if max_bid_step not in ("", None) else None,
                 )
                 seen_ids.add(new_pos.id)
         for pos in list(instance.positions.all()):

@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
+from decimal import Decimal, InvalidOperation
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
@@ -384,6 +385,76 @@ def _build_cpv_tree_for_tenders_queryset(qs):
 
     sort_tree(roots)
     return roots
+
+
+def _to_decimal(value):
+    if value in (None, ""):
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
+def _format_decimal_for_error(value):
+    if value is None:
+        return ""
+    normalized = value.normalize()
+    text = format(normalized, "f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+def _validate_online_auction_position_price(
+    *,
+    tender,
+    position,
+    proposal_position_model,
+    new_price,
+    is_procurement: bool,
+):
+    if getattr(tender, "conduct_type", "") != "online_auction":
+        return None
+
+    start_price = _to_decimal(getattr(position, "start_price", None))
+    min_step = _to_decimal(getattr(position, "min_bid_step", None))
+    max_step = _to_decimal(getattr(position, "max_bid_step", None))
+    new_price_dec = _to_decimal(new_price)
+
+    if start_price is None or min_step is None or max_step is None:
+        return "Для позиції не налаштовано стартову ціну та кроки ставки."
+    if start_price <= 0 or min_step <= 0 or max_step <= 0 or min_step > max_step:
+        return "Невірні параметри ставки позиції: значення мають бути > 0, а мінімальний крок не більший за максимальний."
+    if new_price_dec is None:
+        return "Вкажіть коректну цінову пропозицію."
+
+    current_prices = [
+        _to_decimal(v)
+        for v in proposal_position_model.objects.filter(
+            proposal__tender=tender,
+            tender_position=position,
+            price__isnull=False,
+        ).values_list("price", flat=True)
+    ]
+    current_prices = [v for v in current_prices if v is not None]
+
+    if current_prices:
+        best_price = min(current_prices) if is_procurement else max(current_prices)
+        first_point = best_price - min_step if is_procurement else best_price + min_step
+        second_point = (
+            first_point - max_step if is_procurement else first_point + max_step
+        )
+    else:
+        first_point = start_price
+        second_point = start_price - max_step if is_procurement else start_price + max_step
+
+    range_min = min(first_point, second_point)
+    range_max = max(first_point, second_point)
+    if new_price_dec < range_min or new_price_dec > range_max:
+        return (
+            "Ціна поза допустимим діапазоном "
+            f"[{_format_decimal_for_error(first_point)}; {_format_decimal_for_error(second_point)}]."
+        )
+    return None
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -2941,6 +3012,19 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             ).first()
             if not pos:
                 continue
+            if "price" in item:
+                price_validation_error = _validate_online_auction_position_price(
+                    tender=tender,
+                    position=pos,
+                    proposal_position_model=TenderProposalPosition,
+                    new_price=item.get("price"),
+                    is_procurement=True,
+                )
+                if price_validation_error:
+                    return Response(
+                        {"detail": price_validation_error, "tender_position_id": tp_id},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
             pv, _ = TenderProposalPosition.objects.get_or_create(
                 proposal=proposal, tender_position=pos,
                 defaults={"price": None, "criterion_values": {}},
@@ -3576,6 +3660,19 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             pos = SalesTenderPosition.objects.filter(tender=tender, id=tp_id).first()
             if not pos:
                 continue
+            if "price" in item:
+                price_validation_error = _validate_online_auction_position_price(
+                    tender=tender,
+                    position=pos,
+                    proposal_position_model=SalesTenderProposalPosition,
+                    new_price=item.get("price"),
+                    is_procurement=False,
+                )
+                if price_validation_error:
+                    return Response(
+                        {"detail": price_validation_error, "tender_position_id": tp_id},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
             pv, _ = SalesTenderProposalPosition.objects.get_or_create(
                 proposal=proposal, tender_position=pos,
                 defaults={"price": None, "criterion_values": {}},

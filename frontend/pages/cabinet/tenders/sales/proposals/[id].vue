@@ -39,9 +39,17 @@
               variant="ghost"
               size="sm"
               icon="i-heroicons-arrow-left"
-              @click="isParticipant ? navigateTo('/cabinet/participation?type=sales') : goBack()"
+              @click="
+                isParticipant
+                  ? navigateTo('/cabinet/participation?type=sales')
+                  : goBack()
+              "
             >
-              {{ isParticipant ? 'До списку тендерів' : 'Повернутись до підготовки' }}
+              {{
+                isParticipant
+                  ? "До списку тендерів"
+                  : "Повернутись до підготовки"
+              }}
             </UButton>
           </div>
           <p
@@ -78,9 +86,16 @@
             </div>
           </UFormField>
 
-          <div v-if="tenderCriteriaGeneral.length > 0" class="rounded-lg border border-blue-200 bg-blue-50/50 p-3 space-y-3 mb-4">
-            <h4 class="text-sm font-semibold text-gray-800">Загальні критерії</h4>
-            <p class="text-xs text-gray-600">Одне значення стосується всіх позицій.</p>
+          <div
+            v-if="tenderCriteriaGeneral.length > 0"
+            class="rounded-lg border border-blue-200 bg-blue-50/50 p-3 space-y-3 mb-4"
+          >
+            <h4 class="text-sm font-semibold text-gray-800">
+              Загальні критерії
+            </h4>
+            <p class="text-xs text-gray-600">
+              Одне значення стосується всіх позицій.
+            </p>
             <div class="flex flex-wrap gap-4">
               <UFormField
                 v-for="c in tenderCriteriaGeneral"
@@ -89,7 +104,11 @@
                 class="mb-0 min-w-[200px]"
               >
                 <template
-                  v-if="currentProposal && !isViewingPreviousTour && (!isParticipant || participantCanEdit)"
+                  v-if="
+                    currentProposal &&
+                    !isViewingPreviousTour &&
+                    (!isParticipant || participantCanEdit)
+                  "
                 >
                   <UInput
                     v-if="criterionInputKind(c) === 'text'"
@@ -122,10 +141,15 @@
                       :model-value="getGeneralCriterionFileModel(c.id)"
                       :multiple="false"
                       label="Оберіть файл"
-                      @update:model-value="onGeneralCriterionFileChange(c.id, $event)"
+                      @update:model-value="
+                        onGeneralCriterionFileChange(c.id, $event)
+                      "
                     />
                     <p class="text-xs text-gray-600">
-                      {{ formatCriterionValue(c, generalCriterionValues[c.id]) || "Файл не обрано" }}
+                      {{
+                        formatCriterionValue(c, generalCriterionValues[c.id]) ||
+                        "Файл не обрано"
+                      }}
                     </p>
                   </div>
                 </template>
@@ -152,18 +176,56 @@
                   <table class="w-full text-sm border-collapse">
                     <thead>
                       <tr class="border-b bg-gray-50">
-                        <th class="text-left p-2 font-medium">Назва</th>
+                        <th class="text-left p-2 font-medium">Позиція</th>
+                        <th
+                          v-if="isOnlineAuction"
+                          class="text-left p-2 font-medium"
+                        >
+                          Од. виміру
+                        </th>
                         <th class="text-left p-2 font-medium">Кількість</th>
-                        <th class="text-left p-2 font-medium">Опис</th>
+                        <th
+                          v-if="!isOnlineAuction"
+                          class="text-left p-2 font-medium"
+                        >
+                          Опис
+                        </th>
                         <th class="text-left p-2 font-medium whitespace-nowrap">
                           {{ priceColumnHeader }}
+                        </th>
+                        <th
+                          v-if="isOnlineAuction"
+                          class="text-left p-2 font-medium whitespace-nowrap"
+                        >
+                          Краща цінова пропозиція
+                        </th>
+                        <th
+                          v-if="isOnlineAuction"
+                          class="text-left p-2 font-medium"
+                        >
+                          Подати
+                        </th>
+                        <th
+                          v-if="isOnlineAuction"
+                          class="text-left p-2 font-medium whitespace-nowrap"
+                        >
+                          Нова цінова пропозиція
+                        </th>
+                        <th
+                          v-if="isOnlineAuction"
+                          class="text-left p-2 font-medium whitespace-nowrap"
+                        >
+                          Діапазон
                         </th>
                         <th
                           v-for="c in tenderCriteriaIndividual"
                           :key="c.id"
                           class="text-left p-2 font-medium"
                         >
-                          {{ c.name }}<span v-if="c.is_required" class="text-red-600"> *</span>
+                          {{ c.name
+                          }}<span v-if="c.is_required" class="text-red-600">
+                            *</span
+                          >
                         </th>
                       </tr>
                     </thead>
@@ -174,15 +236,31 @@
                         class="border-b hover:bg-gray-50/50"
                       >
                         <td class="p-2">{{ row.name }}</td>
-                        <td class="p-2">
-                          {{ row.quantity }} {{ row.unit_name }}
+                        <td v-if="isOnlineAuction" class="p-2">
+                          {{ row.unit_name || "-" }}
                         </td>
-                        <td class="p-2 max-w-[200px]">
+                        <td class="p-2">
+                          {{
+                            isOnlineAuction
+                              ? row.quantity
+                              : `${row.quantity} ${row.unit_name}`
+                          }}
+                        </td>
+                        <td v-if="!isOnlineAuction" class="p-2 max-w-[200px]">
                           {{ row.description || "—" }}
                         </td>
                         <td class="p-2">
+                          <template v-if="isOnlineAuction">
+                            <span class="text-gray-700">{{
+                              row.price || "—"
+                            }}</span>
+                          </template>
                           <UInput
-                            v-if="currentProposal && !isViewingPreviousTour && (!isParticipant || participantCanEdit)"
+                            v-else-if="
+                              currentProposal &&
+                              !isViewingPreviousTour &&
+                              (!isParticipant || participantCanEdit)
+                            "
                             v-model="row.price"
                             type="number"
                             step="0.01"
@@ -194,9 +272,54 @@
                             row.price || "—"
                           }}</span>
                         </td>
-                        <td v-for="c in tenderCriteriaIndividual" :key="c.id" class="p-2">
+                        <td v-if="isOnlineAuction" class="p-2">
+                          {{ getCurrentBestPriceForPosition(row.id) ?? "—" }}
+                        </td>
+                        <td v-if="isOnlineAuction" class="p-2">
+                          <UButton
+                            size="xs"
+                            :loading="submittingPositionId === row.id"
+                            :disabled="
+                              !(
+                                currentProposal &&
+                                !isViewingPreviousTour &&
+                                (!isParticipant || participantCanEdit)
+                              )
+                            "
+                            @click="submitPositionPrice(row.id)"
+                          >
+                            Подати
+                          </UButton>
+                        </td>
+                        <td v-if="isOnlineAuction" class="p-2">
+                          <UInput
+                            v-if="
+                              currentProposal &&
+                              !isViewingPreviousTour &&
+                              (!isParticipant || participantCanEdit)
+                            "
+                            v-model="row.next_price"
+                            type="number"
+                            step="0.01"
+                            size="sm"
+                            class="min-w-[120px]"
+                          />
+                          <span v-else class="text-gray-700">—</span>
+                        </td>
+                        <td v-if="isOnlineAuction" class="p-2">
+                          {{ getRangeDisplay(row.id) || "—" }}
+                        </td>
+                        <td
+                          v-for="c in tenderCriteriaIndividual"
+                          :key="c.id"
+                          class="p-2"
+                        >
                           <template
-                            v-if="currentProposal && !isViewingPreviousTour && (!isParticipant || participantCanEdit)"
+                            v-if="
+                              currentProposal &&
+                              !isViewingPreviousTour &&
+                              (!isParticipant || participantCanEdit)
+                            "
                           >
                             <UInput
                               v-if="criterionInputKind(c) === 'text'"
@@ -226,20 +349,34 @@
                             />
                             <div v-else class="space-y-2 min-w-[170px]">
                               <UFileUpload
-                                :model-value="getPositionCriterionFileModel(row.id, c.id)"
+                                :model-value="
+                                  getPositionCriterionFileModel(row.id, c.id)
+                                "
                                 :multiple="false"
                                 label="Оберіть файл"
                                 @update:model-value="
-                                  onPositionCriterionFileChange(row.id, c.id, $event)
+                                  onPositionCriterionFileChange(
+                                    row.id,
+                                    c.id,
+                                    $event,
+                                  )
                                 "
                               />
                               <p class="text-xs text-gray-600">
-                                {{ formatCriterionValue(c, row.criterion_values[c.id]) || "Файл не обрано" }}
+                                {{
+                                  formatCriterionValue(
+                                    c,
+                                    row.criterion_values[c.id],
+                                  ) || "Файл не обрано"
+                                }}
                               </p>
                             </div>
                           </template>
                           <span v-else class="text-gray-700">{{
-                            formatCriterionValue(c, row.criterion_values[c.id]) || "-"
+                            formatCriterionValue(
+                              c,
+                              row.criterion_values[c.id],
+                            ) || "-"
                           }}</span>
                         </td>
                       </tr>
@@ -247,7 +384,9 @@
                   </table>
                 </div>
                 <div
-                  v-if="currentProposal && !isViewingPreviousTour && !isParticipant"
+                  v-if="
+                    currentProposal && !isViewingPreviousTour && !isParticipant
+                  "
                   class="mt-3 pt-3 border-t"
                 >
                   <UButton size="sm" @click="savePositionValues"
@@ -268,7 +407,9 @@
 
         <aside class="w-72 flex-shrink-0 flex flex-col gap-4">
           <template v-if="isParticipant">
-            <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm font-medium text-gray-800">
+            <div
+              class="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm font-medium text-gray-800"
+            >
               {{ timerText }}
             </div>
             <UButton
@@ -512,7 +653,9 @@
         <template #content>
           <UCard>
             <template #header><h3>Прикріплені файли</h3></template>
-            <div v-if="tenderFilesLoading" class="text-gray-500">Завантаження...</div>
+            <div v-if="tenderFilesLoading" class="text-gray-500">
+              Завантаження...
+            </div>
             <p v-else-if="tenderFilesError" class="text-sm text-red-600">
               {{ tenderFilesError }}
             </p>
@@ -573,6 +716,7 @@ const tenderFilesLoading = ref(false);
 const tenderFilesError = ref("");
 const savingPositions = ref(false);
 const submitWithdrawLoading = ref(false);
+const submittingPositionId = ref<number | null>(null);
 const now = ref(new Date());
 let nowInterval: ReturnType<typeof setInterval> | null = null;
 const PROPOSALS_REFRESH_MS = 10000;
@@ -582,9 +726,14 @@ const isSales = true;
 const tendersUC = useTendersUseCases();
 const suppliersUC = useSuppliersUseCases();
 const { me } = useMe();
-const myCompanyId = computed(() => (me.value as any)?.memberships?.[0]?.company?.id ?? null);
+const myCompanyId = computed(
+  () => (me.value as any)?.memberships?.[0]?.company?.id ?? null,
+);
 const isParticipant = computed(
-  () => tender.value && myCompanyId.value != null && Number(tender.value.company) !== myCompanyId.value,
+  () =>
+    tender.value &&
+    myCompanyId.value != null &&
+    Number(tender.value.company) !== myCompanyId.value,
 );
 
 const vatLabels: Record<string, string> = {
@@ -598,10 +747,14 @@ const deliveryLabels: Record<string, string> = {
 
 const tenderCriteria = computed(() => tender.value?.criteria ?? []);
 const tenderCriteriaIndividual = computed(() =>
-  tenderCriteria.value.filter((c: any) => (c.application || "individual") === "individual"),
+  tenderCriteria.value.filter(
+    (c: any) => (c.application || "individual") === "individual",
+  ),
 );
 const tenderCriteriaGeneral = computed(() =>
-  tenderCriteria.value.filter((c: any) => (c.application || "individual") === "general"),
+  tenderCriteria.value.filter(
+    (c: any) => (c.application || "individual") === "general",
+  ),
 );
 type CriterionType = "text" | "numeric" | "file" | "boolean";
 type CriterionValue = string | number | boolean | string[] | null;
@@ -613,6 +766,9 @@ const fileCriterionModels = ref<Record<string, File[]>>({});
 const generalCriterionValues = ref<Record<number, CriterionValue>>({});
 
 const tenderPositions = computed(() => tender.value?.positions ?? []);
+const isOnlineAuction = computed(
+  () => tender.value?.conduct_type === "online_auction",
+);
 
 const stageItems = [
   {
@@ -817,7 +973,10 @@ function formatCriterionValue(criterion: any, value: unknown): string {
     return boolValue ? "Так" : "Ні";
   }
   if (kind === "file" && Array.isArray(value)) {
-    return value.map((v) => String(v || "").trim()).filter(Boolean).join(", ");
+    return value
+      .map((v) => String(v || "").trim())
+      .filter(Boolean)
+      .join(", ");
   }
   return String(value);
 }
@@ -830,18 +989,25 @@ function getGeneralCriterionFileModel(criterionId: number) {
   return fileCriterionModels.value[fileModelKey("g", criterionId)] || [];
 }
 
-function getPositionCriterionFileModel(positionId: number, criterionId: number) {
+function getPositionCriterionFileModel(
+  positionId: number,
+  criterionId: number,
+) {
   return fileCriterionModels.value[fileModelKey(positionId, criterionId)] || [];
 }
 
 function extractFilesArray(value: unknown): File[] {
   if (!value) return [];
-  if (Array.isArray(value)) return value.filter((f): f is File => f instanceof File);
+  if (Array.isArray(value))
+    return value.filter((f): f is File => f instanceof File);
   if (value instanceof File) return [value];
   return [];
 }
 
-async function onGeneralCriterionFileChange(criterionId: number, value: unknown) {
+async function onGeneralCriterionFileChange(
+  criterionId: number,
+  value: unknown,
+) {
   const files = extractFilesArray(value);
   fileCriterionModels.value[fileModelKey("g", criterionId)] = files;
   generalCriterionValues.value[criterionId] = files.map((f) => f.name);
@@ -926,6 +1092,135 @@ function getBestWorstForPosition(positionId: number) {
   return { bestId: best.id, worstId: worst.id };
 }
 
+function toValidNumber(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function formatPriceValue(value: number): string {
+  return value.toLocaleString("uk-UA", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}
+
+function getCurrentBestPriceForPosition(positionId: number): number | null {
+  const prices: number[] = [];
+  for (const p of proposals.value) {
+    const pv = getProposalPositionValue(p, positionId);
+    const price = toValidNumber(pv?.price);
+    if (price != null) prices.push(price);
+  }
+  if (!prices.length) return null;
+  return isSales ? Math.max(...prices) : Math.min(...prices);
+}
+
+function getRangeValues(
+  positionId: number,
+): { from: number; to: number } | null {
+  if (!isOnlineAuction.value) return null;
+  const pos = (tender.value?.positions || []).find(
+    (p: any) => p.id === positionId,
+  );
+  if (!pos) return null;
+
+  const startPrice = toValidNumber(pos.start_price);
+  const minStep = toValidNumber(pos.min_bid_step);
+  const maxStep = toValidNumber(pos.max_bid_step);
+  if (startPrice == null || minStep == null || maxStep == null) return null;
+
+  const best = getCurrentBestPriceForPosition(positionId);
+  if (best == null) {
+    const end = isSales ? startPrice + maxStep : startPrice - maxStep;
+    return { from: startPrice, to: end };
+  }
+
+  const first = isSales ? best + minStep : best - minStep;
+  const second = isSales ? first + maxStep : first - maxStep;
+  return { from: first, to: second };
+}
+
+function getRangeDisplay(positionId: number): string | null {
+  const range = getRangeValues(positionId);
+  if (!range) return null;
+  return `${formatPriceValue(range.from)} — ${formatPriceValue(range.to)}`;
+}
+
+async function submitPositionPrice(positionId: number) {
+  const proposalId = currentProposal.value?.id;
+  const row = positionRows.value.find((r: any) => r.id === positionId);
+  if (!proposalId || !row) return;
+
+  const nextPrice = toValidNumber(row.next_price);
+  if (nextPrice == null) {
+    alert("Позиція ?????? Позиція???.");
+    return;
+  }
+
+  const range = getRangeValues(positionId);
+  if (range) {
+    const minValue = Math.min(range.from, range.to);
+    const maxValue = Math.max(range.from, range.to);
+    if (nextPrice < minValue || nextPrice > maxValue) {
+      alert(`???? ???? Позиція??? Позиція???: ${getRangeDisplay(positionId)}.`);
+      return;
+    }
+  }
+
+  submittingPositionId.value = positionId;
+  try {
+    const cv = row.criterion_values || {};
+    const criterion_values: Record<
+      string,
+      string | number | boolean | string[]
+    > = {};
+    for (const c of tenderCriteria.value) {
+      const source =
+        (c.application || "individual") === "general"
+          ? generalCriterionValues.value[c.id]
+          : cv[c.id];
+      const normalized = normalizeCriterionValueForSave(c, source);
+      if (normalized !== null) criterion_values[String(c.id)] = normalized;
+    }
+
+    const { data, error } = await tendersUC.patchProposalPositionValues(
+      tenderId.value,
+      proposalId,
+      isSales,
+      {
+        position_values: [
+          {
+            tender_position_id: positionId,
+            price: nextPrice,
+            criterion_values,
+          },
+        ],
+      },
+    );
+
+    if (error) {
+      alert(error);
+      return;
+    }
+    if (data) {
+      currentProposal.value = data;
+      const idx = proposals.value.findIndex((p: any) => p.id === data.id);
+      if (idx !== -1) {
+        proposals.value = proposals.value.map((p: any, i: number) =>
+          i === idx ? data : p,
+        );
+      }
+      buildPositionRows(data);
+      await loadProposals();
+      row.next_price = "";
+      await nextTick();
+    }
+  } finally {
+    submittingPositionId.value = null;
+  }
+}
+
 const checkComparisonByPosition = computed(() => {
   const out: Record<number, { bestId: number | null; worstId: number | null }> =
     {};
@@ -964,7 +1259,7 @@ function stopProposalsRefresh() {
 }
 
 function startProposalsRefresh() {
-  if (isParticipant.value || tender.value?.stage !== "acceptance") {
+  if (tender.value?.stage !== "acceptance") {
     stopProposalsRefresh();
     return;
   }
@@ -978,7 +1273,10 @@ async function loadTenderFiles() {
   tenderFilesLoading.value = true;
   tenderFilesError.value = "";
   try {
-    const { data, error } = await tendersUC.getTenderFiles(tenderId.value, isSales);
+    const { data, error } = await tendersUC.getTenderFiles(
+      tenderId.value,
+      isSales,
+    );
     if (error) {
       tenderFilesError.value = error;
       tenderFiles.value = [];
@@ -1054,12 +1352,17 @@ async function addProposal(supplierCompanyId: number) {
 function buildPositionRowsFromTender() {
   const positions = tender.value?.positions || [];
   const criteria = tender.value?.criteria || [];
-  const generalIds = (tender.value?.criteria || []).filter((c: any) => (c.application || "individual") === "general").map((c: any) => c.id);
+  const generalIds = (tender.value?.criteria || [])
+    .filter((c: any) => (c.application || "individual") === "general")
+    .map((c: any) => c.id);
   fileCriterionModels.value = {};
-  generalCriterionValues.value = generalIds.reduce((acc: Record<number, CriterionValue>, id: number) => {
-    acc[id] = "";
-    return acc;
-  }, {});
+  generalCriterionValues.value = generalIds.reduce(
+    (acc: Record<number, CriterionValue>, id: number) => {
+      acc[id] = "";
+      return acc;
+    },
+    {},
+  );
   positionRows.value = positions.map((pos: any) => {
     const criterion_values: Record<number, CriterionValue | ""> = {};
     for (const c of criteria) {
@@ -1072,6 +1375,7 @@ function buildPositionRowsFromTender() {
       unit_name: pos.unit_name ?? "",
       description: pos.description ?? "",
       price: "",
+      next_price: "",
       criterion_values,
     };
   });
@@ -1089,7 +1393,9 @@ function buildPositionRows(proposal: any) {
     {},
   );
   const criteria = tender.value?.criteria || [];
-  const generalCriteria = criteria.filter((c: any) => (c.application || "individual") === "general");
+  const generalCriteria = criteria.filter(
+    (c: any) => (c.application || "individual") === "general",
+  );
   fileCriterionModels.value = {};
   const newRows = positions.map((pos: any) => {
     const pv = valuesByPos[pos.id];
@@ -1097,7 +1403,10 @@ function buildPositionRows(proposal: any) {
     if (pv?.criterion_values && typeof pv.criterion_values === "object") {
       for (const [k, v] of Object.entries(pv.criterion_values)) {
         const criterionMeta = criteria.find((c: any) => c.id === Number(k));
-        criterion_values[Number(k)] = normalizeCriterionValueForUi(criterionMeta, v);
+        criterion_values[Number(k)] = normalizeCriterionValueForUi(
+          criterionMeta,
+          v,
+        );
       }
     }
     for (const c of criteria) {
@@ -1111,6 +1420,7 @@ function buildPositionRows(proposal: any) {
       unit_name: pos.unit_name ?? "",
       description: pos.description ?? "",
       price: pv?.price != null ? String(pv.price) : "",
+      next_price: "",
       criterion_values,
     };
   });
@@ -1118,7 +1428,10 @@ function buildPositionRows(proposal: any) {
   for (const c of generalCriteria) {
     const firstVal = newRows[0]?.criterion_values?.[c.id];
     if (firstVal !== undefined)
-      generalCriterionValues.value[c.id] = normalizeCriterionValueForUi(c, firstVal);
+      generalCriterionValues.value[c.id] = normalizeCriterionValueForUi(
+        c,
+        firstVal,
+      );
   }
 }
 
@@ -1129,11 +1442,15 @@ async function savePositionValues() {
   try {
     const position_values = positionRows.value.map((row) => {
       const cv = row.criterion_values || {};
-      const criterion_values: Record<string, string | number | boolean | string[]> = {};
+      const criterion_values: Record<
+        string,
+        string | number | boolean | string[]
+      > = {};
       for (const c of tenderCriteria.value) {
-        const val = (c.application || "individual") === "general"
-          ? generalVals[c.id]
-          : cv[c.id];
+        const val =
+          (c.application || "individual") === "general"
+            ? generalVals[c.id]
+            : cv[c.id];
         const normalized = normalizeCriterionValueForSave(c, val);
         if (normalized !== null) criterion_values[String(c.id)] = normalized;
       }
@@ -1220,14 +1537,18 @@ onMounted(async () => {
   try {
     await loadTender();
     await loadProposals();
-    const part = tender.value && myCompanyId.value != null && Number(tender.value.company) !== myCompanyId.value;
+    const part =
+      tender.value &&
+      myCompanyId.value != null &&
+      Number(tender.value.company) !== myCompanyId.value;
     if (!part) await loadSuppliers();
     if (part && myProposal.value) {
       currentProposal.value = myProposal.value;
       buildPositionRows(myProposal.value);
     } else if (proposals.value.length > 0 && !selectedSupplierId.value) {
       const first = proposals.value[0];
-      const id = first.supplier_company?.id ?? first.supplier_company_id ?? null;
+      const id =
+        first.supplier_company?.id ?? first.supplier_company_id ?? null;
       if (id) {
         selectedSupplierId.value = id;
         selectedSupplier.value = supplierOptions.value.find(

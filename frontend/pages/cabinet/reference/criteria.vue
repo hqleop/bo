@@ -4,12 +4,18 @@
       <h2 class="text-2xl font-bold">Критерії тендерів</h2>
     </div>
 
-    <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden">
+    <div
+      class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden"
+    >
       <UCard class="h-full flex flex-col min-h-0">
         <template #header>
           <div class="flex items-center justify-between">
             <h3 class="font-semibold">Продаж</h3>
-            <UButton size="sm" icon="i-heroicons-plus" @click="openModal(undefined, 'sales')">
+            <UButton
+              size="sm"
+              icon="i-heroicons-plus"
+              @click="openModal(undefined, 'sales')"
+            >
               Додати
             </UButton>
           </div>
@@ -43,7 +49,10 @@
               </div>
             </template>
           </UTable>
-          <div v-if="salesCriteria.length === 0" class="text-center text-gray-400 py-8">
+          <div
+            v-if="salesCriteria.length === 0"
+            class="text-center text-gray-400 py-8"
+          >
             Немає критеріїв для продажу.
           </div>
         </div>
@@ -53,7 +62,11 @@
         <template #header>
           <div class="flex items-center justify-between">
             <h3 class="font-semibold">Закупівля</h3>
-            <UButton size="sm" icon="i-heroicons-plus" @click="openModal(undefined, 'procurement')">
+            <UButton
+              size="sm"
+              icon="i-heroicons-plus"
+              @click="openModal(undefined, 'procurement')"
+            >
               Додати
             </UButton>
           </div>
@@ -87,7 +100,10 @@
               </div>
             </template>
           </UTable>
-          <div v-if="procurementCriteria.length === 0" class="text-center text-gray-400 py-8">
+          <div
+            v-if="procurementCriteria.length === 0"
+            class="text-center text-gray-400 py-8"
+          >
             Немає критеріїв для закупівлі.
           </div>
         </div>
@@ -98,11 +114,18 @@
       <template #content>
         <UCard>
           <template #header>
-            <h3>{{ editing ? "Редагувати критерій" : "Додати критерій" }} ({{ form.tender_type === "sales" ? "Продаж" : "Закупівля" }})</h3>
+            <h3>
+              {{ editing ? "Редагувати критерій" : "Додати критерій" }} ({{
+                form.tender_type === "sales" ? "Продаж" : "Закупівля"
+              }})
+            </h3>
           </template>
           <UForm :state="form" @submit="save" class="space-y-4">
             <UFormField label="Назва критерію" name="name" required>
-              <UInput v-model="form.name" placeholder="Наприклад: Ціна за одиницю" />
+              <UInput
+                v-model="form.name"
+                placeholder="Наприклад: Ціна за одиницю"
+              />
             </UFormField>
 
             <UFormField label="Тип критерію" name="type" required>
@@ -133,10 +156,18 @@
             <template v-if="form.type === 'numeric'">
               <div class="grid grid-cols-2 gap-4">
                 <UFormField label="Мін. значення" name="range_min">
-                  <UInput v-model.number="form.options.range_min" type="number" placeholder="Не обмежено" />
+                  <UInput
+                    v-model.number="form.options.range_min"
+                    type="number"
+                    placeholder="Не обмежено"
+                  />
                 </UFormField>
                 <UFormField label="Макс. значення" name="range_max">
-                  <UInput v-model.number="form.options.range_max" type="number" placeholder="Не обмежено" />
+                  <UInput
+                    v-model.number="form.options.range_max"
+                    type="number"
+                    placeholder="Не обмежено"
+                  />
                 </UFormField>
               </div>
               <UFormField label="Варіанти числових значень">
@@ -146,7 +177,11 @@
                     :key="idx"
                     class="flex gap-2 items-center"
                   >
-                    <UInput v-model.number="form.options.numeric_choices[idx]" type="number" class="flex-1" />
+                    <UInput
+                      v-model.number="form.options.numeric_choices[idx]"
+                      type="number"
+                      class="flex-1"
+                    />
                     <UButton
                       icon="i-heroicons-trash"
                       size="xs"
@@ -156,7 +191,12 @@
                       @click="form.options.numeric_choices.splice(idx, 1)"
                     />
                   </div>
-                  <UButton size="sm" variant="outline" icon="i-heroicons-plus" @click="form.options.numeric_choices.push(null)">
+                  <UButton
+                    size="sm"
+                    variant="outline"
+                    icon="i-heroicons-plus"
+                    @click="form.options.numeric_choices.push(null)"
+                  >
                     Додати значення
                   </UButton>
                 </div>
@@ -171,7 +211,11 @@
                     :key="idx"
                     class="flex gap-2 items-center"
                   >
-                    <UInput v-model="form.options.text_choices[idx]" class="flex-1" placeholder="Текст варіанту" />
+                    <UInput
+                      v-model="form.options.text_choices[idx]"
+                      class="flex-1"
+                      placeholder="Текст варіанту"
+                    />
                     <UButton
                       icon="i-heroicons-trash"
                       size="xs"
@@ -181,19 +225,35 @@
                       @click="form.options.text_choices.splice(idx, 1)"
                     />
                   </div>
-                  <UButton size="sm" variant="outline" icon="i-heroicons-plus" @click="form.options.text_choices.push('')">
+                  <UButton
+                    size="sm"
+                    variant="outline"
+                    icon="i-heroicons-plus"
+                    @click="form.options.text_choices.push('')"
+                  >
                     Додати варіант
                   </UButton>
                 </div>
               </UFormField>
             </template>
 
-            <p v-if="form.type === 'file'" class="text-sm text-gray-500">Учасник завантажить файл у відповідь на цей критерій.</p>
-            <p v-if="form.type === 'boolean'" class="text-sm text-gray-500">Учасник обере лише «Так» або «Ні».</p>
+            <p v-if="form.type === 'file'" class="text-sm text-gray-500">
+              Учасник завантажить файл у відповідь на цей критерій.
+            </p>
+            <p v-if="form.type === 'boolean'" class="text-sm text-gray-500">
+              Учасник обере лише «Так» або «Ні».
+            </p>
 
             <div class="flex gap-4 pt-2">
-              <UButton variant="outline" class="flex-1" @click="showModal = false">Скасувати</UButton>
-              <UButton type="submit" class="flex-1" :loading="saving">{{ editing ? "Зберегти" : "Додати" }}</UButton>
+              <UButton
+                variant="outline"
+                class="flex-1"
+                @click="showModal = false"
+                >Скасувати</UButton
+              >
+              <UButton type="submit" class="flex-1" :loading="saving">{{
+                editing ? "Зберегти" : "Додати"
+              }}</UButton>
             </div>
           </UForm>
         </UCard>
@@ -282,8 +342,12 @@ function openModal(item?: any, tenderType: "sales" | "procurement" = "sales") {
     form.options = {
       range_min: opt.range_min ?? null,
       range_max: opt.range_max ?? null,
-      numeric_choices: Array.isArray(opt.numeric_choices) ? [...opt.numeric_choices] : [],
-      text_choices: Array.isArray(opt.text_choices) ? [...opt.text_choices] : [],
+      numeric_choices: Array.isArray(opt.numeric_choices)
+        ? [...opt.numeric_choices]
+        : [],
+      text_choices: Array.isArray(opt.text_choices)
+        ? [...opt.text_choices]
+        : [],
     };
   } else {
     resetForm(tenderType);
@@ -293,7 +357,8 @@ function openModal(item?: any, tenderType: "sales" | "procurement" = "sales") {
 }
 
 function ensureOptionsArrays() {
-  if (!Array.isArray(form.options.numeric_choices)) form.options.numeric_choices = [];
+  if (!Array.isArray(form.options.numeric_choices))
+    form.options.numeric_choices = [];
   if (!Array.isArray(form.options.text_choices)) form.options.text_choices = [];
 }
 
@@ -360,7 +425,7 @@ function formatOptionsSummary(c: any): string {
   if (c.type === "numeric") {
     const parts = [];
     if (opt.range_min != null || opt.range_max != null) {
-      parts.push(`Діапазон: ${opt.range_min ?? "—"} … ${opt.range_max ?? "—"}`);
+      parts.push(`Діапазон: ${opt.range_min ?? "-"} … ${opt.range_max ?? "-"}`);
     }
     if (opt.numeric_choices?.length) {
       parts.push(`Варіанти: ${opt.numeric_choices.join(", ")}`);
@@ -383,7 +448,9 @@ async function loadCriteria() {
     }),
   ]);
   salesCriteria.value = Array.isArray(salesRes.data) ? salesRes.data : [];
-  procurementCriteria.value = Array.isArray(procurementRes.data) ? procurementRes.data : [];
+  procurementCriteria.value = Array.isArray(procurementRes.data)
+    ? procurementRes.data
+    : [];
 }
 
 async function getCurrentCompanyId(): Promise<number | null> {
