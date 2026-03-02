@@ -56,8 +56,12 @@ export function useTendersUseCases() {
     return tendersApi.getTenderTours(fetch, id, isSales)
   }
 
-  async function getTenderProposals(id: number, isSales: boolean) {
-    return tendersApi.getTenderProposals(fetch, id, isSales)
+  async function getTenderProposals(
+    id: number,
+    isSales: boolean,
+    options?: { skipLoader?: boolean }
+  ) {
+    return tendersApi.getTenderProposals(fetch, id, isSales, options)
   }
 
   async function getTenderFiles(id: number, isSales: boolean) {
@@ -191,14 +195,16 @@ export function useTendersUseCases() {
     tenderId: number,
     proposalId: number,
     isSales: boolean,
-    body: { position_values: unknown[] }
+    body: { position_values: unknown[] },
+    options?: { skipLoader?: boolean }
   ) {
     return tendersApi.patchProposalPositionValues(
       fetch,
       tenderId,
       proposalId,
       isSales,
-      body
+      body,
+      options
     )
   }
 

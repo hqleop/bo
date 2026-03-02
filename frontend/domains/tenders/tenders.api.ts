@@ -92,9 +92,16 @@ export async function getTenderTours(request: RequestFn, id: number, isSales: bo
   return request<unknown[]>(`${prefix}/${id}/tours/`)
 }
 
-export async function getTenderProposals(request: RequestFn, id: number, isSales: boolean) {
+export async function getTenderProposals(
+  request: RequestFn,
+  id: number,
+  isSales: boolean,
+  options?: { skipLoader?: boolean }
+) {
   const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
-  return request<TenderProposal[]>(`${prefix}/${id}/proposals/`)
+  return request<TenderProposal[]>(`${prefix}/${id}/proposals/`, {
+    skipLoader: options?.skipLoader
+  })
 }
 
 export async function getTenderFiles(request: RequestFn, id: number, isSales: boolean) {
@@ -274,12 +281,14 @@ export async function patchProposalPositionValues(
   tenderId: number,
   proposalId: number,
   isSales: boolean,
-  body: { position_values: unknown[] }
+  body: { position_values: unknown[] },
+  options?: { skipLoader?: boolean }
 ) {
   const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
   return request<unknown>(`${prefix}/${tenderId}/proposals/${proposalId}/position-values/`, {
     method: 'PATCH',
-    body
+    body,
+    skipLoader: options?.skipLoader
   })
 }
 

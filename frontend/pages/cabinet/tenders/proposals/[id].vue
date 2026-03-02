@@ -1,15 +1,9 @@
 <template>
   <div>
-    <div v-if="loading && !(isParticipant && isOnlineAuction)" class="flex items-center justify-center py-12">
-      <UIcon
-        name="i-heroicons-arrow-path"
-        class="animate-spin size-8 text-gray-400"
-      />
-    </div>
-    <div v-else-if="!loading && !tender" class="text-center py-12 text-gray-500">
+    <div v-if="!loading && !tender" class="text-center py-12 text-gray-500">
       Тендер не знайдено.
     </div>
-    <div v-else class="h-full flex flex-col">
+    <div v-else-if="tender" class="h-full flex flex-col">
       <div class="mb-4">
         <h1 class="text-xl font-semibold text-gray-900 truncate">
           № {{ tender.number }}
@@ -278,12 +272,12 @@
                         <td v-if="isOnlineAuction" class="p-2">
                           <UButton
                             size="xs"
-                            :loading="submittingPositionId === row.id"
-                            :disabled="
+                                                        :disabled="
                               !(
                                 currentProposal &&
                                 !isViewingPreviousTour &&
-                                (!isParticipant || participantCanEdit)
+                                (!isParticipant || participantCanEdit) &&
+                                submittingPositionId !== row.id
                               )
                             "
                             @click="submitPositionPrice(row.id)"
@@ -307,7 +301,47 @@
                           <span v-else class="text-gray-700">—</span>
                         </td>
                         <td v-if="isOnlineAuction" class="p-2">
-                          {{ getRangeDisplay(row.id) || "—" }}
+                          <template
+                            v-if="
+                              currentProposal &&
+                              !isViewingPreviousTour &&
+                              (!isParticipant || participantCanEdit) &&
+                              getRangeValues(row.id)
+                            "
+                          >
+                            <button
+                              type="button"
+                              class="text-blue-700 hover:text-blue-900 hover:underline"
+                              @click="
+                                applyRangeValue(
+                                  row.id,
+                                  getRangeValues(row.id)?.from ?? null,
+                                )
+                              "
+                            >
+                              {{
+                                formatPriceValue(
+                                  getRangeValues(row.id)?.from ?? 0,
+                                )
+                              }}
+                            </button>
+                            <span class="mx-1 text-gray-500">-</span>
+                            <button
+                              type="button"
+                              class="text-blue-700 hover:text-blue-900 hover:underline"
+                              @click="
+                                applyRangeValue(
+                                  row.id,
+                                  getRangeValues(row.id)?.to ?? null,
+                                )
+                              "
+                            >
+                              {{
+                                formatPriceValue(getRangeValues(row.id)?.to ?? 0)
+                              }}
+                            </button>
+                          </template>
+                          <span v-else>{{ getRangeDisplay(row.id) || "—" }}</span>
                         </td>
                         <td
                           v-for="c in tenderCriteriaIndividual"
@@ -1147,6 +1181,13 @@ function getRangeDisplay(positionId: number): string | null {
   return `${formatPriceValue(range.from)} - ${formatPriceValue(range.to)}`;
 }
 
+function applyRangeValue(positionId: number, value: number | null) {
+  if (value == null) return;
+  const row = positionRows.value.find((r: any) => r.id === positionId);
+  if (!row) return;
+  row.next_price = String(value);
+}
+
 async function submitPositionPrice(positionId: number) {
   const proposalId = currentProposal.value?.id;
   const row = positionRows.value.find((r: any) => r.id === positionId);
@@ -1197,6 +1238,7 @@ async function submitPositionPrice(positionId: number) {
           },
         ],
       },
+      { skipLoader: true },
     );
 
     if (error) {
@@ -1212,7 +1254,7 @@ async function submitPositionPrice(positionId: number) {
         );
       }
       buildPositionRows(data);
-      await loadProposals();
+      await loadProposals(true);
       row.next_price = "";
       await nextTick();
     }
@@ -1247,8 +1289,10 @@ async function loadTender() {
   }
 }
 
-async function loadProposals() {
-  const { data } = await tendersUC.getTenderProposals(tenderId.value, isSales);
+async function loadProposals(skipLoader = false) {
+  const { data } = await tendersUC.getTenderProposals(tenderId.value, isSales, {
+    skipLoader,
+  });
   if (data) proposals.value = Array.isArray(data) ? data : [];
 }
 
@@ -1291,7 +1335,7 @@ function scheduleRealtimeProposalsReload() {
   if (proposalsReloadTimeout) clearTimeout(proposalsReloadTimeout);
   proposalsReloadTimeout = setTimeout(() => {
     void (async () => {
-      await loadProposals();
+      await loadProposals(true);
       refreshCurrentProposalViewFromList();
     })();
   }, 200);
@@ -1329,7 +1373,7 @@ function startProposalsRefresh() {
   fallbackProposalsInterval = setInterval(() => {
     if (tenderRealtime.isConnected.value) return;
     void (async () => {
-      await loadProposals();
+      await loadProposals(true);
       refreshCurrentProposalViewFromList();
     })();
   }, FALLBACK_PROPOSALS_REFRESH_MS);
@@ -1603,7 +1647,7 @@ onMounted(async () => {
   loading.value = true;
   try {
     await loadTender();
-    await loadProposals();
+    await loadProposals(true);
     const part =
       tender.value &&
       myCompanyId.value != null &&
@@ -1658,4 +1702,3 @@ watch(showFilesModal, async (open) => {
   await loadTenderFiles();
 });
 </script>
-

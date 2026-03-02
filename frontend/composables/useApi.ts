@@ -1,13 +1,13 @@
-import { createApiClient } from '~/shared/api/apiClient'
+import { createApiClient } from "~/shared/api/apiClient";
 
 /**
  * Composable для доступу до єдиного API-клієнта в Nuxt-контексті.
  * HTTP-логіка в shared/api/apiClient. У компонентах та сторінках використовуйте useCases, не useApi напряму.
  */
 export const useApi = () => {
-  const config = useRuntimeConfig()
-  const { getAuthHeaders, checkAuth, refreshAccessToken, logout } = useAuth()
-  const { start, stop } = useGlobalLoader()
+  const config = useRuntimeConfig();
+  const { getAuthHeaders, checkAuth, refreshAccessToken, logout } = useAuth();
+  const { start, stop } = useGlobalLoader();
 
   const apiClient = createApiClient({
     baseURL: config.public.apiBase,
@@ -15,21 +15,31 @@ export const useApi = () => {
     refreshAccessToken,
     logout,
     onRequestStart: start,
-    onRequestEnd: stop
-  })
+    onRequestEnd: stop,
+  });
 
-  const fetch = async <T>(endpoint: string, options: Record<string, unknown> = {}) => {
+  const fetch = async <T>(
+    endpoint: string,
+    options: {
+      method?: string
+      body?: unknown
+      headers?: Record<string, string>
+      query?: Record<string, string>
+      skipLoader?: boolean
+    } = {}
+  ) => {
     if (!getAuthHeaders().Authorization) {
-      await checkAuth()
+      await checkAuth();
     }
     return apiClient.request<T>(endpoint, {
-      method: (options.method as string) ?? 'GET',
+      method: options.method ?? "GET",
       body: options.body,
-      headers: options.headers as Record<string, string> | undefined,
-      query: options.query as Record<string, string> | undefined
-    })
-  }
+      headers: options.headers,
+      query: options.query,
+      skipLoader: options.skipLoader,
+    });
+  };
 
-  return { fetch }
-}
+  return { fetch };
+};
 
