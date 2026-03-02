@@ -1,12 +1,12 @@
 <template>
   <div>
-    <div v-if="loading" class="flex items-center justify-center py-12">
+    <div v-if="loading && !(isParticipant && isOnlineAuction)" class="flex items-center justify-center py-12">
       <UIcon
         name="i-heroicons-arrow-path"
         class="animate-spin size-8 text-gray-400"
       />
     </div>
-    <div v-else-if="!tender" class="text-center py-12 text-gray-500">
+    <div v-else-if="!loading && !tender" class="text-center py-12 text-gray-500">
       Тендер не знайдено.
     </div>
     <div v-else class="h-full flex flex-col">
@@ -730,8 +730,10 @@ const submitWithdrawLoading = ref(false);
 const submittingPositionId = ref<number | null>(null);
 const now = ref(new Date());
 let nowInterval: ReturnType<typeof setInterval> | null = null;
-const PROPOSALS_REFRESH_MS = 10000;
-let proposalsRefreshInterval: ReturnType<typeof setInterval> | null = null;
+const tenderRealtime = useTenderRealtime();
+const FALLBACK_PROPOSALS_REFRESH_MS = 45000;
+let proposalsReloadTimeout: ReturnType<typeof setTimeout> | null = null;
+let fallbackProposalsInterval: ReturnType<typeof setInterval> | null = null;
 
 const vatLabels: Record<string, string> = {
   with_vat: "з ПДВ",
@@ -1142,7 +1144,7 @@ function getRangeValues(
 function getRangeDisplay(positionId: number): string | null {
   const range = getRangeValues(positionId);
   if (!range) return null;
-  return `${formatPriceValue(range.from)} — ${formatPriceValue(range.to)}`;
+  return `${formatPriceValue(range.from)} - ${formatPriceValue(range.to)}`;
 }
 
 async function submitPositionPrice(positionId: number) {
@@ -1152,7 +1154,7 @@ async function submitPositionPrice(positionId: number) {
 
   const nextPrice = toValidNumber(row.next_price);
   if (nextPrice == null) {
-    alert("Позиція ?????? Позиція???.");
+    alert("? ?? ?.");
     return;
   }
 
@@ -1161,7 +1163,7 @@ async function submitPositionPrice(positionId: number) {
     const minValue = Math.min(range.from, range.to);
     const maxValue = Math.max(range.from, range.to);
     if (nextPrice < minValue || nextPrice > maxValue) {
-      alert(`???? ???? Позиція??? Позиція???: ${getRangeDisplay(positionId)}.`);
+      alert(`?? ?? ? ?: ${getRangeDisplay(positionId)}.`);
       return;
     }
   }
@@ -1250,21 +1252,87 @@ async function loadProposals() {
   if (data) proposals.value = Array.isArray(data) ? data : [];
 }
 
+function refreshCurrentProposalViewFromList() {
+  const nextPriceDrafts = new Map<number, unknown>(
+    positionRows.value.map((row: any) => [Number(row.id), row.next_price]),
+  );
+
+  const restoreNextPriceDrafts = () => {
+    if (!nextPriceDrafts.size) return;
+    for (const row of positionRows.value) {
+      const draft = nextPriceDrafts.get(Number(row.id));
+      if (draft !== undefined && draft !== null && String(draft) !== "") {
+        row.next_price = draft;
+      }
+    }
+  };
+
+  if (isParticipant.value) {
+    if (myProposal.value) {
+      currentProposal.value = myProposal.value;
+      buildPositionRows(myProposal.value);
+      restoreNextPriceDrafts();
+    }
+    return;
+  }
+
+  const supplierId = selectedSupplierId.value;
+  if (!supplierId) return;
+  const proposal = proposals.value.find(
+    (p: any) => p.supplier_company_id === supplierId || p.supplier_company?.id === supplierId,
+  );
+  if (!proposal) return;
+  currentProposal.value = proposal;
+  buildPositionRows(proposal);
+  restoreNextPriceDrafts();
+}
+
+function scheduleRealtimeProposalsReload() {
+  if (proposalsReloadTimeout) clearTimeout(proposalsReloadTimeout);
+  proposalsReloadTimeout = setTimeout(() => {
+    void (async () => {
+      await loadProposals();
+      refreshCurrentProposalViewFromList();
+    })();
+  }, 200);
+}
+
 function stopProposalsRefresh() {
-  if (!proposalsRefreshInterval) return;
-  clearInterval(proposalsRefreshInterval);
-  proposalsRefreshInterval = null;
+  if (proposalsReloadTimeout) {
+    clearTimeout(proposalsReloadTimeout);
+    proposalsReloadTimeout = null;
+  }
+  if (fallbackProposalsInterval) {
+    clearInterval(fallbackProposalsInterval);
+    fallbackProposalsInterval = null;
+  }
+  tenderRealtime.disconnect();
 }
 
 function startProposalsRefresh() {
-  if (tender.value?.stage !== "acceptance") {
+  if (tender.value?.stage !== "acceptance" || !isOnlineAuction.value) {
     stopProposalsRefresh();
     return;
   }
-  if (proposalsRefreshInterval) return;
-  proposalsRefreshInterval = setInterval(() => {
-    void loadProposals();
-  }, PROPOSALS_REFRESH_MS);
+  if (!tender.value?.id) return;
+  tenderRealtime.connect({
+    kind: isSales ? "sales" : "procurement",
+    tenderId: Number(tender.value.id),
+    onEvent: (message) => {
+      if (message?.event === "proposal.position_values.updated") {
+        scheduleRealtimeProposalsReload();
+      }
+    },
+  });
+
+  if (fallbackProposalsInterval) clearInterval(fallbackProposalsInterval);
+  fallbackProposalsInterval = setInterval(() => {
+    if (tenderRealtime.isConnected.value) return;
+    void (async () => {
+      await loadProposals();
+      refreshCurrentProposalViewFromList();
+    })();
+  }, FALLBACK_PROPOSALS_REFRESH_MS);
 }
 
 async function loadTenderFiles() {
@@ -1590,3 +1658,4 @@ watch(showFilesModal, async (open) => {
   await loadTenderFiles();
 });
 </script>
+

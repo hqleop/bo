@@ -99,6 +99,7 @@ from .serializers import (
     SalesTenderProposalSerializer,
     SalesTenderFileSerializer,
 )
+from .realtime import publish_tender_event
 
 User = get_user_model()
 
@@ -3003,6 +3004,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         if not payload.is_valid():
             return Response(payload.errors, status=status.HTTP_400_BAD_REQUEST)
         position_values_data = payload.validated_data.get("position_values") or []
+        changed_position_ids: set[int] = set()
         for item in position_values_data:
             tp_id = item.get("tender_position_id")
             if not tp_id:
@@ -3034,6 +3036,20 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             if "criterion_values" in item:
                 pv.criterion_values = item["criterion_values"]
             pv.save()
+            changed_position_ids.add(int(tp_id))
+        if changed_position_ids:
+            payload_for_ws = {
+                "proposal_id": proposal.id,
+                "position_ids": sorted(changed_position_ids),
+            }
+            transaction.on_commit(
+                lambda: publish_tender_event(
+                    "procurement",
+                    int(tender.id),
+                    "proposal.position_values.updated",
+                    payload_for_ws,
+                )
+            )
         qs = TenderProposal.objects.filter(id=proposal.id).prefetch_related(
             "position_values__tender_position__nomenclature__unit",
         )
@@ -3653,6 +3669,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
         if not payload.is_valid():
             return Response(payload.errors, status=status.HTTP_400_BAD_REQUEST)
         position_values_data = payload.validated_data.get("position_values") or []
+        changed_position_ids: set[int] = set()
         for item in position_values_data:
             tp_id = item.get("tender_position_id")
             if not tp_id:
@@ -3682,6 +3699,20 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             if "criterion_values" in item:
                 pv.criterion_values = item["criterion_values"]
             pv.save()
+            changed_position_ids.add(int(tp_id))
+        if changed_position_ids:
+            payload_for_ws = {
+                "proposal_id": proposal.id,
+                "position_ids": sorted(changed_position_ids),
+            }
+            transaction.on_commit(
+                lambda: publish_tender_event(
+                    "sales",
+                    int(tender.id),
+                    "proposal.position_values.updated",
+                    payload_for_ws,
+                )
+            )
         qs = SalesTenderProposal.objects.filter(id=proposal.id).prefetch_related(
             "position_values__tender_position__nomenclature__unit",
         )

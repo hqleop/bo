@@ -1,4 +1,4 @@
-"""
+﻿"""
 Django settings for Bid Open (MVP).
 
 Backend: Django + DRF + SimpleJWT
@@ -11,6 +11,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 import os
+import importlib.util
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -32,12 +33,20 @@ ALLOWED_HOSTS = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost
 
 # Application definition
 
+HAS_DAPHNE = importlib.util.find_spec("daphne") is not None
+HAS_CHANNELS = importlib.util.find_spec("channels") is not None
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+]
+if HAS_DAPHNE:
+    INSTALLED_APPS.append('daphne')
+
+INSTALLED_APPS += [
     'django.contrib.staticfiles',
 
     # third-party
@@ -49,6 +58,9 @@ INSTALLED_APPS = [
     # local
     'core',
 ]
+
+if HAS_CHANNELS:
+    INSTALLED_APPS.append("channels")
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -79,6 +91,23 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+if HAS_CHANNELS:
+    ASGI_APPLICATION = 'config.asgi.application'
+
+    REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
+    USE_REDIS_CHANNEL_LAYER = os.getenv("USE_REDIS_CHANNEL_LAYER", "0") == "1"
+    if USE_REDIS_CHANNEL_LAYER:
+        CHANNEL_LAYERS = {
+            "default": {
+                "BACKEND": "channels_redis.core.RedisChannelLayer",
+                "CONFIG": {"hosts": [REDIS_URL]},
+            }
+        }
+    else:
+        # Safe default for local/dev: no external Redis dependency.
+        CHANNEL_LAYERS = {
+            "default": {"BACKEND": "channels.layers.InMemoryChannelLayer"},
+        }
 
 
 # Database
@@ -172,10 +201,11 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
 }
 
-# JWT: після входу користувач не викидається 1 день
+# JWT: РїС–СЃР»СЏ РІС…РѕРґСѓ РєРѕСЂРёСЃС‚СѓРІР°С‡ РЅРµ РІРёРєРёРґР°С”С‚СЊСЃСЏ 1 РґРµРЅСЊ
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(days=1),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
 }
 
 DEFAULT_CHARSET = 'utf-8'
+
