@@ -311,7 +311,7 @@
                           >
                             <button
                               type="button"
-                              class="text-blue-700 hover:text-blue-900 hover:underline"
+                              class="text-green-700 hover:text-green-900 hover:underline"
                               @click="
                                 applyRangeValue(
                                   row.id,
@@ -328,7 +328,7 @@
                             <span class="mx-1 text-gray-500">-</span>
                             <button
                               type="button"
-                              class="text-blue-700 hover:text-blue-900 hover:underline"
+                              class="text-green-700 hover:text-green-900 hover:underline"
                               @click="
                                 applyRangeValue(
                                   row.id,
@@ -447,7 +447,7 @@
               {{ timerText }}
             </div>
             <UButton
-              v-if="!isProposalSubmitted"
+              v-if="!isProposalSubmitted && !isOnlineAuction"
               class="w-full"
               :loading="submitWithdrawLoading"
               :disabled="!participantCanEdit"
@@ -456,7 +456,7 @@
               Подати пропозицію
             </UButton>
             <UButton
-              v-else
+              v-else-if="isProposalSubmitted"
               class="w-full"
               color="error"
               variant="solid"
