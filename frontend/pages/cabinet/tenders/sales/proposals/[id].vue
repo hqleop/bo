@@ -120,6 +120,14 @@
                     class="w-full"
                     @blur="savePositionValues"
                   />
+                  <UInput
+                    v-else-if="criterionInputKind(c) === 'date'"
+                    v-model="generalCriterionValues[c.id]"
+                    type="date"
+                    size="sm"
+                    class="w-full"
+                    @blur="savePositionValues"
+                  />
                   <USelectMenu
                     v-else-if="criterionInputKind(c) === 'boolean'"
                     v-model="generalCriterionValues[c.id]"
@@ -272,7 +280,7 @@
                         <td v-if="isOnlineAuction" class="p-2">
                           <UButton
                             size="xs"
-                                                        :disabled="
+                            :disabled="
                               !(
                                 currentProposal &&
                                 !isViewingPreviousTour &&
@@ -337,11 +345,15 @@
                               "
                             >
                               {{
-                                formatPriceValue(getRangeValues(row.id)?.to ?? 0)
+                                formatPriceValue(
+                                  getRangeValues(row.id)?.to ?? 0,
+                                )
                               }}
                             </button>
                           </template>
-                          <span v-else>{{ getRangeDisplay(row.id) || "—" }}</span>
+                          <span v-else>{{
+                            getRangeDisplay(row.id) || "—"
+                          }}</span>
                         </td>
                         <td
                           v-for="c in tenderCriteriaIndividual"
@@ -369,6 +381,14 @@
                               step="0.01"
                               size="sm"
                               class="min-w-[80px]"
+                              @blur="savePositionValues"
+                            />
+                            <UInput
+                              v-else-if="criterionInputKind(c) === 'date'"
+                              v-model="row.criterion_values[c.id]"
+                              type="date"
+                              size="sm"
+                              class="min-w-[140px]"
                               @blur="savePositionValues"
                             />
                             <USelectMenu
@@ -792,7 +812,7 @@ const tenderCriteriaGeneral = computed(() =>
     (c: any) => (c.application || "individual") === "general",
   ),
 );
-type CriterionType = "text" | "numeric" | "file" | "boolean";
+type CriterionType = "text" | "numeric" | "date" | "file" | "boolean";
 type CriterionValue = string | number | boolean | string[] | null;
 const booleanCriterionOptions = [
   { value: true, label: "Так" },
@@ -931,6 +951,7 @@ const priceColumnHeader = computed(() => {
 function criterionInputKind(criterion: any): CriterionType {
   const t = String(criterion?.type || "").toLowerCase();
   if (t === "numeric") return "numeric";
+  if (t === "date") return "date";
   if (t === "boolean") return "boolean";
   if (t === "file") return "file";
   return "text";
@@ -961,6 +982,7 @@ function normalizeCriterionValueForUi(
     return Number.isNaN(num) ? "" : num;
   }
   if (kind === "boolean") return normalizeCriterionBoolean(rawValue) ?? "";
+  if (kind === "date") return String(rawValue ?? "").trim();
   if (kind === "file") {
     if (Array.isArray(rawValue)) {
       return rawValue.map((v) => String(v || "").trim()).filter(Boolean);
@@ -985,6 +1007,10 @@ function normalizeCriterionValueForSave(
     return Number.isNaN(num) ? null : num;
   }
   if (kind === "boolean") return normalizeCriterionBoolean(rawValue);
+  if (kind === "date") {
+    const text = String(rawValue ?? "").trim();
+    return text !== "" ? text : null;
+  }
   if (kind === "file") {
     if (Array.isArray(rawValue)) {
       const names = rawValue.map((v) => String(v || "").trim()).filter(Boolean);
@@ -1197,7 +1223,7 @@ async function submitPositionPrice(positionId: number) {
 
   const nextPrice = toValidNumber(row.next_price);
   if (nextPrice == null) {
-    alert("? ?? ?.");
+    alert("Не вірне значення ціни.");
     return;
   }
 
@@ -1206,7 +1232,7 @@ async function submitPositionPrice(positionId: number) {
     const minValue = Math.min(range.from, range.to);
     const maxValue = Math.max(range.from, range.to);
     if (nextPrice < minValue || nextPrice > maxValue) {
-      alert(`?? ?? ? ?: ${getRangeDisplay(positionId)}.`);
+      alert(`Значення поза діапазоном: ${getRangeDisplay(positionId)}.`);
       return;
     }
   }
@@ -1325,7 +1351,9 @@ function refreshCurrentProposalViewFromList() {
   const supplierId = selectedSupplierId.value;
   if (!supplierId) return;
   const proposal = proposals.value.find(
-    (p: any) => p.supplier_company_id === supplierId || p.supplier_company?.id === supplierId,
+    (p: any) =>
+      p.supplier_company_id === supplierId ||
+      p.supplier_company?.id === supplierId,
   );
   if (!proposal) return;
   currentProposal.value = proposal;

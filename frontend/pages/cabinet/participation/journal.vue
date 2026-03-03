@@ -126,8 +126,9 @@ const tendersUC = useTendersUseCases();
 
 const mergedList = ref<any[]>([]);
 const tenderNumberFilter = ref("");
-const participationResultFilter = ref<"participation" | "win">("participation");
+const participationResultFilter = ref<"" | "participation" | "win">("");
 const participationResultOptions = [
+  { value: "", label: "Усі" },
   { value: "participation", label: "Участь" },
   { value: "win", label: "Перемога" },
 ];
@@ -184,7 +185,7 @@ async function loadAllByType(isSales: boolean, loadId: number) {
         page,
         submittedOnly: true,
         tenderNumber: tenderNumberFilter.value,
-        participationResult: participationResultFilter.value,
+        participationResult: participationResultFilter.value || undefined,
       },
     );
     const payload = (data as any) || {};
@@ -230,7 +231,7 @@ async function loadJournal() {
 
 function clearFilters() {
   tenderNumberFilter.value = "";
-  participationResultFilter.value = "participation";
+  participationResultFilter.value = "";
   currentPage.value = 1;
 }
 

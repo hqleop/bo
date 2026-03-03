@@ -1,5 +1,5 @@
 import type { RequestFn } from '~/shared/api/apiClient'
-import type { SupplierCompany, CompanySupplierRelation, CompanyMember, AddSupplierPayload } from './suppliers.types'
+import type { SupplierCompany, CompanySupplierRelation, CompanyMember, AddSupplierPayload, SupplierTender } from './suppliers.types'
 
 export async function getCompanySuppliers(request: RequestFn) {
   return request<CompanySupplierRelation[]>('/company-suppliers/')
@@ -21,4 +21,8 @@ export async function getCompany(request: RequestFn, id: number) {
 
 export async function getCompanyMembers(request: RequestFn, companyId: number) {
   return request<CompanyMember[]>(`/companies/${companyId}/members/`)
+}
+
+export async function getCompanySupplierTenders(request: RequestFn, relationId: number) {
+  return request<SupplierTender[]>(`/company-suppliers/${relationId}/tenders/`)
 }

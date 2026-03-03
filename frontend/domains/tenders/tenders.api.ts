@@ -5,6 +5,7 @@ import type {
   TenderListItem,
   TenderProposal,
   TenderCriterion,
+  TenderAttribute,
   TenderFile
 } from './tenders.types'
 
@@ -181,6 +182,30 @@ export async function createTenderCriterion(
   })
 }
 
+export type TenderAttributesType = 'procurement' | 'sales'
+
+export async function getTenderAttributesByType(request: RequestFn, tenderType: TenderAttributesType) {
+  return request<TenderAttribute[]>(`/tender-attributes/?tender_type=${tenderType}`)
+}
+
+export async function createTenderAttribute(
+  request: RequestFn,
+  body: {
+    company: number
+    name: string
+    type: string
+    tender_type: TenderAttributesType
+    category?: number | null
+    is_required?: boolean
+    options?: Record<string, unknown>
+  }
+) {
+  return request<TenderAttribute>('/tender-attributes/', {
+    method: 'POST',
+    body: body as unknown as Record<string, unknown>
+  })
+}
+
 export async function getUnits(request: RequestFn) {
   return request<{ id: number; name_ua?: string; short_name_ua?: string; name_en?: string }[]>('/units/')
 }
@@ -300,4 +325,45 @@ export async function submitProposal(request: RequestFn, tenderId: number, isSal
 export async function withdrawProposal(request: RequestFn, tenderId: number, isSales: boolean) {
   const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
   return request<TenderProposal>(`${prefix}/${tenderId}/withdraw-proposal/`, { method: 'POST' })
+}
+
+export async function getTenderApprovalJournal(
+  request: RequestFn,
+  tenderId: number,
+  isSales: boolean
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<unknown[]>(`${prefix}/${tenderId}/approval-journal/`)
+}
+
+export async function submitTenderApprovalAction(
+  request: RequestFn,
+  tenderId: number,
+  isSales: boolean,
+  body: { action: "approved" | "rejected"; comment?: string }
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<{ id: number; stage?: string }>(`${prefix}/${tenderId}/approval-action/`, {
+    method: "POST",
+    body: body as unknown as Record<string, unknown>,
+  })
+}
+
+export async function getAvailableApprovalModels(
+  request: RequestFn,
+  params: {
+    companyId: number
+    application: 'procurement' | 'sales'
+    categoryId?: number | null
+    estimatedBudget?: number | null
+  }
+) {
+  const q = new URLSearchParams()
+  q.set("company_id", String(params.companyId))
+  q.set("application", params.application)
+  if (params.categoryId) q.set("category_id", String(params.categoryId))
+  if (params.estimatedBudget != null && Number.isFinite(Number(params.estimatedBudget))) {
+    q.set("estimated_budget", String(params.estimatedBudget))
+  }
+  return request<unknown[]>(`/approval-models/available-for-tender/?${q.toString()}`)
 }

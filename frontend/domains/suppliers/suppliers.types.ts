@@ -26,6 +26,16 @@ export interface CompanyMember {
   [key: string]: unknown
 }
 
+export interface SupplierTender {
+  id: number
+  number?: number | null
+  name: string
+  stage?: string
+  stage_label?: string
+  type?: 'procurement' | 'sales'
+  tour_number?: number
+}
+
 /** Add supplier payload (POST /company-suppliers/) */
 export interface AddSupplierPayload {
   edrpou: string

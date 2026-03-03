@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div v-if="loading" class="flex items-center justify-center py-12">
     <UIcon
       name="i-heroicons-arrow-path"
@@ -121,7 +121,7 @@
                     >
                       Бюджет і валюта
                     </p>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
                       <UFormField label="Стаття бюджету">
                         <USelectMenu
                           v-model="form.expense_article"
@@ -150,6 +150,15 @@
                           placeholder="Валюту"
                           size="sm"
                           :disabled="isViewingPreviousTour"
+                        />
+                      </UFormField>
+                      <UFormField label="Модель погодження">
+                        <USelectMenu
+                          v-model="form.approval_model_id"
+                          :items="approvalModelOptions"
+                          value-key="value"
+                          placeholder="Оберіть модель"
+                          :disabled="isViewingPreviousTour || !form.category"
                         />
                       </UFormField>
                     </div>
@@ -223,8 +232,7 @@
                   <p
                     class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
                   >
-                    Загальні умови проведення
-                    тендера
+                    Загальні умови проведення тендера
                   </p>
                   <UFormField
                     label="Опис умов та вимог"
@@ -272,9 +280,7 @@
             class="h-full min-h-0 flex flex-col rounded-lg p-4 bg-white"
           >
             <div class="flex items-center justify-between mb-4">
-              <h3 class="text-lg font-semibold">
-                Запрошення учасників
-              </h3>
+              <h3 class="text-lg font-semibold">Запрошення учасників</h3>
               <UButton
                 variant="ghost"
                 size="sm"
@@ -293,8 +299,7 @@
                 <h4
                   class="p-3 border-b border-gray-200 text-sm font-semibold text-gray-700"
                 >
-                  Обрання контрагента зі списку
-                  контрагентів компанії
+                  Обрання контрагента зі списку контрагентів компанії
                 </h4>
                 <div
                   class="flex-1 min-h-0 flex flex-col min-w-0 divide-y divide-gray-200"
@@ -303,9 +308,7 @@
                   <div
                     class="flex-1 min-h-0 flex flex-col p-3 overflow-hidden min-h-[200px]"
                   >
-                    <UFormField
-                      label="Пошук контрагента за назвою або кодом"
-                    >
+                    <UFormField label="Пошук контрагента за назвою або кодом">
                       <UInput
                         v-model="invitationContractorSearch"
                         placeholder="Назва або ЄДРПОУ"
@@ -372,8 +375,7 @@
                         </li>
                       </ul>
                       <p v-else class="text-sm text-gray-500 p-3">
-                        Немає постачальників за
-                        критеріями пошуку.
+                        Немає постачальників за критеріями пошуку.
                       </p>
                     </div>
                     <div
@@ -447,9 +449,7 @@
                         />
                       </li>
                     </ul>
-                    <p v-else class="text-sm text-gray-500 py-1">
-                      Порожньо.
-                    </p>
+                    <p v-else class="text-sm text-gray-500 py-1">Порожньо.</p>
                   </div>
                 </div>
               </div>
@@ -546,8 +546,7 @@
                         Завантаження...
                       </p>
                       <p v-else class="text-sm text-gray-500 p-3">
-                        Немає категорій за критеріями
-                        пошуку.
+                        Немає категорій за критеріями пошуку.
                       </p>
                     </div>
                     <div
@@ -592,8 +591,7 @@
                   </div>
                   <div class="flex-1 min-h-0 flex flex-col p-3 min-h-[120px]">
                     <h4 class="text-sm font-semibold text-gray-700 mb-2">
-                      Категорії CPV, за якими
-                      запрошуються учасники
+                      Категорії CPV, за якими запрошуються учасники
                     </h4>
                     <ul
                       v-if="invitationCpvFilterIds.length"
@@ -618,8 +616,7 @@
                       </li>
                     </ul>
                     <p v-else class="text-sm text-gray-500 py-1">
-                      Оберіть категорії вище та
-                      натисніть Запросити.
+                      Оберіть категорії вище та натисніть Запросити.
                     </p>
                   </div>
                 </div>
@@ -665,9 +662,7 @@
                       />
                     </li>
                   </ul>
-                  <p v-else class="text-sm text-gray-500 py-2">
-                    Порожньо.
-                  </p>
+                  <p v-else class="text-sm text-gray-500 py-2">Порожньо.</p>
                 </div>
               </div>
             </div>
@@ -677,38 +672,64 @@
             v-else
             class="h-full min-h-0 flex flex-col rounded-lg p-4 bg-white"
           >
-            <h3 class="text-lg font-semibold mb-3">
-              Підготовка процедури
-            </h3>
+            <h3 class="text-lg font-semibold mb-3">Підготовка процедури</h3>
             <UTabs
               v-model="prepTab"
               :items="prepTabs"
               value-key="value"
-              class="mb-4"
+              class="mb-4 prep-tabs"
               content
             >
               <template #content="{ item }">
                 <div
                   v-if="item.value === 'positions'"
-                  class="h-full min-h-0 flex flex-col gap-2"
+                  class="h-full min-h-0 flex flex-col gap-4"
                 >
-                  <div v-if="!isParticipant" class="flex justify-end shrink-0">
+                  <div class="rounded-lg p-4 bg-gray-50/50">
+                    <h4 class="text-sm font-semibold text-gray-700 mb-3">
+                      Параметри цінового критерія
+                    </h4>
+                    <div class="flex flex-wrap gap-6">
+                      <UFormField label="ПДВ" class="min-w-[200px]">
+                        <USelectMenu
+                          v-model="priceCriterionVat"
+                          :items="vatOptions"
+                          value-key="value"
+                          placeholder="Оберіть варіант"
+                          :disabled="isViewingPreviousTour || isParticipant"
+                          @update:model-value="onPriceCriterionVatChange"
+                        />
+                      </UFormField>
+                      <UFormField label="Доставка" class="min-w-[260px]">
+                        <USelectMenu
+                          v-model="priceCriterionDelivery"
+                          :items="deliveryOptions"
+                          value-key="value"
+                          placeholder="Оберіть варіант"
+                          :disabled="isViewingPreviousTour || isParticipant"
+                          @update:model-value="onPriceCriterionDeliveryChange"
+                        />
+                      </UFormField>
+                    </div>
+                  </div>
+                  <div
+                    v-if="!isParticipant"
+                    class="flex items-center justify-start gap-2 shrink-0"
+                  >
                     <UButton
                       variant="outline"
                       size="sm"
                       icon="i-heroicons-plus"
-                      :disabled="
-                        isViewingPreviousTour || !(form.cpv_ids?.length ?? 0)
-                      "
-                      @click="showCreateNomenclatureModal = true"
+                      :disabled="isViewingPreviousTour"
+                      @click="showNomenclaturePickerModal = true"
                     >
-                      Створити номенклатуру
+                      Додати номенклатуру
                     </UButton>
                   </div>
                   <div class="flex-1 min-h-0 flex gap-4">
                     <!-- Ліва колонка: пошук + дерево категорії → номенклатури (тільки для власника) -->
                     <aside
-                      v-if="!isParticipant"
+                      v-if="false && !isParticipant"
                       class="w-72 flex-shrink-0 flex flex-col min-h-0 border border-gray-200 rounded-lg bg-gray-50/50 overflow-hidden"
                     >
                       <div class="p-2 border-b border-gray-200">
@@ -730,8 +751,7 @@
                           v-else-if="!nomenclatureTreeItems.length"
                           class="text-sm text-gray-500 py-4 text-center"
                         >
-                          Оберіть категорію або CPV у
-                          паспорті тендера.
+                          Оберіть категорію або CPV у паспорті тендера.
                         </div>
                         <UTree
                           v-else
@@ -746,7 +766,9 @@
 
                     <!-- Таблиця позицій -->
                     <div class="flex-1 min-h-0 flex flex-col min-w-0">
-                      <div class="flex-1 min-h-0 overflow-auto">
+                      <div
+                        class="flex-1 min-h-0 overflow-auto positions-table-wrapper"
+                      >
                         <UTable
                           :data="
                             isParticipant
@@ -754,8 +776,51 @@
                               : tenderPositions
                           "
                           :columns="positionsColumns"
-                          class="w-full"
+                          class="w-full positions-table"
                         >
+                          <template #attributes_add-header>
+                            <div class="flex justify-center">
+                              <UButton
+                                v-if="!isParticipant"
+                                size="xs"
+                                variant="soft"
+                                color="primary"
+                                class="rounded-full h-8 w-8 p-0 flex items-center justify-center"
+                                icon="i-heroicons-plus"
+                                title="Додати атрибут"
+                                :disabled="isViewingPreviousTour"
+                                @click="openAttributePickerModal"
+                              >
+                              </UButton>
+                            </div>
+                          </template>
+                          <template
+                            v-for="attribute in tenderAttributes"
+                            :key="`attr-header-${attribute.id}`"
+                            #[`${attributeAccessorKey(attribute.id)}-header`]
+                          >
+                            <div class="flex items-center gap-1">
+                              <span class="truncate">{{
+                                attribute.name || "Атрибут"
+                              }}</span>
+                              <UButton
+                                v-if="!isParticipant"
+                                size="xs"
+                                color="error"
+                                variant="ghost"
+                                icon="i-heroicons-x-mark"
+                                :disabled="isViewingPreviousTour"
+                                @click.stop="
+                                  removeAttributeFromTender(attribute.id)
+                                "
+                              />
+                            </div>
+                          </template>
+                          <template #seq-cell="{ row }">
+                            <span class="text-sm text-gray-500">{{
+                              row.index + 1
+                            }}</span>
+                          </template>
                           <template #quantity-cell="{ row }">
                             <UInput
                               type="number"
@@ -806,6 +871,64 @@
                           <template #vat-cell>
                             <UInput value="" disabled size="sm" />
                           </template>
+                          <template
+                            v-for="attribute in tenderAttributes"
+                            :key="`attr-cell-${attribute.id}`"
+                            #[`${attributeAccessorKey(attribute.id)}-cell`]="{
+                              row,
+                            }"
+                          >
+                            <UInput
+                              v-if="attribute.type === 'numeric'"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              size="sm"
+                              :model-value="
+                                ensurePositionAttributeValues(row.original)[
+                                  String(attribute.id)
+                                ] ?? null
+                              "
+                              :disabled="isViewingPreviousTour || isParticipant"
+                              @update:model-value="
+                                ensurePositionAttributeValues(row.original)[
+                                  String(attribute.id)
+                                ] = $event
+                              "
+                            />
+                            <UInput
+                              v-else-if="attribute.type === 'date'"
+                              type="date"
+                              size="sm"
+                              :model-value="
+                                ensurePositionAttributeValues(row.original)[
+                                  String(attribute.id)
+                                ] ?? ''
+                              "
+                              :disabled="isViewingPreviousTour || isParticipant"
+                              @update:model-value="
+                                ensurePositionAttributeValues(row.original)[
+                                  String(attribute.id)
+                                ] = $event || ''
+                              "
+                            />
+                            <UInput
+                              v-else
+                              size="sm"
+                              :model-value="
+                                ensurePositionAttributeValues(row.original)[
+                                  String(attribute.id)
+                                ] ?? ''
+                              "
+                              :disabled="isViewingPreviousTour || isParticipant"
+                              @update:model-value="
+                                ensurePositionAttributeValues(row.original)[
+                                  String(attribute.id)
+                                ] = $event || ''
+                              "
+                            />
+                          </template>
+                          <template #attributes_add-cell />
                           <template #actions-cell="{ row }">
                             <UButton
                               v-if="!isParticipant"
@@ -826,7 +949,7 @@
 
                 <div v-else-if="item.value === 'criteria'" class="space-y-6">
                   <!-- Параметри цінового критерія -->
-                  <div class="rounded-lg p-4 bg-gray-50/50">
+                  <div v-if="false" class="rounded-lg p-4 bg-gray-50/50">
                     <h4 class="text-sm font-semibold text-gray-700 mb-3">
                       Параметри цінового критерія
                     </h4>
@@ -841,10 +964,7 @@
                           @update:model-value="onPriceCriterionVatChange"
                         />
                       </UFormField>
-                      <UFormField
-                        label="Доставка"
-                        class="min-w-[260px]"
-                      >
+                      <UFormField label="Доставка" class="min-w-[260px]">
                         <USelectMenu
                           v-model="priceCriterionDelivery"
                           :items="deliveryOptions"
@@ -911,12 +1031,9 @@
                         </UButton>
                       </div>
                       <p class="text-sm text-gray-600 mb-3">
-                        Подвійний клік по критерію в
-                        списку зліва додає його сюди.
-                        Загальні критерії
-                        заповнюються один раз на
-                        тендер, індивідуальні — по
-                        кожній позиції.
+                        Подвійний клік по критерію в списку зліва додає його
+                        сюди. Загальні критерії заповнюються один раз на тендер,
+                        індивідуальні — по кожній позиції.
                       </p>
                       <div v-if="tenderCriteriaGeneral.length > 0" class="mb-4">
                         <h5
@@ -950,8 +1067,7 @@
                         <h5
                           class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2"
                         >
-                          Індивідуальні критерії (по
-                          позиції)
+                          Індивідуальні критерії (по позиції)
                         </h5>
                         <ul
                           class="space-y-2 text-sm flex-1 min-h-0 overflow-auto"
@@ -994,17 +1110,13 @@
         <template v-else-if="displayStage === 'acceptance'">
           <UCard>
             <template #header>
-              <h3 class="text-lg font-semibold">
-                Прийом пропозицій
-              </h3>
+              <h3 class="text-lg font-semibold">Прийом пропозицій</h3>
             </template>
             <div class="border rounded-lg overflow-hidden">
               <table class="w-full text-sm border-collapse">
                 <thead>
                   <tr class="border-b bg-gray-50">
-                    <th class="text-left p-2 font-medium">
-                      Контрагент
-                    </th>
+                    <th class="text-left p-2 font-medium">Контрагент</th>
                     <th class="text-left p-2 font-medium">
                       Час підтвердження участі
                     </th>
@@ -1045,8 +1157,7 @@
                   </tr>
                   <tr v-if="!decisionProposals.length">
                     <td colspan="4" class="p-4 text-center text-gray-500">
-                      Немає контрагентів, що
-                      підтвердили участь.
+                      Немає контрагентів, що підтвердили участь.
                     </td>
                   </tr>
                 </tbody>
@@ -1059,10 +1170,7 @@
             <!-- Верхня область: орієнтовна ринкова та рішення -->
             <div class="rounded-lg p-4 bg-gray-50/50">
               <div class="flex flex-wrap items-end gap-6">
-                <UFormField
-                  label="Орієнтовна ринкова"
-                  class="min-w-[220px]"
-                >
+                <UFormField label="Орієнтовна ринкова" class="min-w-[220px]">
                   <USelectMenu
                     v-model="estimatedMarketMethod"
                     :items="estimatedMarketOptions"
@@ -1124,21 +1232,16 @@
                 <h3 class="text-lg font-semibold">Затвердження</h3>
               </template>
               <p class="text-sm text-gray-600 mb-4">
-                Перегляньте переможців по
-                позиціях та підтвердьте рішення
-                для завершення тендера.
+                Перегляньте переможців по позиціях та підтвердьте рішення для
+                завершення тендера.
               </p>
               <div class="border rounded-lg overflow-hidden">
                 <table class="w-full text-sm border-collapse">
                   <thead>
                     <tr class="border-b bg-gray-50">
                       <th class="text-left p-2 font-medium">Позиція</th>
-                      <th class="text-left p-2 font-medium">
-                        Кількість
-                      </th>
-                      <th class="text-left p-2 font-medium">
-                        Переможець
-                      </th>
+                      <th class="text-left p-2 font-medium">Кількість</th>
+                      <th class="text-left p-2 font-medium">Переможець</th>
                       <th class="text-left p-2 font-medium">Ціна</th>
                       <th
                         v-for="c in tenderCriteria"
@@ -1189,9 +1292,7 @@
             <template #header>
               <h3 class="text-lg font-semibold">Завершений</h3>
             </template>
-            <p class="text-sm text-gray-600">
-              Тендер завершено.
-            </p>
+            <p class="text-sm text-gray-600">Тендер завершено.</p>
           </UCard>
         </template>
       </div>
@@ -1225,7 +1326,7 @@
               :disabled="isViewingPreviousTour"
               @click="openPublishModal"
             >
-              Опублікувати
+              Затвердити
             </UButton>
             <UButton
               v-if="!showInvitationPanel"
@@ -1331,9 +1432,18 @@
           <UButton
             class="w-full"
             :disabled="isViewingPreviousTour"
-            @click="approveTender"
+            @click="openApprovalActionModal('approved')"
           >
             Затвердити
+          </UButton>
+          <UButton
+            class="w-full"
+            color="error"
+            variant="outline"
+            :disabled="isViewingPreviousTour"
+            @click="openApprovalActionModal('rejected')"
+          >
+            Скасувати
           </UButton>
           <UButton
             class="w-full"
@@ -1344,15 +1454,68 @@
             Усі пропозиції
           </UButton>
         </template>
+        <UButton
+          v-if="displayStage !== 'passport'"
+          class="w-full"
+          variant="outline"
+          @click="openApprovalJournalModal"
+        >
+          Журнал погодження
+        </UButton>
+        <UCard
+          v-if="displayStage === 'passport' && form.approval_model_id"
+          class="mt-auto"
+        >
+          <template #header><h4 class="text-sm font-semibold">Погоджувачі</h4></template>
+          <ul class="space-y-2 text-xs">
+            <li
+              v-for="step in selectedApprovalModelSteps"
+              :key="step.id || step.order"
+              class="border-l-2 pl-2"
+            >
+              <div class="font-medium">{{ step.role_name || "Роль" }}</div>
+              <div class="text-gray-500">Підготовка: {{ ruleLabel(step.preparation_rule) }}</div>
+              <div class="text-gray-500">Затвердження: {{ ruleLabel(step.approval_rule) }}</div>
+            </li>
+          </ul>
+        </UCard>
       </aside>
     </div>
+
+    <UModal v-model:open="showApprovalJournalModal">
+      <template #content>
+        <UCard>
+          <template #header><h3>Журнал погодження</h3></template>
+          <UTable :data="approvalJournalRows" :columns="approvalJournalColumns" class="w-full" />
+        </UCard>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="showApprovalActionModal">
+      <template #content>
+        <UCard>
+          <template #header>
+            <h3>{{ pendingApprovalAction === "approved" ? "Погодити тендер" : "Скасувати тендер" }}</h3>
+          </template>
+          <div class="space-y-4">
+            <UFormField :label="pendingApprovalAction === 'approved' ? 'Коментар (необовʼязково)' : 'Коментар (обовʼязково)'">
+              <UTextarea v-model="approvalActionComment" :rows="4" />
+            </UFormField>
+            <div class="flex justify-end gap-2">
+              <UButton variant="outline" @click="showApprovalActionModal = false">Скасувати</UButton>
+              <UButton :loading="approvalActionSaving" @click="submitApprovalAction">
+                Підтвердити
+              </UButton>
+            </div>
+          </div>
+        </UCard>
+      </template>
+    </UModal>
 
     <UModal v-model:open="showPublishModal">
       <template #content>
         <UCard>
-          <template #header
-            ><h3>Період проведення</h3></template
-          >
+          <template #header><h3>Період проведення</h3></template>
           <div class="space-y-4">
             <UFormField label="Початок">
               <UInput v-model="timingForm.start_at" type="datetime-local" />
@@ -1431,9 +1594,7 @@
     <UModal v-model:open="showTimingModal">
       <template #content>
         <UCard>
-          <template #header
-            ><h3>Змінити час проведення</h3></template
-          >
+          <template #header><h3>Змінити час проведення</h3></template>
           <div class="space-y-4">
             <UFormField
               label="Початок"
@@ -1476,31 +1637,20 @@
     <UModal v-model:open="showResumeAcceptanceModal">
       <template #content>
         <UCard>
-          <template #header
-            ><h3>
-              Відновити прийом пропозицій
-            </h3></template
-          >
+          <template #header><h3>Відновити прийом пропозицій</h3></template>
           <p class="text-sm text-gray-600 mb-4">
-            Вкажіть час початку (не раніше
-            поточного) та час завершення прийому
+            Вкажіть час початку (не раніше поточного) та час завершення прийому
             пропозицій.
           </p>
           <div class="space-y-4">
-            <UFormField
-              label="Початок прийому пропозицій"
-              required
-            >
+            <UFormField label="Початок прийому пропозицій" required>
               <UInput
                 v-model="resumeAcceptanceForm.start_at"
                 type="datetime-local"
                 :min="resumeAcceptanceMinStart"
               />
             </UFormField>
-            <UFormField
-              label="Завершення прийому пропозицій"
-              required
-            >
+            <UFormField label="Завершення прийому пропозицій" required>
               <UInput
                 v-model="resumeAcceptanceForm.end_at"
                 type="datetime-local"
@@ -1531,12 +1681,9 @@
     <UModal v-model:open="showWinnerModal">
       <template #content>
         <UCard>
-          <template #header
-            ><h3>Ручний вибір переможця</h3></template
-          >
+          <template #header><h3>Ручний вибір переможця</h3></template>
           <p class="text-sm text-gray-600 mb-4">
-            Оберіть переможця по кожній позиції
-            з контрагентів, які подали
+            Оберіть переможця по кожній позиції з контрагентів, які подали
             пропозиції.
           </p>
           <div class="space-y-3 max-h-[60vh] overflow-auto">
@@ -1568,9 +1715,7 @@
     <UModal v-model:open="showDecisionModal">
       <template #content>
         <UCard>
-          <template #header
-            ><h3>Зафіксувати рішення</h3></template
-          >
+          <template #header><h3>Зафіксувати рішення</h3></template>
           <div class="space-y-2">
             <UButton class="w-full" @click="fixDecision('winner')">
               Закрити із переможцями
@@ -1701,8 +1846,7 @@
                       "
                     >
                       {{
-                        getProposalPositionValue(proposal, pos.id)?.price ??
-                        "—"
+                        getProposalPositionValue(proposal, pos.id)?.price ?? "—"
                       }}
                     </td>
                     <td
@@ -1726,8 +1870,7 @@
                       class="p-2 border-l border-gray-200"
                     >
                       {{
-                        getProposalCriterionValue(proposal, pos.id, c.id) ??
-                        "—"
+                        getProposalCriterionValue(proposal, pos.id, c.id) ?? "—"
                       }}
                     </td>
                   </template>
@@ -1735,8 +1878,7 @@
               </tbody>
             </table>
             <p v-else class="text-gray-500 py-8 text-center">
-              Немає позицій або пропозицій для
-              порівняння.
+              Немає позицій або пропозицій для порівняння.
             </p>
           </div>
         </UCard>
@@ -1826,9 +1968,7 @@
     >
       <template #content>
         <UCard class="min-w-0">
-          <template #header
-            ><h3>Прикріплені файли</h3></template
-          >
+          <template #header><h3>Прикріплені файли</h3></template>
           <div class="space-y-4 min-w-0">
             <div>
               <input
@@ -1937,9 +2077,7 @@
     <UModal v-model:open="showCreateCriterionModal">
       <template #content>
         <UCard>
-          <template #header
-            ><h3>Створити критерій</h3></template
-          >
+          <template #header><h3>Створити критерій</h3></template>
           <div class="space-y-4">
             <UFormField label="Назва критерія" required>
               <UInput
@@ -1993,18 +2131,268 @@
       </template>
     </UModal>
 
+    <UModal v-model:open="showNomenclaturePickerModal">
+      <template #content>
+        <UCard>
+          <template #header><h3>Додати номенклатуру</h3></template>
+          <div class="space-y-4">
+            <UInput
+              v-model="nomenclatureSearch"
+              placeholder="Пошук номенклатури"
+              size="sm"
+              class="w-full"
+            />
+            <div
+              class="h-[360px] overflow-auto border border-gray-200 rounded-lg p-2"
+            >
+              <div
+                v-if="loadingNomenclatures"
+                class="text-sm text-gray-500 py-4 text-center"
+              >
+                Завантаження номенклатур...
+              </div>
+              <div
+                v-else-if="!nomenclatureTreeItems.length"
+                class="text-sm text-gray-500 py-4 text-center"
+              >
+                Оберіть категорію або CPV у паспорті тендера.
+              </div>
+              <UTree
+                v-else
+                :items="nomenclatureTreeItems"
+                size="sm"
+                :get-key="getNomenclatureTreeKey"
+                class="border-0"
+                @select="onNomenclatureTreeSelect"
+              />
+            </div>
+            <div class="flex items-center justify-start gap-2">
+              <UButton
+                size="sm"
+                icon="i-heroicons-plus"
+                :disabled="
+                  selectedNomenclatureId == null || isViewingPreviousTour
+                "
+                @click="addSelectedNomenclatureFromPicker"
+              >
+                Додати номенклатуру
+              </UButton>
+              <UButton
+                size="sm"
+                variant="outline"
+                icon="i-heroicons-plus"
+                :disabled="
+                  isViewingPreviousTour || !(form.cpv_ids?.length ?? 0)
+                "
+                @click="
+                  showNomenclaturePickerModal = false;
+                  showCreateNomenclatureModal = true;
+                "
+              >
+                Створити номенклатуру
+              </UButton>
+            </div>
+          </div>
+        </UCard>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="showAttributePickerModal">
+      <template #content>
+        <UCard>
+          <template #header><h3>Додати атрибут</h3></template>
+          <div class="space-y-4">
+            <UInput
+              v-model="attributeSearch"
+              placeholder="Пошук атрибутів"
+              size="sm"
+              class="w-full"
+            />
+            <div
+              class="h-[360px] overflow-auto border border-gray-200 rounded-lg p-2"
+            >
+              <div
+                v-if="loadingReferenceAttributes"
+                class="text-sm text-gray-500 py-4 text-center"
+              >
+                Завантаження атрибутів...
+              </div>
+              <div
+                v-else-if="!attributesTreeItems.length"
+                class="text-sm text-gray-500 py-4 text-center"
+              >
+                Немає атрибутів у довіднику.
+              </div>
+              <UTree
+                v-else
+                :items="attributesTreeItems"
+                size="sm"
+                :get-key="getAttributesTreeKey"
+                class="border-0"
+                @select="onAttributesTreeSelect"
+              />
+            </div>
+            <div class="flex items-center justify-start gap-2">
+              <UButton
+                size="sm"
+                icon="i-heroicons-plus"
+                :disabled="selectedAttributeId == null || isViewingPreviousTour"
+                @click="addSelectedAttributeFromPicker"
+              >
+                Додати атрибут
+              </UButton>
+              <UButton
+                size="sm"
+                variant="outline"
+                icon="i-heroicons-plus"
+                :disabled="isViewingPreviousTour"
+                @click="
+                  showAttributePickerModal = false;
+                  openCreateAttributeModal();
+                "
+              >
+                Створити атрибут
+              </UButton>
+            </div>
+          </div>
+        </UCard>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="showCreateAttributeModal">
+      <template #content>
+        <UCard>
+          <template #header><h3>Створити атрибут</h3></template>
+          <div class="space-y-4">
+            <UFormField label="Назва атрибута" required>
+              <UInput
+                v-model="createAttributeForm.name"
+                placeholder="Введіть назву"
+                :disabled="createAttributeSaving"
+              />
+            </UFormField>
+            <UFormField label="Тип атрибута" required>
+              <USelectMenu
+                v-model="createAttributeForm.type"
+                :items="attributeTypeOptions"
+                value-key="value"
+                :disabled="createAttributeSaving"
+              />
+            </UFormField>
+            <UFormField label="Категорія">
+              <USelectMenu
+                v-model="createAttributeForm.category"
+                :items="attributeCategoryOptions"
+                value-key="value"
+                placeholder="Оберіть категорію"
+                :disabled="createAttributeSaving"
+              />
+            </UFormField>
+            <UCheckbox
+              v-model="createAttributeForm.is_required"
+              label="Обовʼязковий для заповнення"
+              :disabled="createAttributeSaving"
+            />
+            <template v-if="createAttributeForm.type === 'numeric'">
+              <UFormField label="Варіанти числових значень">
+                <div class="space-y-2">
+                  <div
+                    v-for="(_val, idx) in createAttributeForm.options.numeric_choices"
+                    :key="idx"
+                    class="flex gap-2 items-center"
+                  >
+                    <UInput
+                      v-model.number="createAttributeForm.options.numeric_choices[idx]"
+                      type="number"
+                      class="flex-1"
+                      :disabled="createAttributeSaving"
+                    />
+                    <UButton
+                      icon="i-heroicons-trash"
+                      size="xs"
+                      variant="ghost"
+                      color="red"
+                      aria-label="Видалити"
+                      :disabled="createAttributeSaving"
+                      @click="createAttributeForm.options.numeric_choices.splice(idx, 1)"
+                    />
+                  </div>
+                  <UButton
+                    size="sm"
+                    variant="outline"
+                    icon="i-heroicons-plus"
+                    :disabled="createAttributeSaving"
+                    @click="createAttributeForm.options.numeric_choices.push(null)"
+                  >
+                    Додати значення
+                  </UButton>
+                </div>
+              </UFormField>
+            </template>
+            <template v-else-if="createAttributeForm.type === 'text'">
+              <UFormField label="Варіанти текстових значень">
+                <div class="space-y-2">
+                  <div
+                    v-for="(_val, idx) in createAttributeForm.options.text_choices"
+                    :key="idx"
+                    class="flex gap-2 items-center"
+                  >
+                    <UInput
+                      v-model="createAttributeForm.options.text_choices[idx]"
+                      class="flex-1"
+                      placeholder="Текст варіанту"
+                      :disabled="createAttributeSaving"
+                    />
+                    <UButton
+                      icon="i-heroicons-trash"
+                      size="xs"
+                      variant="ghost"
+                      color="red"
+                      aria-label="Видалити"
+                      :disabled="createAttributeSaving"
+                      @click="createAttributeForm.options.text_choices.splice(idx, 1)"
+                    />
+                  </div>
+                  <UButton
+                    size="sm"
+                    variant="outline"
+                    icon="i-heroicons-plus"
+                    :disabled="createAttributeSaving"
+                    @click="createAttributeForm.options.text_choices.push('')"
+                  >
+                    Додати варіант
+                  </UButton>
+                </div>
+              </UFormField>
+            </template>
+            <div class="flex gap-2 justify-end">
+              <UButton
+                variant="outline"
+                :disabled="createAttributeSaving"
+                @click="showCreateAttributeModal = false"
+              >
+                Скасувати
+              </UButton>
+              <UButton
+                :loading="createAttributeSaving"
+                @click="submitCreateAttribute"
+              >
+                Створити та додати
+              </UButton>
+            </div>
+          </div>
+        </UCard>
+      </template>
+    </UModal>
+
     <UModal v-model:open="showCreateNomenclatureModal">
       <template #content>
         <UCard>
-          <template #header
-            ><h3>Створити номенклатуру</h3></template
-          >
+          <template #header><h3>Створити номенклатуру</h3></template>
           <div class="space-y-4">
             <p class="text-sm text-gray-600">
-              Номенклатура буде створена в
-              довіднику, привʼязана до категорій
-              CPV з паспорта тендера та додана до
-              позицій тендера.
+              Номенклатура буде створена в довіднику, привʼязана до категорій
+              CPV з паспорта тендера та додана до позицій тендера.
             </p>
             <UFormField label="Назва номенклатури" required>
               <UInput
@@ -2160,10 +2548,16 @@ const deliveryOptions = [
 // Критерії з довідника та додані до тендера
 const referenceCriteria = ref<any[]>([]);
 const tenderCriteria = ref<any[]>([]);
+const referenceAttributes = ref<any[]>([]);
+const tenderAttributes = ref<any[]>([]);
 const criteriaSearch = ref("");
+const attributeSearch = ref("");
 const categorySearch = ref("");
 const nomenclatureSearch = ref("");
+const selectedNomenclatureId = ref<number | null>(null);
+const selectedAttributeId = ref<number | null>(null);
 const loadingNomenclatures = ref(false);
+const loadingReferenceAttributes = ref(false);
 const tenderPositions = ref<any[]>([]);
 const isClassicAuctionMode = computed(
   () => (tender.value?.conduct_type ?? form.conduct_type) === "online_auction",
@@ -2182,6 +2576,10 @@ const displayTenderPositions = computed(() => {
       start_price: p.start_price ?? null,
       min_bid_step: p.min_bid_step ?? null,
       max_bid_step: p.max_bid_step ?? null,
+      attribute_values:
+        p.attribute_values && typeof p.attribute_values === "object"
+          ? { ...p.attribute_values }
+          : {},
     }));
   }
   return tenderPositions.value;
@@ -2189,6 +2587,12 @@ const displayTenderPositions = computed(() => {
 const availableNomenclatures = ref<any[]>([]);
 
 const showPublishModal = ref(false);
+const showApprovalJournalModal = ref(false);
+const showApprovalActionModal = ref(false);
+const approvalActionSaving = ref(false);
+const pendingApprovalAction = ref<"approved" | "rejected">("approved");
+const approvalActionComment = ref("");
+const approvalJournalRows = ref<any[]>([]);
 const showTimingModal = ref(false);
 const showDecisionModal = ref(false);
 const showResumeAcceptanceModal = ref(false);
@@ -2215,15 +2619,29 @@ const attachedFilesLoading = ref(false);
 const attachedFilesUploading = ref(false);
 const attachedFilesVisibleToParticipants = ref(true);
 const attachedFilesInput = ref<HTMLInputElement | null>(null);
+const showNomenclaturePickerModal = ref(false);
+const showAttributePickerModal = ref(false);
+const showCreateAttributeModal = ref(false);
 const showCreateNomenclatureModal = ref(false);
 const createNomenclatureForm = reactive({
   name: "",
   unit: null as number | null,
 });
 const createNomenclatureSaving = ref(false);
+const createAttributeSaving = ref(false);
 const createNomenclatureUnits = ref<
   { id: number; name_ua?: string; short_name_ua?: string; name_en?: string }[]
 >([]);
+const createAttributeForm = reactive({
+  name: "",
+  type: "text" as "text" | "numeric" | "date",
+  category: null as number | null,
+  is_required: false,
+  options: {
+    numeric_choices: [] as (number | null)[],
+    text_choices: [] as string[],
+  },
+});
 const timingForm = reactive({ start_at: "", end_at: "" });
 
 // Запрошення учасників: контрагенти та email
@@ -2267,6 +2685,39 @@ const createNomenclatureUnitOptions = computed(() =>
     value: u.id,
     label: u.short_name_ua || u.name_ua || u.name_en || String(u.id),
   })),
+);
+const attributeTypeOptions = [
+  { value: "text", label: "Текстовий" },
+  { value: "numeric", label: "Числовий" },
+  { value: "date", label: "Дата" },
+];
+const attributeCategoryOptions = computed(() => [
+  { value: null, label: "Без категорії" },
+  ...flattenTree(categoryTree.value),
+]);
+function createAttributeOptionsForType(type: "text" | "numeric" | "date") {
+  if (type === "numeric") {
+    return {
+      numeric_choices: [] as (number | null)[],
+      text_choices: [] as string[],
+    };
+  }
+  if (type === "text") {
+    return {
+      numeric_choices: [] as (number | null)[],
+      text_choices: [] as string[],
+    };
+  }
+  return {
+    numeric_choices: [] as (number | null)[],
+    text_choices: [] as string[],
+  };
+}
+watch(
+  () => createAttributeForm.type,
+  (type) => {
+    createAttributeForm.options = createAttributeOptionsForType(type);
+  },
 );
 
 const invitationCpvOptions = computed(() => {
@@ -2405,7 +2856,8 @@ function toggleContractorSelection(companyId: number | undefined) {
 }
 
 function invitationCpvLabelById(id: number): string {
-  if (invitationCpvLabelsById.value[id]) return invitationCpvLabelsById.value[id];
+  if (invitationCpvLabelsById.value[id])
+    return invitationCpvLabelsById.value[id];
   const tenderCpv = Array.isArray((tender.value as any)?.cpv_categories)
     ? (tender.value as any).cpv_categories.find(
         (c: any) => Number(c?.id) === Number(id),
@@ -2668,6 +3120,7 @@ const form = reactive({
   publication_type: "open",
   currency: null as number | null,
   general_terms: "",
+  approval_model_id: null as number | null,
 });
 const selectedCategoryIds = computed(() =>
   form.category ? [form.category] : [],
@@ -2708,8 +3161,28 @@ const expenseOptions = ref<{ value: number; label: string }[]>([]);
 const branchOptions = ref<{ value: number; label: string }[]>([]);
 const departmentOptions = ref<{ value: number; label: string }[]>([]);
 const currencyOptions = ref<{ value: number; label: string }[]>([]);
+const availableApprovalModels = ref<any[]>([]);
+const approvalModelOptions = computed(() =>
+  availableApprovalModels.value.map((m: any) => ({
+    value: Number(m.id),
+    label: m.name || `#${m.id}`,
+  })),
+);
+const selectedApprovalModelSteps = computed(() => {
+  const selected = availableApprovalModels.value.find(
+    (m: any) => Number(m.id) === Number(form.approval_model_id),
+  );
+  return Array.isArray(selected?.steps) ? selected.steps : [];
+});
+const approvalJournalColumns = [
+  { accessorKey: "created_at", header: "Дата" },
+  { accessorKey: "user_display", header: "Користувач" },
+  { accessorKey: "action_label", header: "Дія" },
+  { accessorKey: "comment", header: "Коментар" },
+];
 const positionsColumns = computed(() => {
   const base = [
+    { accessorKey: "seq", header: "№", cellClass: "w-12" },
     { accessorKey: "name", header: "Назва" },
     { accessorKey: "unit_name", header: "Од. виміру" },
     { accessorKey: "quantity", header: "Кількість" },
@@ -2724,8 +3197,15 @@ const positionsColumns = computed(() => {
   base.push(
     { accessorKey: "description", header: "Опис" },
     { accessorKey: "vat", header: "ПДВ" },
-    { accessorKey: "actions", header: "", cellClass: "w-12" },
   );
+  for (const attribute of tenderAttributes.value || []) {
+    base.push({
+      accessorKey: attributeAccessorKey(attribute.id),
+      header: attribute.name || "Атрибут",
+    });
+  }
+  base.push({ accessorKey: "attributes_add", header: "", cellClass: "w-12" });
+  base.push({ accessorKey: "actions", header: "", cellClass: "w-12" });
   return base;
 });
 
@@ -2762,9 +3242,7 @@ function decisionWinnerOptionsForPosition(positionId: number) {
     .map((p) => ({
       value: p.id,
       label:
-        p.supplier_name ??
-        p.supplier_company?.name ??
-        `Пропозиція #${p.id}`,
+        p.supplier_name ?? p.supplier_company?.name ?? `Пропозиція #${p.id}`,
     }));
 }
 
@@ -2911,9 +3389,7 @@ const nomenclatureTreeItems = computed(() => {
   let label: string;
   let id: string;
   if (categoryId !== null && categoryId !== undefined) {
-    label =
-      findCategoryNameById(categoryTree.value, categoryId) ||
-      "Категорія";
+    label = findCategoryNameById(categoryTree.value, categoryId) || "Категорія";
     id = `cat-${categoryId}`;
   } else if (cpvIds.length > 0 && cpvLabels.length > 0) {
     label =
@@ -2950,15 +3426,29 @@ function onNomenclatureTreeSelect(
   const orig = ev?.detail?.originalEvent ?? ev;
   const isLeaf = item && !item.children?.length;
   const isDoubleClick = (orig as { detail?: number })?.detail === 2;
-  if (isLeaf && isDoubleClick && item.id != null) {
+  if (isLeaf && item.id != null) {
     const numId = typeof item.id === "number" ? item.id : Number(item.id);
-    if (!Number.isNaN(numId)) addPositionFromNomenclature(numId);
+    if (!Number.isNaN(numId)) {
+      selectedNomenclatureId.value = numId;
+      if (isDoubleClick) {
+        addPositionFromNomenclature(numId);
+        showNomenclaturePickerModal.value = false;
+      }
+    }
+  } else {
+    selectedNomenclatureId.value = null;
   }
   if (
     typeof (orig as { preventDefault?: () => void })?.preventDefault ===
     "function"
   )
     (orig as { preventDefault: () => void }).preventDefault();
+}
+
+function addSelectedNomenclatureFromPicker() {
+  if (selectedNomenclatureId.value == null) return;
+  addPositionFromNomenclature(selectedNomenclatureId.value);
+  showNomenclaturePickerModal.value = false;
 }
 
 const canEditStart = computed(() => {
@@ -2999,6 +3489,53 @@ function criterionRefId(value: any): number | null {
     return toValidCriterionId(value.reference_criterion_id);
   }
   return toValidCriterionId(value?.id);
+}
+
+function toValidAttributeId(value: unknown): number | null {
+  const num = Number(value);
+  if (!Number.isInteger(num) || num <= 0) return null;
+  return num;
+}
+
+function normalizedAttributeIds(rawIds: unknown[]): number[] {
+  const unique = new Set<number>();
+  for (const rawId of rawIds || []) {
+    const id = toValidAttributeId(rawId);
+    if (id != null) unique.add(id);
+  }
+  return Array.from(unique);
+}
+
+function attributeAccessorKey(attributeId: number | string) {
+  return `attr_${attributeId}`;
+}
+
+function ensurePositionAttributeValues(position: any): Record<string, unknown> {
+  if (!position || typeof position !== "object") return {};
+  if (
+    !position.attribute_values ||
+    typeof position.attribute_values !== "object"
+  ) {
+    position.attribute_values = {};
+  }
+  return position.attribute_values as Record<string, unknown>;
+}
+
+function filterPositionAttributeValues(values: unknown) {
+  if (!values || typeof values !== "object") return {};
+  const allowed = new Set(
+    normalizedAttributeIds(
+      (tenderAttributes.value || []).map((a: any) => a?.id),
+    ).map((id) => String(id)),
+  );
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(
+    values as Record<string, unknown>,
+  )) {
+    if (!allowed.has(String(key))) continue;
+    cleaned[String(key)] = value;
+  }
+  return cleaned;
 }
 
 const priceCriteriaAutosaveInFlight = ref(false);
@@ -3087,12 +3624,18 @@ async function savePreparation() {
         p.max_bid_step !== "" && p.max_bid_step != null
           ? Number(p.max_bid_step)
           : null,
+      attribute_values: filterPositionAttributeValues(
+        ensurePositionAttributeValues(p),
+      ),
     })),
     criterion_ids: normalizedCriterionIds(
       (tenderCriteria.value || []).map((c: any) => criterionRefId(c)),
     ),
     price_criterion_vat: priceCriterionVat.value ?? "",
     price_criterion_delivery: priceCriterionDelivery.value ?? "",
+    attribute_ids: normalizedAttributeIds(
+      (tenderAttributes.value || []).map((a: any) => a?.id),
+    ),
   };
   return patchTender(payload);
 }
@@ -3108,10 +3651,7 @@ async function openSubmitProposal() {
           : !priceCriterionVat.value || !priceCriterionDelivery.value
             ? "Налаштуйте параметри цінового критерія (ПДВ та Доставка)."
             : "";
-      alert(
-        msg ||
-          "Неможливо відкрити подачу пропозицій.",
-      );
+      alert(msg || "Неможливо відкрити подачу пропозицій.");
       return;
     }
     await navigateTo(`/cabinet/tenders/proposals/${tenderId.value}`);
@@ -3159,8 +3699,7 @@ async function loadAttachedFiles() {
   attachedFilesLoading.value = false;
   if (error) {
     useToast().add({
-      title:
-        "Помилка завантаження списку файлів",
+      title: "Помилка завантаження списку файлів",
       description: error,
       color: "error",
     });
@@ -3175,6 +3714,14 @@ function openAttachedFilesModal() {
 
 watch(showAttachedFilesModal, (open) => {
   if (open) loadAttachedFiles();
+});
+
+watch(showNomenclaturePickerModal, async (open) => {
+  if (open) {
+    selectedNomenclatureId.value = null;
+    nomenclatureSearch.value = "";
+    await loadNomenclaturesForPreparation();
+  }
 });
 
 watch(showCreateNomenclatureModal, async (open) => {
@@ -3206,8 +3753,7 @@ async function submitCreateNomenclature() {
   if (!companyId) {
     useToast().add({
       title: "Помилка",
-      description:
-        "Тендер не привʼязаний до компанії.",
+      description: "Тендер не привʼязаний до компанії.",
       color: "error",
     });
     return;
@@ -3230,54 +3776,41 @@ async function submitCreateNomenclature() {
       });
       return;
     }
-    const newPositions = [
-      ...tenderPositions.value.map((p) => ({
-        nomenclature_id: p.nomenclature_id,
-        quantity: p.quantity ?? 1,
-        description: p.description ?? "",
-        start_price:
-          p.start_price !== "" && p.start_price != null
-            ? Number(p.start_price)
-            : null,
-        min_bid_step:
-          p.min_bid_step !== "" && p.min_bid_step != null
-            ? Number(p.min_bid_step)
-            : null,
-        max_bid_step:
-          p.max_bid_step !== "" && p.max_bid_step != null
-            ? Number(p.max_bid_step)
-            : null,
-      })),
-      {
+    if (!tenderPositions.value.some((p) => p.nomenclature_id === created.id)) {
+      tenderPositions.value.push({
         nomenclature_id: created.id,
+        name: created.name || name,
+        unit_name: created.unit_name || "",
         quantity: 1,
         description: "",
         start_price: null,
         min_bid_step: null,
         max_bid_step: null,
-      },
-    ];
-    const ok = await patchTender({ positions: newPositions });
-    if (ok && Array.isArray(tender.value?.positions)) {
-      tenderPositions.value = tender.value.positions.map((p: any) => ({
-        id: p.id,
-        nomenclature_id: p.nomenclature,
-        name: p.name,
-        unit_name: p.unit_name ?? "",
-        quantity: p.quantity ?? 1,
-        description: p.description ?? "",
-        start_price: p.start_price ?? null,
-        min_bid_step: p.min_bid_step ?? null,
-        max_bid_step: p.max_bid_step ?? null,
-      }));
+        attribute_values: {},
+        vat: "",
+      });
+    }
+    if (!availableNomenclatures.value.some((n: any) => n.id === created.id)) {
+      availableNomenclatures.value.push({
+        id: created.id,
+        name: created.name || name,
+        unit_name: created.unit_name || "",
+      });
     }
     showCreateNomenclatureModal.value = false;
-    useToast().add({
-      title:
-        "Номенклатуру створено та додано до позицій",
-      color: "success",
-    });
-    await loadNomenclaturesForPreparation();
+    if (isClassicAuctionMode.value) {
+      useToast().add({
+        title: "Номенклатуру додано до позицій",
+        description:
+          "Для моделі «Онлайн торги» заповніть стартову ціну та кроки ставки перед збереженням.",
+        color: "warning",
+      });
+    } else {
+      useToast().add({
+        title: "Номенклатуру створено та додано до позицій",
+        color: "success",
+      });
+    }
   } finally {
     createNomenclatureSaving.value = false;
   }
@@ -3361,6 +3894,7 @@ function criterionTypeLabel(type: string) {
   const map: Record<string, string> = {
     numeric: "Числовий",
     text: "Текстовий",
+    date: "Дата",
     file: "Файловий",
     boolean: "Булевий",
   };
@@ -3405,6 +3939,7 @@ const createCriterionSaving = ref(false);
 const criterionTypeOptions = [
   { value: "numeric", label: "Числовий" },
   { value: "text", label: "Текстовий" },
+  { value: "date", label: "Дата" },
   { value: "file", label: "Файловий" },
   { value: "boolean", label: "Булевий (Так/Ні)" },
 ];
@@ -3482,8 +4017,7 @@ async function saveCreateCriterion() {
     }
     showCreateCriterionModal.value = false;
     useToast().add({
-      title:
-        "Критерій створено та додано до тендера",
+      title: "Критерій створено та додано до тендера",
       color: "success",
     });
     await loadReferenceCriteria();
@@ -3577,11 +4111,7 @@ async function addCriterionFromTree(criterionId: number) {
   if (isViewingPreviousTour.value) return;
   const normalizedId = toValidCriterionId(criterionId);
   if (normalizedId == null) return;
-  if (
-    tenderCriteria.value.some(
-      (c) => criterionRefId(c) === normalizedId,
-    )
-  )
+  if (tenderCriteria.value.some((c) => criterionRefId(c) === normalizedId))
     return;
   const c = referenceCriteria.value.find(
     (x: any) => toValidCriterionId(x?.id) === normalizedId,
@@ -3603,6 +4133,192 @@ async function loadReferenceCriteria() {
   }
 }
 
+const attributesTreeItems = computed(() => {
+  const list = referenceAttributes.value;
+  const term = (attributeSearch.value || "").trim().toLowerCase();
+  const filtered =
+    term === ""
+      ? list
+      : list.filter(
+          (a: any) =>
+            (a.name || "").toLowerCase().includes(term) ||
+            String(a.type || "")
+              .toLowerCase()
+              .includes(term),
+        );
+  if (filtered.length === 0) return [];
+  const children = filtered.map((a: any) => ({
+    id: a.id,
+    label: `${a.name || ""} (${a.type || ""})`,
+  }));
+  return [
+    {
+      id: "attributes-root",
+      label: "Атрибути",
+      defaultExpanded: true,
+      children,
+    },
+  ];
+});
+
+function getAttributesTreeKey(item: { id?: number | string; label?: string }) {
+  return String(item.id ?? item.label ?? "");
+}
+
+function onAttributesTreeSelect(
+  e: unknown,
+  item: { id?: number | string; children?: unknown[] },
+) {
+  const ev = e as {
+    detail?: {
+      originalEvent?: { detail?: number; preventDefault?: () => void };
+    };
+    preventDefault?: () => void;
+  };
+  const orig = ev?.detail?.originalEvent ?? ev;
+  const isLeaf = item && !item.children?.length;
+  const isDoubleClick = (orig as { detail?: number })?.detail === 2;
+  if (isLeaf && item.id != null) {
+    const numId = typeof item.id === "number" ? item.id : Number(item.id);
+    if (!Number.isNaN(numId)) {
+      selectedAttributeId.value = numId;
+      if (isDoubleClick) void addAttributeToTender(numId);
+    }
+  } else {
+    selectedAttributeId.value = null;
+  }
+  if (
+    typeof (orig as { preventDefault?: () => void })?.preventDefault ===
+    "function"
+  ) {
+    (orig as { preventDefault: () => void }).preventDefault();
+  }
+}
+
+async function loadReferenceAttributes() {
+  loadingReferenceAttributes.value = true;
+  try {
+    const { data } = await tendersUC.getTenderAttributesByType("procurement");
+    referenceAttributes.value = Array.isArray(data) ? data : [];
+  } finally {
+    loadingReferenceAttributes.value = false;
+  }
+}
+
+function openCreateAttributeModal() {
+  createAttributeForm.name = "";
+  createAttributeForm.type = "text";
+  createAttributeForm.category = null;
+  createAttributeForm.is_required = false;
+  createAttributeForm.options = createAttributeOptionsForType("text");
+  showCreateAttributeModal.value = true;
+}
+
+async function openAttributePickerModal() {
+  selectedAttributeId.value = null;
+  attributeSearch.value = "";
+  showAttributePickerModal.value = true;
+  await loadReferenceAttributes();
+}
+
+function currentTenderAttributeIds() {
+  return normalizedAttributeIds(
+    (tenderAttributes.value || []).map((a: any) => a?.id),
+  );
+}
+
+async function addAttributeToTender(attributeId: number) {
+  const normalizedId = toValidAttributeId(attributeId);
+  if (normalizedId == null || isViewingPreviousTour.value) return;
+  if (currentTenderAttributeIds().includes(normalizedId)) return;
+  const ok = await patchTender({
+    attribute_ids: normalizedAttributeIds([
+      ...currentTenderAttributeIds(),
+      normalizedId,
+    ]),
+  });
+  if (!ok) return;
+  if (
+    !Array.isArray(tenderAttributes.value) ||
+    !tenderAttributes.value.length
+  ) {
+    await loadTender();
+  }
+  showAttributePickerModal.value = false;
+}
+
+async function addSelectedAttributeFromPicker() {
+  if (selectedAttributeId.value == null) return;
+  await addAttributeToTender(selectedAttributeId.value);
+}
+
+async function removeAttributeFromTender(attributeId: number) {
+  const normalizedId = toValidAttributeId(attributeId);
+  if (normalizedId == null || isViewingPreviousTour.value) return;
+  const nextIds = currentTenderAttributeIds().filter((id) => id !== normalizedId);
+  const ok = await patchTender({ attribute_ids: nextIds });
+  if (!ok) {
+    useToast().add({
+      title: "Не вдалося видалити атрибут",
+      color: "error",
+    });
+  }
+}
+
+async function submitCreateAttribute() {
+  const name = (createAttributeForm.name || "").trim();
+  if (!name) {
+    useToast().add({ title: "Вкажіть назву атрибута", color: "error" });
+    return;
+  }
+  const companyId = tender.value?.company;
+  if (!companyId) {
+    useToast().add({
+      title: "Тендер не привʼязаний до компанії",
+      color: "error",
+    });
+    return;
+  }
+  const options: Record<string, any> = {};
+  if (createAttributeForm.type === "numeric") {
+    const nums = (createAttributeForm.options.numeric_choices || [])
+      .map((v) => Number(v))
+      .filter((v) => Number.isFinite(v));
+    if (nums.length) options.numeric_choices = nums;
+  }
+  if (createAttributeForm.type === "text") {
+    const texts = (createAttributeForm.options.text_choices || [])
+      .map((v) => String(v ?? "").trim())
+      .filter(Boolean);
+    if (texts.length) options.text_choices = texts;
+  }
+  createAttributeSaving.value = true;
+  try {
+    const { data: created, error } = await tendersUC.createTenderAttribute({
+      company: companyId,
+      name,
+      type: createAttributeForm.type,
+      tender_type: "procurement",
+      category: createAttributeForm.category,
+      is_required: Boolean(createAttributeForm.is_required),
+      options,
+    });
+    if (error || !created?.id) {
+      useToast().add({
+        title: "Помилка створення атрибута",
+        description: typeof error === "string" ? error : undefined,
+        color: "error",
+      });
+      return;
+    }
+    await addAttributeToTender(created.id);
+    showCreateAttributeModal.value = false;
+    await loadReferenceAttributes();
+  } finally {
+    createAttributeSaving.value = false;
+  }
+}
+
 async function removeCriterionFromTender(c: any) {
   if (isViewingPreviousTour.value) return;
   const criterionRef = criterionRefId(c);
@@ -3612,7 +4328,8 @@ async function removeCriterionFromTender(c: any) {
   tenderCriteria.value = tenderCriteria.value.filter(
     (x) =>
       !(
-        (criterionId != null && toValidCriterionId((x as any)?.id) === criterionId) ||
+        (criterionId != null &&
+          toValidCriterionId((x as any)?.id) === criterionId) ||
         (criterionRef != null && criterionRefId(x) === criterionRef)
       ),
   );
@@ -3718,6 +4435,10 @@ async function loadTender() {
         start_price: p.start_price ?? null,
         min_bid_step: p.min_bid_step ?? null,
         max_bid_step: p.max_bid_step ?? null,
+        attribute_values:
+          p.attribute_values && typeof p.attribute_values === "object"
+            ? { ...p.attribute_values }
+            : {},
       }));
     } else {
       tenderPositions.value = [];
@@ -3727,6 +4448,11 @@ async function loadTender() {
       tenderData.price_criterion_delivery ?? undefined;
     if (Array.isArray(tenderData.criteria)) {
       tenderCriteria.value = tenderData.criteria;
+    }
+    if (Array.isArray(tenderData.attributes)) {
+      tenderAttributes.value = tenderData.attributes;
+    } else {
+      tenderAttributes.value = [];
     }
     const cpvList = tenderData.cpv_categories || [];
     form.cpv_ids = cpvList.length
@@ -3753,7 +4479,9 @@ async function loadTender() {
       publication_type: tenderData.publication_type ?? "open",
       currency: tenderData.currency ?? null,
       general_terms: tenderData.general_terms ?? "",
+      approval_model_id: tenderData.approval_model ?? null,
     });
+    await loadAvailableApprovalModels();
     timingForm.start_at = isoToInput(tenderData.start_at);
     timingForm.end_at = isoToInput(tenderData.end_at);
     await loadTours();
@@ -3841,8 +4569,7 @@ function addPositionFromNomenclature(nomenclatureId: number) {
   if (isViewingPreviousTour.value) return;
   if (tenderPositions.value.some((p) => p.nomenclature_id === nomenclatureId)) {
     useToast().add({
-      title:
-        "Ця номенклатура вже додана до позицій тендера",
+      title: "Ця номенклатура вже додана до позицій тендера",
       color: "warning",
     });
     return;
@@ -3860,6 +4587,7 @@ function addPositionFromNomenclature(nomenclatureId: number) {
     start_price: null,
     min_bid_step: null,
     max_bid_step: null,
+    attribute_values: {},
     vat: "",
   });
 }
@@ -3900,6 +4628,9 @@ async function patchTender(payload: Record<string, unknown>) {
   );
   if (error) return false;
   if (data) tender.value = { ...tender.value, ...data };
+  if (Array.isArray((data as any)?.attributes)) {
+    tenderAttributes.value = (data as any).attributes;
+  }
   if (data?.stage != null) {
     displayStage.value = normalizeStageForUi(
       data.stage,
@@ -3909,13 +4640,78 @@ async function patchTender(payload: Record<string, unknown>) {
   return true;
 }
 
+function ruleLabel(value: string) {
+  return value === "all" ? "Усі" : "Один зі";
+}
+
+async function loadAvailableApprovalModels() {
+  const companyId = Number(tender.value?.company || myCompanyId.value || 0);
+  if (!companyId) {
+    availableApprovalModels.value = [];
+    return;
+  }
+  const { data } = await tendersUC.getAvailableApprovalModels({
+    companyId,
+    application: "procurement",
+    categoryId: form.category,
+    estimatedBudget:
+      form.estimated_budget != null ? Number(form.estimated_budget) : null,
+  });
+  availableApprovalModels.value = data;
+  if (
+    form.approval_model_id != null &&
+    !availableApprovalModels.value.some(
+      (m: any) => Number(m.id) === Number(form.approval_model_id),
+    )
+  ) {
+    form.approval_model_id = null;
+  }
+}
+
+async function openApprovalJournalModal() {
+  const { data } = await tendersUC.getTenderApprovalJournal(tenderId.value, isSales);
+  approvalJournalRows.value = Array.isArray(data) ? data : [];
+  showApprovalJournalModal.value = true;
+}
+
+function openApprovalActionModal(action: "approved" | "rejected") {
+  pendingApprovalAction.value = action;
+  approvalActionComment.value = "";
+  showApprovalActionModal.value = true;
+}
+
+async function submitApprovalAction() {
+  if (pendingApprovalAction.value === "rejected" && !approvalActionComment.value.trim()) {
+    useToast().add({
+      title: "Коментар обов'язковий",
+      color: "error",
+    });
+    return;
+  }
+  approvalActionSaving.value = true;
+  try {
+    const { error } = await tendersUC.submitTenderApprovalAction(
+      tenderId.value,
+      isSales,
+      {
+        action: pendingApprovalAction.value,
+        comment: approvalActionComment.value.trim(),
+      },
+    );
+    if (error) return;
+    showApprovalActionModal.value = false;
+    await loadTender();
+  } finally {
+    approvalActionSaving.value = false;
+  }
+}
+
 async function savePassport() {
   const cpvIds = form.cpv_ids ?? [];
   if (cpvIds.length === 0) {
     useToast().add({
       title: "Заповніть обовʼязкове поле",
-      description:
-        "Оберіть хоча б одну категорію CPV.",
+      description: "Оберіть хоча б одну категорію CPV.",
       color: "error",
     });
     return;
@@ -3934,13 +4730,13 @@ async function savePassport() {
       publication_type: form.publication_type,
       currency: form.currency,
       general_terms: form.general_terms,
+      approval_model_id: form.approval_model_id,
       stage: "preparation",
     });
     if (!ok) {
       useToast().add({
         title: "Помилка збереження",
-        description:
-          "Перевірте дані (зокрема категорію CPV).",
+        description: "Перевірте дані (зокрема категорію CPV).",
         color: "error",
       });
     }
@@ -3981,8 +4777,7 @@ async function publishTender() {
   const prepared = await savePreparation();
   if (!prepared) {
     useToast().add({
-      title:
-        "Не вдалося зберегти підготовку тендера",
+      title: "Не вдалося зберегти підготовку тендера",
       description:
         "Перевірте позиції, критерії та параметри цінового критерію.",
       color: "error",
@@ -4039,8 +4834,7 @@ async function submitResumeAcceptance() {
   const endStr = (resumeAcceptanceForm.end_at || "").trim();
   if (!startStr || !endStr) {
     useToast().add({
-      title:
-        "Заповніть час початку та завершення",
+      title: "Заповніть час початку та завершення",
       color: "error",
     });
     return;
@@ -4050,16 +4844,14 @@ async function submitResumeAcceptance() {
   const now = new Date();
   if (start < now) {
     useToast().add({
-      title:
-        "Час початку не може бути меншим від поточного",
+      title: "Час початку не може бути меншим від поточного",
       color: "error",
     });
     return;
   }
   if (end <= start) {
     useToast().add({
-      title:
-        "Час завершення повинен бути пізніше за час початку",
+      title: "Час завершення повинен бути пізніше за час початку",
       color: "error",
     });
     return;
@@ -4124,7 +4916,7 @@ async function fixDecision(mode: "winner" | "cancel" | "next_round") {
 }
 
 async function approveTender() {
-  await patchTender({ stage: "completed" });
+  openApprovalActionModal("approved");
 }
 
 async function loadDecisionProposals() {
@@ -4270,6 +5062,12 @@ watch(
     }
   },
 );
+watch(
+  () => [form.category, form.estimated_budget, tender.value?.company],
+  async () => {
+    await loadAvailableApprovalModels();
+  },
+);
 watch(prepTab, (tab) => {
   if (tab === "criteria") loadReferenceCriteria();
 });
@@ -4294,6 +5092,21 @@ onUnmounted(() => {
 }
 .tender-stepper--compact :deep([data-slot="wrapper"]) {
   min-height: auto;
+}
+.prep-tabs :deep([role="tablist"]) {
+  width: 50%;
+  margin-inline: auto;
+}
+.positions-table :deep(thead th) {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--ui-bg);
+}
+@media (max-width: 1024px) {
+  .prep-tabs :deep([role="tablist"]) {
+    width: 100%;
+  }
 }
 /* Прогрес: пройдені кроки та поточний етап тендера — акцентний колір */
 .tender-stepper :deep(.tender-step-done [data-slot="trigger"]),

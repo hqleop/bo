@@ -17,6 +17,7 @@ from .models import (
     ExpenseArticleUser,
     Currency,
     TenderCriterion,
+    TenderAttribute,
     ProcurementTender,
     SalesTender,
 )
@@ -137,6 +138,13 @@ class TenderCriterionAdmin(admin.ModelAdmin):
     list_display = ("name", "company", "type", "tender_type", "created_at")
     list_filter = ("company", "type", "tender_type")
     search_fields = ("name", "company__name")
+
+
+@admin.register(TenderAttribute)
+class TenderAttributeAdmin(admin.ModelAdmin):
+    list_display = ("name", "company", "type", "tender_type", "category", "created_at")
+    list_filter = ("company", "type", "tender_type", "category")
+    search_fields = ("name", "company__name", "category__name")
 
 
 def make_set_stage_action(stage_value: str, stage_label: str):

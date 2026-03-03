@@ -71,27 +71,12 @@
                 Наразі немає даних про участь у тендерах. Список з’явиться після
                 реалізації подачі пропозицій учасниками.
               </div>
-              <ul v-else class="space-y-2">
-                <li
-                  v-for="t in tendersList"
-                  :key="t.id + (t.type || '')"
-                  class="flex items-center justify-between py-2 px-3 rounded-md border border-gray-200 bg-gray-50/50"
-                >
-                  <NuxtLink
-                    :to="
-                      t.type === 'sales'
-                        ? `/cabinet/tenders/sales/${t.id}`
-                        : `/cabinet/tenders/${t.id}`
-                    "
-                    class="text-primary hover:underline font-medium"
-                  >
-                    {{ t.type === "sales" ? "Продаж" : "Закупівля" }} №{{
-                      t.number
-                    }}{{ t.tour_number > 1 ? ` (тур ${t.tour_number})` : "" }}
-                  </NuxtLink>
-                  <span class="text-sm text-gray-500">{{ t.name }}</span>
-                </li>
-              </ul>
+              <UTable
+                v-else
+                :data="tendersTableData"
+                :columns="tendersColumns"
+                class="w-full"
+              />
             </div>
 
             <div v-else class="flex-1 min-h-0 overflow-auto">
@@ -155,9 +140,11 @@ const tendersLoading = ref(false);
 const tendersList = ref<
   {
     id: number;
-    number: number;
-    tour_number: number;
+    number?: number | null;
+    tour_number?: number;
     name: string;
+    stage?: string;
+    stage_label?: string;
     type?: string;
   }[]
 >([]);
@@ -170,6 +157,22 @@ const membersColumns = [
   { accessorKey: "roleName", header: "Роль" },
   { accessorKey: "statusLabel", header: "Статус" },
 ];
+
+const tendersColumns = [
+  { accessorKey: "tenderNumber", header: "№ тендера" },
+  { accessorKey: "tenderName", header: "Назва тендера" },
+  { accessorKey: "tenderStage", header: "Етап тендера" },
+];
+
+const tendersTableData = computed(() =>
+  tendersList.value.map((t) => ({
+    tenderNumber: `${t.type === "sales" ? "Продаж" : "Закупівля"} №${
+      t.number ?? "—"
+    }${(t.tour_number ?? 1) > 1 ? ` (тур ${t.tour_number})` : ""}`,
+    tenderName: t.name || "—",
+    tenderStage: t.stage_label || t.stage || "—",
+  })),
+);
 
 const membersTableData = computed(() =>
   members.value.map((m: any) => ({
@@ -212,8 +215,25 @@ async function loadTenders() {
   if (!supplier.value) return;
   tendersLoading.value = true;
   try {
-    // У майбутньому: endpoint участь компанії в тендерах. Поки порожній список.
-    tendersList.value = [];
+    const { data: relations, error: relationsError } =
+      await suppliersUC.getSupplierRelations();
+    if (relationsError || !Array.isArray(relations)) {
+      tendersList.value = [];
+      return;
+    }
+    const relation = relations.find(
+      (r) => Number(r?.supplier_company?.id) === Number(supplierId.value),
+    );
+    if (!relation?.id) {
+      tendersList.value = [];
+      return;
+    }
+    const { data, error } = await suppliersUC.getSupplierTenders(relation.id);
+    if (error) {
+      tendersList.value = [];
+      return;
+    }
+    tendersList.value = Array.isArray(data) ? data : [];
   } finally {
     tendersLoading.value = false;
   }

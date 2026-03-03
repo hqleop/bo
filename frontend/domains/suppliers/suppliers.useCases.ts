@@ -1,5 +1,5 @@
 import * as suppliersApi from './suppliers.api'
-import type { CompanySupplierRelation, SupplierCompany, CompanyMember, AddSupplierPayload } from './suppliers.types'
+import type { CompanySupplierRelation, SupplierCompany, CompanyMember, AddSupplierPayload, SupplierTender } from './suppliers.types'
 
 export function useSuppliersUseCases() {
   const { fetch } = useApi()
@@ -58,11 +58,23 @@ export function useSuppliersUseCases() {
     }
   }
 
+  async function getSupplierTenders(relationId: number): Promise<{
+    data: SupplierTender[]
+    error: string | null
+  }> {
+    const { data, error } = await suppliersApi.getCompanySupplierTenders(fetch, relationId)
+    return {
+      data: Array.isArray(data) ? data : [],
+      error: error ?? null
+    }
+  }
+
   return {
     getSupplierRelations,
     addSupplier,
     findCompanyByEdrpou,
     getSupplier,
-    getSupplierMembers
+    getSupplierMembers,
+    getSupplierTenders
   }
 }

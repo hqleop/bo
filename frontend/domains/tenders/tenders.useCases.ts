@@ -113,6 +113,22 @@ export function useTendersUseCases() {
     return tendersApi.createTenderCriterion(fetch, body)
   }
 
+  async function getTenderAttributesByType(tenderType: 'procurement' | 'sales') {
+    return tendersApi.getTenderAttributesByType(fetch, tenderType)
+  }
+
+  async function createTenderAttribute(body: {
+    company: number
+    name: string
+    type: string
+    tender_type: 'procurement' | 'sales'
+    category?: number | null
+    is_required?: boolean
+    options?: Record<string, unknown>
+  }) {
+    return tendersApi.createTenderAttribute(fetch, body)
+  }
+
   async function getUnits() {
     return tendersApi.getUnits(fetch)
   }
@@ -216,6 +232,29 @@ export function useTendersUseCases() {
     return tendersApi.withdrawProposal(fetch, tenderId, isSales)
   }
 
+  async function getTenderApprovalJournal(tenderId: number, isSales: boolean) {
+    const { data, error } = await tendersApi.getTenderApprovalJournal(fetch, tenderId, isSales)
+    return { data: Array.isArray(data) ? data : [], error }
+  }
+
+  async function submitTenderApprovalAction(
+    tenderId: number,
+    isSales: boolean,
+    body: { action: "approved" | "rejected"; comment?: string }
+  ) {
+    return tendersApi.submitTenderApprovalAction(fetch, tenderId, isSales, body)
+  }
+
+  async function getAvailableApprovalModels(params: {
+    companyId: number
+    application: 'procurement' | 'sales'
+    categoryId?: number | null
+    estimatedBudget?: number | null
+  }) {
+    const { data, error } = await tendersApi.getAvailableApprovalModels(fetch, params)
+    return { data: Array.isArray(data) ? data : [], error }
+  }
+
   return {
     getTenderList,
     getTendersForParticipation,
@@ -233,6 +272,8 @@ export function useTendersUseCases() {
     getTenderCriteria,
     getTenderCriteriaByType,
     createTenderCriterion,
+    getTenderAttributesByType,
+    createTenderAttribute,
     getUnits,
     createNomenclature,
     getCategories,
@@ -250,6 +291,9 @@ export function useTendersUseCases() {
     getProposalPositionValues,
     patchProposalPositionValues,
     submitProposal,
-    withdrawProposal
+    withdrawProposal,
+    getTenderApprovalJournal,
+    submitTenderApprovalAction,
+    getAvailableApprovalModels
   }
 }

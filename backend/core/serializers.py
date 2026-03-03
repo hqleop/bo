@@ -22,6 +22,12 @@ from .models import (
     ExpenseArticleUser,
     Currency,
     TenderCriterion,
+    TenderAttribute,
+    ApprovalModelRole,
+    ApprovalModelRoleUser,
+    ApprovalRangeMatrix,
+    ApprovalModel,
+    ApprovalModelStep,
     ProcurementTender,
     ProcurementTenderPosition,
     TenderProposal,
@@ -32,6 +38,7 @@ from .models import (
     SalesTenderProposal,
     SalesTenderProposalPosition,
     SalesTenderFile,
+    TenderApprovalJournal,
     UnitOfMeasure,
     Nomenclature,
 )
@@ -79,6 +86,43 @@ class UserRegistrationStep1Serializer(serializers.Serializer):
         raw = (value or "").strip()
         # Дозволяємо формати з пробілами/дефісами, але приводимо до цифр.
         digits = re.sub(r"\D", "", raw)
+        if not digits.startswith("380") or len(digits) != 12:
+            raise serializers.ValidationError("Телефон має бути у форматі +380XXXXXXXXX.")
+        return f"+{digits}"
+
+    def validate_email(self, value):
+        email = (value or "").strip().lower()
+        if User.objects.filter(email__iexact=email).exists():
+            raise serializers.ValidationError("Користувач з таким email вже існує.")
+        return email
+
+    def create(self, validated_data):
+        password = validated_data.pop("password")
+        user = User.objects.create_user(password=password, **validated_data)
+        return user
+
+
+class CompanyUserCreateSerializer(serializers.Serializer):
+    """Create company member from Users page."""
+
+    first_name = serializers.CharField(max_length=150, required=True)
+    last_name = serializers.CharField(max_length=150, required=True)
+    middle_name = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
+    phone = serializers.CharField(max_length=32, required=False, allow_blank=True, default="")
+    email = serializers.EmailField(required=True)
+    password = serializers.CharField(write_only=True, required=True)
+
+    def validate_password(self, value):
+        validate_password(value)
+        return value
+
+    def validate_phone(self, value):
+        raw = (value or "").strip()
+        if not raw:
+            return ""
+        digits = re.sub(r"\D", "", raw)
+        if len(digits) == 10 and digits.startswith("0"):
+            digits = f"38{digits}"
         if not digits.startswith("380") or len(digits) != 12:
             raise serializers.ValidationError("Телефон має бути у форматі +380XXXXXXXXX.")
         return f"+{digits}"
@@ -827,6 +871,252 @@ class TenderCriterionSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class TenderAttributeSerializer(serializers.ModelSerializer):
+    """Серіалізатор атрибута тендеру."""
+
+    type_label = serializers.CharField(source="get_type_display", read_only=True)
+    tender_type_label = serializers.CharField(source="get_tender_type_display", read_only=True)
+    category_name = serializers.CharField(source="category.name", read_only=True)
+
+    class Meta:
+        model = TenderAttribute
+        fields = (
+            "id",
+            "company",
+            "name",
+            "type",
+            "type_label",
+            "tender_type",
+            "tender_type_label",
+            "category",
+            "category_name",
+            "is_required",
+            "options",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
+
+    def validate(self, attrs):
+        """Унікальність: назва + тип атрибута в межах компанії."""
+        company = attrs.get("company") or (self.instance.company if self.instance else None)
+        name = (attrs.get("name") or (self.instance.name if self.instance else "") or "").strip()
+        atype = attrs.get("type") or (self.instance.type if self.instance else None)
+        tender_type = attrs.get("tender_type") or (self.instance.tender_type if self.instance else None)
+        if not company or not name or not atype or not tender_type:
+            return attrs
+        qs = TenderAttribute.objects.filter(
+            company=company,
+            name__iexact=name,
+            type=atype,
+            tender_type=tender_type,
+        )
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                {"name": "Атрибут з такою назвою та типом вже існує в довіднику."}
+            )
+        return attrs
+
+
+class ApprovalModelRoleUserSerializer(serializers.ModelSerializer):
+    full_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ApprovalModelRoleUser
+        fields = ("id", "role", "user", "full_name", "created_at")
+        read_only_fields = ("id", "created_at", "full_name")
+
+    def get_full_name(self, obj):
+        if not obj.user:
+            return ""
+        name = obj.user.get_full_name() if hasattr(obj.user, "get_full_name") else ""
+        return name or obj.user.email or str(obj.user)
+
+
+class ApprovalModelRoleSerializer(serializers.ModelSerializer):
+    application_label = serializers.CharField(source="get_application_display", read_only=True)
+    users = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ApprovalModelRole
+        fields = (
+            "id",
+            "company",
+            "name",
+            "application",
+            "application_label",
+            "users",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at", "application_label", "users")
+
+    def get_users(self, obj):
+        memberships = obj.role_users.select_related("user").all()
+        return [
+            {
+                "id": item.user_id,
+                "full_name": item.user.get_full_name() or item.user.email or str(item.user),
+                "email": item.user.email,
+            }
+            for item in memberships
+            if item.user_id
+        ]
+
+
+class ApprovalRangeMatrixSerializer(serializers.ModelSerializer):
+    currency_code = serializers.CharField(source="currency.code", read_only=True)
+
+    class Meta:
+        model = ApprovalRangeMatrix
+        fields = (
+            "id",
+            "company",
+            "budget_from",
+            "budget_to",
+            "currency",
+            "currency_code",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at", "currency_code")
+
+    def validate(self, attrs):
+        budget_from = attrs.get("budget_from", getattr(self.instance, "budget_from", None))
+        budget_to = attrs.get("budget_to", getattr(self.instance, "budget_to", None))
+        if budget_from is not None and budget_to is not None and budget_from > budget_to:
+            raise serializers.ValidationError(
+                {"budget_to": "Бюджет по має бути більшим або рівним бюджету з."}
+            )
+        return attrs
+
+
+class ApprovalModelStepSerializer(serializers.ModelSerializer):
+    role_name = serializers.CharField(source="role.name", read_only=True)
+
+    class Meta:
+        model = ApprovalModelStep
+        fields = (
+            "id",
+            "model",
+            "role",
+            "role_name",
+            "order",
+            "preparation_rule",
+            "approval_rule",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at", "role_name")
+
+
+class ApprovalModelSerializer(serializers.ModelSerializer):
+    application_label = serializers.CharField(source="get_application_display", read_only=True)
+    steps = ApprovalModelStepSerializer(many=True, required=False)
+    categories_ids = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=Category.objects.all(), required=False, source="categories"
+    )
+    range_ids = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=ApprovalRangeMatrix.objects.all(), required=False, source="ranges"
+    )
+
+    class Meta:
+        model = ApprovalModel
+        fields = (
+            "id",
+            "company",
+            "name",
+            "application",
+            "application_label",
+            "is_active",
+            "categories",
+            "categories_ids",
+            "ranges",
+            "range_ids",
+            "steps",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at", "application_label", "categories", "ranges")
+
+    def create(self, validated_data):
+        steps_data = validated_data.pop("steps", [])
+        categories = validated_data.pop("categories", None)
+        ranges = validated_data.pop("ranges", None)
+        instance = super().create(validated_data)
+        if categories is not None:
+            instance.categories.set(categories)
+        if ranges is not None:
+            instance.ranges.set(ranges)
+        if steps_data:
+            ApprovalModelStep.objects.bulk_create(
+                [
+                    ApprovalModelStep(
+                        model=instance,
+                        role=item["role"],
+                        order=item.get("order") or idx + 1,
+                        preparation_rule=item.get("preparation_rule") or ApprovalModelStep.DecisionRule.ONE_OF,
+                        approval_rule=item.get("approval_rule") or ApprovalModelStep.DecisionRule.ONE_OF,
+                    )
+                    for idx, item in enumerate(steps_data)
+                ]
+            )
+        return instance
+
+    def update(self, instance, validated_data):
+        steps_data = validated_data.pop("steps", None)
+        categories = validated_data.pop("categories", None)
+        ranges = validated_data.pop("ranges", None)
+        instance = super().update(instance, validated_data)
+        if categories is not None:
+            instance.categories.set(categories)
+        if ranges is not None:
+            instance.ranges.set(ranges)
+        if steps_data is not None:
+            instance.steps.all().delete()
+            ApprovalModelStep.objects.bulk_create(
+                [
+                    ApprovalModelStep(
+                        model=instance,
+                        role=item["role"],
+                        order=item.get("order") or idx + 1,
+                        preparation_rule=item.get("preparation_rule") or ApprovalModelStep.DecisionRule.ONE_OF,
+                        approval_rule=item.get("approval_rule") or ApprovalModelStep.DecisionRule.ONE_OF,
+                    )
+                    for idx, item in enumerate(steps_data)
+                ]
+            )
+        return instance
+
+
+class TenderApprovalJournalSerializer(serializers.ModelSerializer):
+    user_display = serializers.SerializerMethodField()
+    action_label = serializers.CharField(source="get_action_display", read_only=True)
+
+    class Meta:
+        model = TenderApprovalJournal
+        fields = (
+            "id",
+            "procurement_tender",
+            "sales_tender",
+            "stage",
+            "action",
+            "action_label",
+            "comment",
+            "actor",
+            "user_display",
+            "created_at",
+        )
+        read_only_fields = ("id", "created_at", "user_display", "action_label")
+
+    def get_user_display(self, obj):
+        if not obj.actor:
+            return ""
+        return obj.actor.get_full_name() or obj.actor.email or str(obj.actor)
+
+
 class ProcurementTenderPositionSerializer(serializers.ModelSerializer):
     """Позиція тендера на закупівлю."""
 
@@ -845,6 +1135,7 @@ class ProcurementTenderPositionSerializer(serializers.ModelSerializer):
         fields = (
             "id", "tender", "nomenclature", "nomenclature_id", "name", "unit_name",
             "quantity", "description", "start_price", "min_bid_step", "max_bid_step",
+            "attribute_values",
             "winner_proposal_id", "winner_supplier_name", "winner_price", "winner_criterion_values",
         )
         read_only_fields = ("id", "tender", "name", "unit_name", "winner_proposal_id", "winner_supplier_name", "winner_price", "winner_criterion_values")
@@ -910,6 +1201,12 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
     department_name = serializers.SerializerMethodField()
     created_by_display = serializers.SerializerMethodField()
     positions = ProcurementTenderPositionSerializer(many=True, required=False)
+    approval_model_id = serializers.PrimaryKeyRelatedField(
+        queryset=ApprovalModel.objects.none(),
+        required=False,
+        allow_null=True,
+        source="approval_model",
+    )
 
     def validate(self, attrs):
         """Категорія CPV обовʼязкова: хоча б одна CPV має бути обрана."""
@@ -934,12 +1231,26 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
                 raise drf.ValidationError(
                     {"criterion_ids": "Selected criteria do not belong to procurement dictionary."}
                 )
+        attribute_ids = attrs.get("tender_attributes")
+        if attribute_ids is not None:
+            wrong_ids = [
+                a.id for a in attribute_ids if getattr(a, "tender_type", None) != "procurement"
+            ]
+            if wrong_ids:
+                from rest_framework import serializers as drf
+                raise drf.ValidationError(
+                    {"attribute_ids": "Selected attributes do not belong to procurement dictionary."}
+                )
         return attrs
 
     criterion_ids = serializers.PrimaryKeyRelatedField(
         many=True, queryset=TenderCriterion.objects.none(), required=False, source="tender_criteria"
     )
+    attribute_ids = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=TenderAttribute.objects.none(), required=False, source="tender_attributes"
+    )
     criteria = serializers.SerializerMethodField()
+    attributes = serializers.SerializerMethodField()
     is_latest_tour = serializers.SerializerMethodField()
     current_user_has_proposal = serializers.SerializerMethodField()
 
@@ -949,6 +1260,13 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
         self.fields["criterion_ids"].queryset = qs
         if hasattr(self.fields["criterion_ids"], "child_relation"):
             self.fields["criterion_ids"].child_relation.queryset = qs
+        attr_qs = TenderAttribute.objects.filter(tender_type="procurement")
+        self.fields["attribute_ids"].queryset = attr_qs
+        if hasattr(self.fields["attribute_ids"], "child_relation"):
+            self.fields["attribute_ids"].child_relation.queryset = attr_qs
+        self.fields["approval_model_id"].queryset = ApprovalModel.objects.filter(
+            application=ApprovalModel.Application.PROCUREMENT
+        )
 
     def _normalize_criterion_ids_payload(self, data):
         if not self.instance:
@@ -1055,7 +1373,11 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             "tender_criteria",
             "criterion_ids",
             "criteria",
+            "attribute_ids",
+            "attributes",
             "positions",
+            "approval_model",
+            "approval_model_id",
             "is_latest_tour",
             "current_user_has_proposal",
         )
@@ -1164,6 +1486,19 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             for c in obj.tender_criteria.all()
         ]
 
+    def get_attributes(self, obj):
+        return [
+            {
+                "id": a.id,
+                "name": a.name,
+                "type": a.type,
+                "tender_type": a.tender_type,
+                "is_required": bool(getattr(a, "is_required", False)),
+                "options": getattr(a, "options", {}) or {},
+            }
+            for a in obj.tender_attributes.all()
+        ]
+
     def _sync_criteria_items(self, instance, criteria):
         if criteria is None:
             return
@@ -1270,6 +1605,9 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             start_price = item.get("start_price")
             min_bid_step = item.get("min_bid_step")
             max_bid_step = item.get("max_bid_step")
+            attribute_values = item.get("attribute_values") or {}
+            if not isinstance(attribute_values, dict):
+                attribute_values = {}
             if existing:
                 existing.quantity = quantity
                 existing.description = description
@@ -1282,6 +1620,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
                 existing.max_bid_step = (
                     max_bid_step if max_bid_step not in ("", None) else None
                 )
+                existing.attribute_values = attribute_values
                 existing.save()
                 seen_ids.add(existing.id)
             else:
@@ -1292,6 +1631,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
                     start_price=start_price if start_price not in ("", None) else None,
                     min_bid_step=min_bid_step if min_bid_step not in ("", None) else None,
                     max_bid_step=max_bid_step if max_bid_step not in ("", None) else None,
+                    attribute_values=attribute_values,
                 )
                 seen_ids.add(new_pos.id)
         for pos in list(instance.positions.all()):
@@ -1301,9 +1641,12 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         positions_data = validated_data.pop("positions", None)
         criterion_ids = validated_data.pop("tender_criteria", None)
+        attribute_ids = validated_data.pop("tender_attributes", None)
         if criterion_ids is not None:
             instance.tender_criteria.set(criterion_ids)
             self._sync_criteria_items(instance, criterion_ids)
+        if attribute_ids is not None:
+            instance.tender_attributes.set(attribute_ids)
         super().update(instance, validated_data)
         if positions_data is not None:
             self._update_positions(instance, positions_data)
@@ -1474,6 +1817,7 @@ class SalesTenderPositionSerializer(serializers.ModelSerializer):
         fields = (
             "id", "tender", "nomenclature", "nomenclature_id", "name", "unit_name",
             "quantity", "description", "start_price", "min_bid_step", "max_bid_step",
+            "attribute_values",
             "winner_proposal_id", "winner_supplier_name", "winner_price", "winner_criterion_values",
         )
         read_only_fields = ("id", "tender", "name", "unit_name", "winner_proposal_id", "winner_supplier_name", "winner_price", "winner_criterion_values")
@@ -1539,10 +1883,20 @@ class SalesTenderSerializer(serializers.ModelSerializer):
     department_name = serializers.SerializerMethodField()
     created_by_display = serializers.SerializerMethodField()
     positions = SalesTenderPositionSerializer(many=True, required=False)
+    approval_model_id = serializers.PrimaryKeyRelatedField(
+        queryset=ApprovalModel.objects.none(),
+        required=False,
+        allow_null=True,
+        source="approval_model",
+    )
     criterion_ids = serializers.PrimaryKeyRelatedField(
         many=True, queryset=TenderCriterion.objects.none(), required=False, source="tender_criteria"
     )
+    attribute_ids = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=TenderAttribute.objects.none(), required=False, source="tender_attributes"
+    )
     criteria = serializers.SerializerMethodField()
+    attributes = serializers.SerializerMethodField()
     is_latest_tour = serializers.SerializerMethodField()
     current_user_has_proposal = serializers.SerializerMethodField()
 
@@ -1552,6 +1906,13 @@ class SalesTenderSerializer(serializers.ModelSerializer):
         self.fields["criterion_ids"].queryset = qs
         if hasattr(self.fields["criterion_ids"], "child_relation"):
             self.fields["criterion_ids"].child_relation.queryset = qs
+        attr_qs = TenderAttribute.objects.filter(tender_type="sales")
+        self.fields["attribute_ids"].queryset = attr_qs
+        if hasattr(self.fields["attribute_ids"], "child_relation"):
+            self.fields["attribute_ids"].child_relation.queryset = attr_qs
+        self.fields["approval_model_id"].queryset = ApprovalModel.objects.filter(
+            application=ApprovalModel.Application.SALES
+        )
 
     def _normalize_criterion_ids_payload(self, data):
         if not self.instance:
@@ -1639,6 +2000,16 @@ class SalesTenderSerializer(serializers.ModelSerializer):
                 raise drf.ValidationError(
                     {"criterion_ids": "Selected criteria do not belong to sales dictionary."}
                 )
+        attribute_ids = attrs.get("tender_attributes")
+        if attribute_ids is not None:
+            wrong_ids = [
+                a.id for a in attribute_ids if getattr(a, "tender_type", None) != "sales"
+            ]
+            if wrong_ids:
+                from rest_framework import serializers as drf
+                raise drf.ValidationError(
+                    {"attribute_ids": "Selected attributes do not belong to sales dictionary."}
+                )
         return attrs
 
     class Meta:
@@ -1683,7 +2054,11 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             "tender_criteria",
             "criterion_ids",
             "criteria",
+            "attribute_ids",
+            "attributes",
             "positions",
+            "approval_model",
+            "approval_model_id",
             "is_latest_tour",
             "current_user_has_proposal",
         )
@@ -1792,6 +2167,19 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             for c in obj.tender_criteria.all()
         ]
 
+    def get_attributes(self, obj):
+        return [
+            {
+                "id": a.id,
+                "name": a.name,
+                "type": a.type,
+                "tender_type": a.tender_type,
+                "is_required": bool(getattr(a, "is_required", False)),
+                "options": getattr(a, "options", {}) or {},
+            }
+            for a in obj.tender_attributes.all()
+        ]
+
     def _sync_criteria_items(self, instance, criteria):
         if criteria is None:
             return
@@ -1840,6 +2228,9 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             start_price = item.get("start_price")
             min_bid_step = item.get("min_bid_step")
             max_bid_step = item.get("max_bid_step")
+            attribute_values = item.get("attribute_values") or {}
+            if not isinstance(attribute_values, dict):
+                attribute_values = {}
             if existing:
                 existing.quantity = quantity
                 existing.description = description
@@ -1852,6 +2243,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
                 existing.max_bid_step = (
                     max_bid_step if max_bid_step not in ("", None) else None
                 )
+                existing.attribute_values = attribute_values
                 existing.save()
                 seen_ids.add(existing.id)
             else:
@@ -1862,6 +2254,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
                     start_price=start_price if start_price not in ("", None) else None,
                     min_bid_step=min_bid_step if min_bid_step not in ("", None) else None,
                     max_bid_step=max_bid_step if max_bid_step not in ("", None) else None,
+                    attribute_values=attribute_values,
                 )
                 seen_ids.add(new_pos.id)
         for pos in list(instance.positions.all()):
@@ -1871,9 +2264,12 @@ class SalesTenderSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         positions_data = validated_data.pop("positions", None)
         criterion_ids = validated_data.pop("tender_criteria", None)
+        attribute_ids = validated_data.pop("tender_attributes", None)
         if criterion_ids is not None:
             instance.tender_criteria.set(criterion_ids)
             self._sync_criteria_items(instance, criterion_ids)
+        if attribute_ids is not None:
+            instance.tender_attributes.set(attribute_ids)
         super().update(instance, validated_data)
         if positions_data is not None:
             self._update_positions(instance, positions_data)

@@ -166,7 +166,21 @@
               <UInput v-model="addForm.email" type="email" />
             </UFormField>
             <UFormField label="Телефон" name="phone">
-              <UInput v-model="addForm.phone" />
+              <div class="flex">
+                <span
+                  class="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-700 text-sm"
+                >
+                  +380
+                </span>
+                <UInput
+                  v-model="addForm.phone"
+                  type="tel"
+                  class="flex-1 rounded-l-none"
+                  maxlength="9"
+                  placeholder="Введіть 9 цифр"
+                  @input="onAddPhoneInput"
+                />
+              </div>
             </UFormField>
             <UFormField label="Пароль" name="password" required>
               <UInput v-model="addForm.password" type="password" />
@@ -213,7 +227,21 @@
               <UInput v-model="editForm.email" type="email" />
             </UFormField>
             <UFormField label="Телефон" name="phone">
-              <UInput v-model="editForm.phone" />
+              <div class="flex">
+                <span
+                  class="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-700 text-sm"
+                >
+                  +380
+                </span>
+                <UInput
+                  v-model="editForm.phone"
+                  type="tel"
+                  class="flex-1 rounded-l-none"
+                  maxlength="9"
+                  placeholder="Введіть 9 цифр"
+                  @input="onEditPhoneInput"
+                />
+              </div>
             </UFormField>
             <UFormField
               label="Новий пароль"
@@ -616,6 +644,30 @@ const editForm = reactive({
   password_confirm: "",
 });
 
+const extractUaPhoneDigits = (value: string | null | undefined): string => {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("380")) return digits.slice(3, 12);
+  return digits.slice(0, 9);
+};
+
+const normalizeUaPhone = (digits: string): string => {
+  const cleaned = String(digits || "").replace(/\D/g, "").slice(0, 9);
+  return cleaned ? `+380${cleaned}` : "";
+};
+
+const onAddPhoneInput = (event: Event) => {
+  const target = event.target as HTMLInputElement | null;
+  if (!target) return;
+  addForm.phone = target.value.replace(/\D/g, "").slice(0, 9);
+};
+
+const onEditPhoneInput = (event: Event) => {
+  const target = event.target as HTMLInputElement | null;
+  if (!target) return;
+  editForm.phone = target.value.replace(/\D/g, "").slice(0, 9);
+};
+
 const fullName = (user: any) =>
   `${user.last_name || ""} ${user.first_name || ""}`.trim() || user.email;
 
@@ -634,7 +686,7 @@ const openEditUserModal = (m: any) => {
   editForm.first_name = m.user.first_name || "";
   editForm.last_name = m.user.last_name || "";
   editForm.email = m.user.email || "";
-  editForm.phone = m.user.phone || "";
+  editForm.phone = extractUaPhoneDigits(m.user.phone);
   editForm.password = "";
   editForm.password_confirm = "";
   showEditModal.value = true;
@@ -645,12 +697,16 @@ const onAddUser = async () => {
     alert("Паролі не співпадають");
     return;
   }
+  if (addForm.phone && addForm.phone.length !== 9) {
+    alert("Введіть повний номер телефону (9 цифр після +380).");
+    return;
+  }
   savingUser.value = true;
   const { error } = await usersUC.createUser({
     first_name: addForm.first_name,
     last_name: addForm.last_name,
     middle_name: "",
-    phone: addForm.phone,
+    phone: normalizeUaPhone(addForm.phone),
     email: addForm.email,
     password: addForm.password,
   });
@@ -669,12 +725,16 @@ const onEditUser = async () => {
     alert("Паролі не співпадають");
     return;
   }
+  if (editForm.phone && editForm.phone.length !== 9) {
+    alert("Введіть повний номер телефону (9 цифр після +380).");
+    return;
+  }
   savingUser.value = true;
   const payload = {
     first_name: editForm.first_name,
     last_name: editForm.last_name,
     email: editForm.email,
-    phone: editForm.phone,
+    phone: normalizeUaPhone(editForm.phone),
   };
   if (editForm.password) {
     payload.password = editForm.password;

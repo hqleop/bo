@@ -38,6 +38,16 @@ export interface TenderCriterion {
   [key: string]: unknown
 }
 
+export interface TenderAttribute {
+  id: number
+  name?: string
+  type?: string
+  tender_type?: 'procurement' | 'sales'
+  is_required?: boolean
+  options?: Record<string, unknown>
+  [key: string]: unknown
+}
+
 export interface TenderFile {
   id: number
   name?: string

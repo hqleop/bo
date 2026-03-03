@@ -29,6 +29,12 @@ from .views import (
     NomenclatureViewSet,
     CurrencyViewSet,
     TenderCriterionViewSet,
+    TenderAttributeViewSet,
+    ApprovalModelRoleViewSet,
+    ApprovalModelRoleUserViewSet,
+    ApprovalRangeMatrixViewSet,
+    ApprovalModelViewSet,
+    ApprovalModelStepViewSet,
     ProcurementTenderViewSet,
     SalesTenderViewSet,
     CpvDictionaryTreeView,
@@ -60,6 +66,12 @@ router.register(r"units", UnitOfMeasureViewSet, basename="unit")
 router.register(r"nomenclatures", NomenclatureViewSet, basename="nomenclature")
 router.register(r"currencies", CurrencyViewSet, basename="currency")
 router.register(r"tender-criteria", TenderCriterionViewSet, basename="tender-criterion")
+router.register(r"tender-attributes", TenderAttributeViewSet, basename="tender-attribute")
+router.register(r"approval-model-roles", ApprovalModelRoleViewSet, basename="approval-model-role")
+router.register(r"approval-model-role-users", ApprovalModelRoleUserViewSet, basename="approval-model-role-user")
+router.register(r"approval-range-matrix", ApprovalRangeMatrixViewSet, basename="approval-range-matrix")
+router.register(r"approval-models", ApprovalModelViewSet, basename="approval-model")
+router.register(r"approval-model-steps", ApprovalModelStepViewSet, basename="approval-model-step")
 router.register(r"procurement-tenders", ProcurementTenderViewSet, basename="procurement-tender")
 router.register(r"sales-tenders", SalesTenderViewSet, basename="sales-tender")
 

@@ -544,6 +544,7 @@ class TenderCriterion(models.Model):
     class Type(models.TextChoices):
         NUMERIC = "numeric", "Числовий"
         TEXT = "text", "Текстовий"
+        DATE = "date", "Дата"
         FILE = "file", "Файловий"
         BOOLEAN = "boolean", "Булевий (Так/Ні)"
 
@@ -589,6 +590,195 @@ class TenderCriterion(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class TenderAttribute(models.Model):
+    """
+    Атрибут тендера — додаткове поле для позицій (заповнює організатор).
+    Підтримує текст, число або дату.
+    """
+
+    class Type(models.TextChoices):
+        NUMERIC = "numeric", "Числовий"
+        TEXT = "text", "Текстовий"
+        DATE = "date", "Дата"
+
+    company = models.ForeignKey(
+        Company, on_delete=models.CASCADE, related_name="tender_attributes"
+    )
+    name = models.CharField(max_length=255)
+    type = models.CharField(max_length=20, choices=Type.choices)
+    tender_type = models.CharField(
+        max_length=20,
+        choices=(
+            ("procurement", "Procurement"),
+            ("sales", "Sales"),
+        ),
+        default="procurement",
+        help_text="Tender type for attribute dictionary: procurement or sales.",
+    )
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tender_attributes",
+    )
+    is_required = models.BooleanField(
+        default=False,
+        help_text="Ознака обов'язковості заповнення атрибута в позиції.",
+    )
+    options = models.JSONField(default=dict, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Атрибут тендеру"
+        verbose_name_plural = "Атрибути тендерів"
+        ordering = ["name"]
+        unique_together = (("company", "name", "type", "tender_type"),)
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class ApprovalModelRole(models.Model):
+    """Company-scoped role used in approval models."""
+
+    class Application(models.TextChoices):
+        PROCUREMENT = "procurement", "Тендер-Закупівля"
+        SALES = "sales", "Тендер-Продаж"
+
+    company = models.ForeignKey(
+        Company, on_delete=models.CASCADE, related_name="approval_model_roles"
+    )
+    name = models.CharField(max_length=255)
+    application = models.CharField(
+        max_length=20, choices=Application.choices, default=Application.PROCUREMENT
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Роль моделі погодження"
+        verbose_name_plural = "Ролі моделей погодження"
+        ordering = ["name"]
+        unique_together = (("company", "name", "application"),)
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class ApprovalModelRoleUser(models.Model):
+    """Users assigned to model role."""
+
+    role = models.ForeignKey(
+        ApprovalModelRole, on_delete=models.CASCADE, related_name="role_users"
+    )
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="approval_model_role_memberships"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Користувач ролі моделі погодження"
+        verbose_name_plural = "Користувачі ролей моделей погодження"
+        unique_together = (("role", "user"),)
+        ordering = ["id"]
+
+    def __str__(self) -> str:
+        return f"{self.role} — {self.user}"
+
+
+class ApprovalRangeMatrix(models.Model):
+    """Budget range matrix item used by approval models."""
+
+    company = models.ForeignKey(
+        Company, on_delete=models.CASCADE, related_name="approval_range_matrix_items"
+    )
+    budget_from = models.DecimalField(max_digits=18, decimal_places=2)
+    budget_to = models.DecimalField(max_digits=18, decimal_places=2)
+    currency = models.ForeignKey(
+        Currency, on_delete=models.PROTECT, related_name="approval_range_matrix_items"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Діапазон матриці погодження"
+        verbose_name_plural = "Діапазони матриці погодження"
+        ordering = ["budget_from", "budget_to", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.budget_from} - {self.budget_to} {self.currency.code}"
+
+
+class ApprovalModel(models.Model):
+    """Approval model for tenders."""
+
+    class Application(models.TextChoices):
+        PROCUREMENT = "procurement", "Тендер-Закупівля"
+        SALES = "sales", "Тендер-Продаж"
+
+    company = models.ForeignKey(
+        Company, on_delete=models.CASCADE, related_name="approval_models"
+    )
+    name = models.CharField(max_length=255)
+    application = models.CharField(
+        max_length=20, choices=Application.choices, default=Application.PROCUREMENT
+    )
+    categories = models.ManyToManyField(
+        Category, related_name="approval_models", blank=True
+    )
+    ranges = models.ManyToManyField(
+        ApprovalRangeMatrix, related_name="approval_models", blank=True
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Модель погодження"
+        verbose_name_plural = "Моделі погодження"
+        ordering = ["name"]
+        unique_together = (("company", "name", "application"),)
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class ApprovalModelStep(models.Model):
+    """Ordered role rows in approval model table."""
+
+    class DecisionRule(models.TextChoices):
+        ONE_OF = "one_of", "Один зі"
+        ALL = "all", "Усі"
+
+    model = models.ForeignKey(
+        ApprovalModel, on_delete=models.CASCADE, related_name="steps"
+    )
+    role = models.ForeignKey(
+        ApprovalModelRole, on_delete=models.PROTECT, related_name="model_steps"
+    )
+    order = models.PositiveIntegerField(default=1)
+    preparation_rule = models.CharField(
+        max_length=20, choices=DecisionRule.choices, default=DecisionRule.ONE_OF
+    )
+    approval_rule = models.CharField(
+        max_length=20, choices=DecisionRule.choices, default=DecisionRule.ONE_OF
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Крок моделі погодження"
+        verbose_name_plural = "Кроки моделі погодження"
+        ordering = ["order", "id"]
+        unique_together = (("model", "role", "order"),)
+
+    def __str__(self) -> str:
+        return f"{self.model} [{self.order}] — {self.role}"
 
 
 class ProcurementTender(models.Model):
@@ -706,6 +896,13 @@ class ProcurementTender(models.Model):
     end_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    approval_model = models.ForeignKey(
+        ApprovalModel,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="procurement_tenders",
+    )
 
     class Meta:
         verbose_name = "Тендер на закупівлю"
@@ -741,6 +938,12 @@ class ProcurementTender(models.Model):
         related_name="procurement_tenders",
         blank=True,
         help_text="Критерії тендера (крім ціни)",
+    )
+    tender_attributes = models.ManyToManyField(
+        TenderAttribute,
+        related_name="procurement_tenders",
+        blank=True,
+        help_text="Атрибути тендера для позицій",
     )
 
     def __str__(self) -> str:
@@ -816,6 +1019,7 @@ class ProcurementTenderPosition(models.Model):
         max_digits=18, decimal_places=4, default=1,
     )
     description = models.TextField(blank=True, default="")
+    attribute_values = models.JSONField(default=dict, blank=True)
     start_price = models.DecimalField(
         max_digits=18,
         decimal_places=4,
@@ -1064,6 +1268,13 @@ class SalesTender(models.Model):
     end_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    approval_model = models.ForeignKey(
+        ApprovalModel,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sales_tenders",
+    )
 
     price_criterion_vat = models.CharField(
         max_length=32, blank=True, default="",
@@ -1078,6 +1289,12 @@ class SalesTender(models.Model):
         related_name="sales_tenders",
         blank=True,
         help_text="Критерії тендера (крім ціни)",
+    )
+    tender_attributes = models.ManyToManyField(
+        TenderAttribute,
+        related_name="sales_tenders",
+        blank=True,
+        help_text="Атрибути тендера для позицій",
     )
 
     class Meta:
@@ -1171,6 +1388,7 @@ class SalesTenderPosition(models.Model):
         max_digits=18, decimal_places=4, default=1,
     )
     description = models.TextField(blank=True, default="")
+    attribute_values = models.JSONField(default=dict, blank=True)
     start_price = models.DecimalField(
         max_digits=18,
         decimal_places=4,
@@ -1300,3 +1518,42 @@ class SalesTenderFile(models.Model):
 
     def __str__(self) -> str:
         return self.name or self.file.name
+
+
+class TenderApprovalJournal(models.Model):
+    """Approval journal entries for procurement and sales tenders."""
+
+    class Action(models.TextChoices):
+        APPROVED = "approved", "Погоджено"
+        REJECTED = "rejected", "Скасовано"
+
+    procurement_tender = models.ForeignKey(
+        ProcurementTender,
+        on_delete=models.CASCADE,
+        related_name="approval_journal_entries",
+        null=True,
+        blank=True,
+    )
+    sales_tender = models.ForeignKey(
+        SalesTender,
+        on_delete=models.CASCADE,
+        related_name="approval_journal_entries",
+        null=True,
+        blank=True,
+    )
+    stage = models.CharField(max_length=20, blank=True, default="")
+    action = models.CharField(max_length=20, choices=Action.choices)
+    comment = models.TextField(blank=True, default="")
+    actor = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Запис журналу погодження"
+        verbose_name_plural = "Журнал погодження"
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self) -> str:
+        tender_ref = self.procurement_tender_id or self.sales_tender_id or "?"
+        return f"Tender {tender_ref} {self.action} at {self.created_at}"

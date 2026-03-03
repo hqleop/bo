@@ -237,6 +237,40 @@
               </UFormField>
             </template>
 
+            <template v-if="form.type === 'date'">
+              <UFormField label="Варіанти дат">
+                <div class="space-y-2">
+                  <div
+                    v-for="(val, idx) in form.options.date_choices"
+                    :key="idx"
+                    class="flex gap-2 items-center"
+                  >
+                    <UInput
+                      v-model="form.options.date_choices[idx]"
+                      type="date"
+                      class="flex-1"
+                    />
+                    <UButton
+                      icon="i-heroicons-trash"
+                      size="xs"
+                      variant="ghost"
+                      color="red"
+                      aria-label="Видалити"
+                      @click="form.options.date_choices.splice(idx, 1)"
+                    />
+                  </div>
+                  <UButton
+                    size="sm"
+                    variant="outline"
+                    icon="i-heroicons-plus"
+                    @click="form.options.date_choices.push('')"
+                  >
+                    Додати дату
+                  </UButton>
+                </div>
+              </UFormField>
+            </template>
+
             <p v-if="form.type === 'file'" class="text-sm text-gray-500">
               Учасник завантажить файл у відповідь на цей критерій.
             </p>
@@ -282,6 +316,7 @@ const editing = ref(false);
 const typeOptions = [
   { value: "numeric", label: "Числовий" },
   { value: "text", label: "Текстовий" },
+  { value: "date", label: "Дата" },
   { value: "file", label: "Файловий" },
   { value: "boolean", label: "Булевий (Так/Ні)" },
 ];
@@ -303,6 +338,7 @@ const form = reactive<{
     range_max?: number | null;
     numeric_choices?: (number | null)[];
     text_choices?: string[];
+    date_choices?: string[];
   };
 }>({
   id: null,
@@ -326,6 +362,7 @@ function resetForm(tenderType: "sales" | "procurement") {
     range_max: null,
     numeric_choices: [],
     text_choices: [],
+    date_choices: [],
   };
 }
 
@@ -348,6 +385,9 @@ function openModal(item?: any, tenderType: "sales" | "procurement" = "sales") {
       text_choices: Array.isArray(opt.text_choices)
         ? [...opt.text_choices]
         : [],
+      date_choices: Array.isArray(opt.date_choices)
+        ? [...opt.date_choices]
+        : [],
     };
   } else {
     resetForm(tenderType);
@@ -360,6 +400,7 @@ function ensureOptionsArrays() {
   if (!Array.isArray(form.options.numeric_choices))
     form.options.numeric_choices = [];
   if (!Array.isArray(form.options.text_choices)) form.options.text_choices = [];
+  if (!Array.isArray(form.options.date_choices)) form.options.date_choices = [];
 }
 
 function optionsForType(type: string) {
@@ -368,9 +409,11 @@ function optionsForType(type: string) {
     range_max: null as number | null,
     numeric_choices: [] as (number | null)[],
     text_choices: [] as string[],
+    date_choices: [] as string[],
   };
   if (type === "numeric") return { ...base };
   if (type === "text") return { ...base, text_choices: [] };
+  if (type === "date") return { ...base, date_choices: [] };
   return base;
 }
 
@@ -435,6 +478,9 @@ function formatOptionsSummary(c: any): string {
   if (c.type === "text" && opt.text_choices?.length) {
     return opt.text_choices.join(", ");
   }
+  if (c.type === "date" && opt.date_choices?.length) {
+    return opt.date_choices.join(", ");
+  }
   if (c.type === "file") return "Файл";
   if (c.type === "boolean") return "Так/Ні";
   return "-";
@@ -487,6 +533,12 @@ async function save() {
         .map((s) => String(s).trim())
         .filter(Boolean);
       if (texts.length) options.text_choices = texts;
+    }
+    if (form.type === "date") {
+      const dates = (form.options.date_choices || [])
+        .map((s) => String(s).trim())
+        .filter(Boolean);
+      if (dates.length) options.date_choices = dates;
     }
 
     const payload = {

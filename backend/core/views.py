@@ -38,6 +38,12 @@ from .models import (
     ExpenseArticleUser,
     Currency,
     TenderCriterion,
+    TenderAttribute,
+    ApprovalModelRole,
+    ApprovalModelRoleUser,
+    ApprovalRangeMatrix,
+    ApprovalModel,
+    ApprovalModelStep,
     ProcurementTender,
     ProcurementTenderCriterion,
     ProcurementTenderPosition,
@@ -50,6 +56,7 @@ from .models import (
     SalesTenderProposal,
     SalesTenderProposalPosition,
     SalesTenderFile,
+    TenderApprovalJournal,
     UnitOfMeasure,
     Nomenclature,
 )
@@ -89,6 +96,12 @@ from .serializers import (
     NomenclatureSerializer,
     CurrencySerializer,
     TenderCriterionSerializer,
+    TenderAttributeSerializer,
+    ApprovalModelRoleSerializer,
+    ApprovalModelRoleUserSerializer,
+    ApprovalRangeMatrixSerializer,
+    ApprovalModelSerializer,
+    ApprovalModelStepSerializer,
     ProcurementTenderSerializer,
     ProcurementParticipationTenderListSerializer,
     TenderProposalSerializer,
@@ -98,6 +111,7 @@ from .serializers import (
     SalesParticipationTenderListSerializer,
     SalesTenderProposalSerializer,
     SalesTenderFileSerializer,
+    TenderApprovalJournalSerializer,
 )
 from .realtime import publish_tender_event
 
@@ -1067,6 +1081,72 @@ class CompanySupplierViewSet(viewsets.ModelViewSet):
     @extend_schema(summary="Список контрагентів", description="Контрагенти: додані вручну та з участі в тендерах.")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Тендери контрагента", description="Тендери компанії-власника, де контрагент подав пропозицію і вже завершено етап прийому пропозицій.")
+    @action(detail=True, methods=["get"], url_path="tenders")
+    def tenders(self, request, pk=None):
+        relation = self.get_object()
+        owner_company_id = relation.owner_company_id
+        supplier_company_id = relation.supplier_company_id
+        finished_acceptance_stages = ["decision", "approval", "completed"]
+
+        procurement_stage_labels = dict(ProcurementTender.Stage.choices)
+        sales_stage_labels = dict(SalesTender.Stage.choices)
+
+        procurement_rows = list(
+            ProcurementTender.objects.filter(
+                company_id=owner_company_id,
+                stage__in=finished_acceptance_stages,
+                proposals__supplier_company_id=supplier_company_id,
+            )
+            .distinct()
+            .values("id", "number", "name", "tour_number", "stage", "updated_at")
+        )
+        sales_rows = list(
+            SalesTender.objects.filter(
+                company_id=owner_company_id,
+                stage__in=finished_acceptance_stages,
+                proposals__supplier_company_id=supplier_company_id,
+            )
+            .distinct()
+            .values("id", "number", "name", "tour_number", "stage", "updated_at")
+        )
+
+        results = [
+            {
+                "id": row["id"],
+                "number": row.get("number"),
+                "name": row.get("name") or "",
+                "tour_number": row.get("tour_number") or 1,
+                "stage": row.get("stage") or "",
+                "stage_label": procurement_stage_labels.get(
+                    row.get("stage"), row.get("stage") or ""
+                ),
+                "type": "procurement",
+                "updated_at": row.get("updated_at"),
+            }
+            for row in procurement_rows
+        ] + [
+            {
+                "id": row["id"],
+                "number": row.get("number"),
+                "name": row.get("name") or "",
+                "tour_number": row.get("tour_number") or 1,
+                "stage": row.get("stage") or "",
+                "stage_label": sales_stage_labels.get(
+                    row.get("stage"), row.get("stage") or ""
+                ),
+                "type": "sales",
+                "updated_at": row.get("updated_at"),
+            }
+            for row in sales_rows
+        ]
+
+        results.sort(key=lambda item: item.get("updated_at") or timezone.now(), reverse=True)
+        for item in results:
+            item.pop("updated_at", None)
+
+        return Response(results)
 
 
 class CompanyUserViewSet(viewsets.ModelViewSet):
@@ -2474,6 +2554,172 @@ class TenderCriterionViewSet(viewsets.ModelViewSet):
         serializer.save()
 
 
+class TenderAttributeViewSet(viewsets.ModelViewSet):
+    """
+    Довідник атрибутів тендерів (company-scoped).
+    """
+
+    serializer_class = TenderAttributeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser:
+            qs = TenderAttribute.objects.all().select_related("company", "category")
+            tender_type = (self.request.query_params.get("tender_type") or "").strip()
+            if tender_type in {"procurement", "sales"}:
+                qs = qs.filter(tender_type=tender_type)
+            return qs
+        user_companies = CompanyUser.objects.filter(
+            user=user, status=CompanyUser.Status.APPROVED
+        ).values_list("company_id", flat=True)
+        qs = TenderAttribute.objects.filter(
+            company_id__in=user_companies
+        ).select_related("company", "category")
+        tender_type = (self.request.query_params.get("tender_type") or "").strip()
+        if tender_type in {"procurement", "sales"}:
+            qs = qs.filter(tender_type=tender_type)
+        return qs
+
+    def perform_create(self, serializer):
+        tender_type = (self.request.query_params.get("tender_type") or "").strip()
+        if tender_type in {"procurement", "sales"}:
+            serializer.save(tender_type=tender_type)
+            return
+        serializer.save()
+
+
+class ApprovalModelRoleViewSet(viewsets.ModelViewSet):
+    serializer_class = ApprovalModelRoleSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = ApprovalModelRole.objects.all().select_related("company")
+        if not user.is_superuser:
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            qs = qs.filter(company_id__in=user_companies)
+        application = (self.request.query_params.get("application") or "").strip()
+        if application in {"procurement", "sales"}:
+            qs = qs.filter(application=application)
+        return qs
+
+
+class ApprovalModelRoleUserViewSet(viewsets.ModelViewSet):
+    serializer_class = ApprovalModelRoleUserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = ApprovalModelRoleUser.objects.all().select_related("role", "role__company", "user")
+        if not user.is_superuser:
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            qs = qs.filter(role__company_id__in=user_companies)
+        role_id = self.request.query_params.get("role_id")
+        if role_id:
+            qs = qs.filter(role_id=role_id)
+        return qs
+
+
+class ApprovalRangeMatrixViewSet(viewsets.ModelViewSet):
+    serializer_class = ApprovalRangeMatrixSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = ApprovalRangeMatrix.objects.all().select_related("company", "currency")
+        if not user.is_superuser:
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            qs = qs.filter(company_id__in=user_companies)
+        return qs
+
+
+class ApprovalModelViewSet(viewsets.ModelViewSet):
+    serializer_class = ApprovalModelSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = ApprovalModel.objects.all().select_related("company").prefetch_related(
+            "categories", "ranges__currency", "steps__role", "steps__role__role_users__user"
+        )
+        if not user.is_superuser:
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            qs = qs.filter(company_id__in=user_companies)
+
+        application = (self.request.query_params.get("application") or "").strip()
+        if application in {"procurement", "sales"}:
+            qs = qs.filter(application=application)
+
+        category_ids = _parse_int_list_param(self.request.query_params.getlist("category_ids"))
+        if category_ids:
+            qs = qs.filter(categories__id__in=category_ids).distinct()
+
+        range_ids = _parse_int_list_param(self.request.query_params.getlist("range_ids"))
+        if range_ids:
+            qs = qs.filter(ranges__id__in=range_ids).distinct()
+        return qs
+
+    @action(detail=False, methods=["get"], url_path="available-for-tender")
+    def available_for_tender(self, request):
+        company_id, error_response = _resolve_request_company_id(request)
+        if error_response:
+            return error_response
+        application = (request.query_params.get("application") or "").strip()
+        if application not in {"procurement", "sales"}:
+            return Response(
+                {"detail": "application має бути procurement або sales."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        category_id = request.query_params.get("category_id")
+        budget_raw = request.query_params.get("estimated_budget")
+        qs = ApprovalModel.objects.filter(
+            company_id=company_id, application=application, is_active=True
+        ).prefetch_related("ranges__currency", "categories")
+        if category_id:
+            qs = qs.filter(categories__id=category_id)
+        if budget_raw not in (None, ""):
+            try:
+                budget_val = Decimal(str(budget_raw))
+            except (InvalidOperation, TypeError, ValueError):
+                return Response(
+                    {"detail": "Некоректне значення estimated_budget."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            qs = qs.filter(
+                ranges__budget_from__lte=budget_val,
+                ranges__budget_to__gte=budget_val,
+            ).distinct()
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+
+class ApprovalModelStepViewSet(viewsets.ModelViewSet):
+    serializer_class = ApprovalModelStepSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = ApprovalModelStep.objects.all().select_related("model", "model__company", "role")
+        if not user.is_superuser:
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            qs = qs.filter(model__company_id__in=user_companies)
+        model_id = self.request.query_params.get("model_id")
+        if model_id:
+            qs = qs.filter(model_id=model_id)
+        return qs
+
+
 class ProcurementTenderViewSet(viewsets.ModelViewSet):
     """
     Тендери на закупівлю (company-scoped). Номер присвоюється при першому збереженні.
@@ -2566,7 +2812,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             OpenApiParameter(name="reception_started", type=OpenApiTypes.BOOL, location=OpenApiParameter.QUERY, description="Available only for tab=active"),
             OpenApiParameter(name="conduct_type", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="rfx | online_auction"),
             OpenApiParameter(name="tender_number", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="Tender number exact match"),
-            OpenApiParameter(name="submitted_only", type=OpenApiTypes.BOOL, location=OpenApiParameter.QUERY, description="Only tenders with submitted proposal by current company"),
+            OpenApiParameter(name="submitted_only", type=OpenApiTypes.BOOL, location=OpenApiParameter.QUERY, description="Only tenders with submitted proposal by current company (for tab=journal: with at least one position proposal)"),
             OpenApiParameter(name="participation_result", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="participation | win"),
         ],
         responses=OpenApiTypes.OBJECT,
@@ -2608,6 +2854,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             supplier_company_id__in=user_company_ids,
         )
         submitted_proposal_subquery = proposal_subquery.filter(submitted_at__isnull=False)
+        position_proposal_subquery = proposal_subquery.filter(position_values__isnull=False)
         won_proposal_subquery = proposal_subquery.filter(won_positions__isnull=False)
 
         qs = (
@@ -2623,25 +2870,35 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             .annotate(
                 current_user_has_proposal=Exists(proposal_subquery),
                 current_user_has_submitted_proposal=Exists(submitted_proposal_subquery),
+                current_user_has_position_proposal=Exists(position_proposal_subquery),
                 current_user_has_win=Exists(won_proposal_subquery),
             )
         )
         qs = _filter_participation_qs_by_tab(qs, tab)
+        participated_filter_field = (
+            "current_user_has_position_proposal"
+            if tab == "journal"
+            else "current_user_has_submitted_proposal"
+        )
         if tab == "active" and reception_started:
             qs = qs.filter(start_at__isnull=False, start_at__lte=timezone.now())
         if conduct_type in ("rfx", "online_auction"):
             qs = qs.filter(conduct_type=conduct_type)
         if submitted_only:
-            qs = qs.filter(current_user_has_submitted_proposal=True)
+            qs = qs.filter(**{participated_filter_field: True})
         if participation_result == "win":
             qs = qs.filter(
-                current_user_has_submitted_proposal=True,
-                current_user_has_win=True,
+                **{
+                    participated_filter_field: True,
+                    "current_user_has_win": True,
+                }
             )
         elif participation_result == "participation":
             qs = qs.filter(
-                current_user_has_submitted_proposal=True,
-                current_user_has_win=False,
+                **{
+                    participated_filter_field: True,
+                    "current_user_has_win": False,
+                }
             )
         if company_id:
             qs = qs.filter(company_id=company_id)
@@ -2856,6 +3113,104 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             stack.extend(t.next_tours.all())
         collected.sort(key=lambda t: t.tour_number)
         return Response([{"id": t.id, "tour_number": t.tour_number} for t in collected])
+
+    @action(detail=True, methods=["get"], url_path="approval-journal")
+    def approval_journal(self, request, pk=None):
+        tender = self.get_object()
+        qs = TenderApprovalJournal.objects.filter(
+            sales_tender=tender
+        ).select_related("actor")
+        serializer = TenderApprovalJournalSerializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"], url_path="approval-action")
+    def approval_action(self, request, pk=None):
+        tender = self.get_object()
+        action_type = (request.data.get("action") or "").strip().lower()
+        comment = (request.data.get("comment") or "").strip()
+        if action_type not in {"approved", "rejected"}:
+            return Response(
+                {"detail": "action має бути approved або rejected."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if action_type == "rejected" and not comment:
+            return Response(
+                {"detail": "Коментар обов'язковий при скасуванні."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        TenderApprovalJournal.objects.create(
+            sales_tender=tender,
+            stage=tender.stage or "",
+            action=action_type,
+            comment=comment,
+            actor=request.user,
+        )
+
+        if action_type == "rejected":
+            if tender.stage == SalesTender.Stage.APPROVAL:
+                tender.stage = SalesTender.Stage.DECISION
+            else:
+                tender.stage = SalesTender.Stage.PREPARATION
+            tender.save(update_fields=["stage"])
+        else:
+            if tender.stage == SalesTender.Stage.PREPARATION:
+                tender.stage = SalesTender.Stage.ACCEPTANCE
+                tender.save(update_fields=["stage"])
+            elif tender.stage == SalesTender.Stage.APPROVAL:
+                tender.stage = SalesTender.Stage.COMPLETED
+                tender.save(update_fields=["stage"])
+
+        return Response({"id": tender.id, "stage": tender.stage})
+
+    @action(detail=True, methods=["get"], url_path="approval-journal")
+    def approval_journal(self, request, pk=None):
+        tender = self.get_object()
+        qs = TenderApprovalJournal.objects.filter(
+            procurement_tender=tender
+        ).select_related("actor")
+        serializer = TenderApprovalJournalSerializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"], url_path="approval-action")
+    def approval_action(self, request, pk=None):
+        tender = self.get_object()
+        action_type = (request.data.get("action") or "").strip().lower()
+        comment = (request.data.get("comment") or "").strip()
+        if action_type not in {"approved", "rejected"}:
+            return Response(
+                {"detail": "action має бути approved або rejected."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if action_type == "rejected" and not comment:
+            return Response(
+                {"detail": "Коментар обов'язковий при скасуванні."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        TenderApprovalJournal.objects.create(
+            procurement_tender=tender,
+            stage=tender.stage or "",
+            action=action_type,
+            comment=comment,
+            actor=request.user,
+        )
+
+        if action_type == "rejected":
+            if tender.stage == ProcurementTender.Stage.APPROVAL:
+                tender.stage = ProcurementTender.Stage.DECISION
+            else:
+                tender.stage = ProcurementTender.Stage.PREPARATION
+            tender.save(update_fields=["stage"])
+        else:
+            if tender.stage == ProcurementTender.Stage.PREPARATION:
+                tender.stage = ProcurementTender.Stage.ACCEPTANCE
+                tender.save(update_fields=["stage"])
+            elif tender.stage == ProcurementTender.Stage.APPROVAL:
+                tender.stage = ProcurementTender.Stage.COMPLETED
+                tender.save(update_fields=["stage"])
+
+        return Response({"id": tender.id, "stage": tender.stage})
 
     @extend_schema(
         request={
@@ -3232,7 +3587,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             OpenApiParameter(name="reception_started", type=OpenApiTypes.BOOL, location=OpenApiParameter.QUERY, description="Available only for tab=active"),
             OpenApiParameter(name="conduct_type", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="rfx | online_auction"),
             OpenApiParameter(name="tender_number", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="Tender number exact match"),
-            OpenApiParameter(name="submitted_only", type=OpenApiTypes.BOOL, location=OpenApiParameter.QUERY, description="Only tenders with submitted proposal by current company"),
+            OpenApiParameter(name="submitted_only", type=OpenApiTypes.BOOL, location=OpenApiParameter.QUERY, description="Only tenders with submitted proposal by current company (for tab=journal: with at least one position proposal)"),
             OpenApiParameter(name="participation_result", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="participation | win"),
         ],
         responses=OpenApiTypes.OBJECT,
@@ -3274,6 +3629,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             supplier_company_id__in=user_company_ids,
         )
         submitted_proposal_subquery = proposal_subquery.filter(submitted_at__isnull=False)
+        position_proposal_subquery = proposal_subquery.filter(position_values__isnull=False)
         won_proposal_subquery = proposal_subquery.filter(won_positions__isnull=False)
 
         qs = (
@@ -3289,25 +3645,35 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             .annotate(
                 current_user_has_proposal=Exists(proposal_subquery),
                 current_user_has_submitted_proposal=Exists(submitted_proposal_subquery),
+                current_user_has_position_proposal=Exists(position_proposal_subquery),
                 current_user_has_win=Exists(won_proposal_subquery),
             )
         )
         qs = _filter_participation_qs_by_tab(qs, tab)
+        participated_filter_field = (
+            "current_user_has_position_proposal"
+            if tab == "journal"
+            else "current_user_has_submitted_proposal"
+        )
         if tab == "active" and reception_started:
             qs = qs.filter(start_at__isnull=False, start_at__lte=timezone.now())
         if conduct_type in ("rfx", "online_auction"):
             qs = qs.filter(conduct_type=conduct_type)
         if submitted_only:
-            qs = qs.filter(current_user_has_submitted_proposal=True)
+            qs = qs.filter(**{participated_filter_field: True})
         if participation_result == "win":
             qs = qs.filter(
-                current_user_has_submitted_proposal=True,
-                current_user_has_win=True,
+                **{
+                    participated_filter_field: True,
+                    "current_user_has_win": True,
+                }
             )
         elif participation_result == "participation":
             qs = qs.filter(
-                current_user_has_submitted_proposal=True,
-                current_user_has_win=False,
+                **{
+                    participated_filter_field: True,
+                    "current_user_has_win": False,
+                }
             )
         if company_id:
             qs = qs.filter(company_id=company_id)
