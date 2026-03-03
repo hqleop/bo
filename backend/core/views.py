@@ -192,6 +192,77 @@ def _parse_int_list_param(raw_values):
     return list(dict.fromkeys(out))
 
 
+def _create_tender_approval_journal_entry(
+    *,
+    action: str,
+    actor,
+    stage: str = "",
+    comment: str = "",
+    procurement_tender=None,
+    sales_tender=None,
+):
+    if procurement_tender is None and sales_tender is None:
+        return
+    TenderApprovalJournal.objects.create(
+        procurement_tender=procurement_tender,
+        sales_tender=sales_tender,
+        stage=stage or "",
+        action=action,
+        comment=comment or "",
+        actor=actor,
+    )
+
+
+def _log_tender_update_journal(
+    *,
+    before_stage: str,
+    tender,
+    request_data,
+    actor,
+    is_sales: bool,
+):
+    after_stage = tender.stage or ""
+    request_keys = set(getattr(request_data, "keys", lambda: [])())
+    target = {"sales_tender": tender} if is_sales else {"procurement_tender": tender}
+
+    if before_stage == "passport" and after_stage == "preparation":
+        _create_tender_approval_journal_entry(
+            action=TenderApprovalJournal.Action.SAVED,
+            actor=actor,
+            stage=after_stage,
+            comment="Збереження паспорта тендера",
+            **target,
+        )
+        return
+
+    if before_stage == "preparation" and after_stage == "acceptance":
+        _create_tender_approval_journal_entry(
+            action=TenderApprovalJournal.Action.PUBLISHED,
+            actor=actor,
+            stage=after_stage,
+            comment="Погодження та публікація тендера",
+            **target,
+        )
+        return
+
+    if (
+        before_stage == "preparation"
+        and after_stage == "preparation"
+        and (
+            "positions" in request_keys
+            or "criterion_ids" in request_keys
+            or "attribute_ids" in request_keys
+        )
+    ):
+        _create_tender_approval_journal_entry(
+            action=TenderApprovalJournal.Action.SAVED,
+            actor=actor,
+            stage=after_stage,
+            comment="Збереження підготовки процедури",
+            **target,
+        )
+
+
 def _expand_cpv_ids_with_descendants(cpv_ids):
     if not cpv_ids:
         return []
@@ -2758,6 +2829,17 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
+    def perform_update(self, serializer):
+        before_stage = getattr(serializer.instance, "stage", "") or ""
+        serializer.save()
+        _log_tender_update_journal(
+            before_stage=before_stage,
+            tender=serializer.instance,
+            request_data=self.request.data,
+            actor=self.request.user,
+            is_sales=False,
+        )
+
     def get_object(self):
         """Дозволити доступ до тендера організатора або до тендера, де компанія користувача має пропозицію (учасник)."""
         queryset = self.filter_queryset(self.get_queryset())
@@ -3118,55 +3200,6 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
     def approval_journal(self, request, pk=None):
         tender = self.get_object()
         qs = TenderApprovalJournal.objects.filter(
-            sales_tender=tender
-        ).select_related("actor")
-        serializer = TenderApprovalJournalSerializer(qs, many=True)
-        return Response(serializer.data)
-
-    @action(detail=True, methods=["post"], url_path="approval-action")
-    def approval_action(self, request, pk=None):
-        tender = self.get_object()
-        action_type = (request.data.get("action") or "").strip().lower()
-        comment = (request.data.get("comment") or "").strip()
-        if action_type not in {"approved", "rejected"}:
-            return Response(
-                {"detail": "action має бути approved або rejected."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if action_type == "rejected" and not comment:
-            return Response(
-                {"detail": "Коментар обов'язковий при скасуванні."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        TenderApprovalJournal.objects.create(
-            sales_tender=tender,
-            stage=tender.stage or "",
-            action=action_type,
-            comment=comment,
-            actor=request.user,
-        )
-
-        if action_type == "rejected":
-            if tender.stage == SalesTender.Stage.APPROVAL:
-                tender.stage = SalesTender.Stage.DECISION
-            else:
-                tender.stage = SalesTender.Stage.PREPARATION
-            tender.save(update_fields=["stage"])
-        else:
-            if tender.stage == SalesTender.Stage.PREPARATION:
-                tender.stage = SalesTender.Stage.ACCEPTANCE
-                tender.save(update_fields=["stage"])
-            elif tender.stage == SalesTender.Stage.APPROVAL:
-                tender.stage = SalesTender.Stage.COMPLETED
-                tender.save(update_fields=["stage"])
-
-        return Response({"id": tender.id, "stage": tender.stage})
-
-    @action(detail=True, methods=["get"], url_path="approval-journal")
-    def approval_journal(self, request, pk=None):
-        tender = self.get_object()
-        qs = TenderApprovalJournal.objects.filter(
             procurement_tender=tender
         ).select_related("actor")
         serializer = TenderApprovalJournalSerializer(qs, many=True)
@@ -3188,7 +3221,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        TenderApprovalJournal.objects.create(
+        _create_tender_approval_journal_entry(
             procurement_tender=tender,
             stage=tender.stage or "",
             action=action_type,
@@ -3254,11 +3287,25 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                         pos.save()
             tender.stage = "approval"
             tender.save(update_fields=["stage"])
+            _create_tender_approval_journal_entry(
+                procurement_tender=tender,
+                stage=tender.stage or "",
+                action=TenderApprovalJournal.Action.SAVED,
+                comment="Передано на затвердження",
+                actor=request.user,
+            )
             return Response({"stage": "approval", "id": tender.id})
         if mode == "cancel":
             ProcurementTenderPosition.objects.filter(tender=tender).update(winner_proposal=None)
             tender.stage = "approval"
             tender.save(update_fields=["stage"])
+            _create_tender_approval_journal_entry(
+                procurement_tender=tender,
+                stage=tender.stage or "",
+                action=TenderApprovalJournal.Action.SAVED,
+                comment="Передано на затвердження",
+                actor=request.user,
+            )
             return Response({"stage": "approval", "id": tender.id})
         # next_round
         parent = tender
@@ -3578,6 +3625,17 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
+    def perform_update(self, serializer):
+        before_stage = getattr(serializer.instance, "stage", "") or ""
+        serializer.save()
+        _log_tender_update_journal(
+            before_stage=before_stage,
+            tender=serializer.instance,
+            request_data=self.request.data,
+            actor=self.request.user,
+            is_sales=True,
+        )
+
     @extend_schema(
         parameters=[
             OpenApiParameter(name="tab", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="active | processing | completed | journal"),
@@ -3889,6 +3947,55 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
         collected.sort(key=lambda t: t.tour_number)
         return Response([{"id": t.id, "tour_number": t.tour_number} for t in collected])
 
+    @action(detail=True, methods=["get"], url_path="approval-journal")
+    def approval_journal(self, request, pk=None):
+        tender = self.get_object()
+        qs = TenderApprovalJournal.objects.filter(
+            sales_tender=tender
+        ).select_related("actor")
+        serializer = TenderApprovalJournalSerializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"], url_path="approval-action")
+    def approval_action(self, request, pk=None):
+        tender = self.get_object()
+        action_type = (request.data.get("action") or "").strip().lower()
+        comment = (request.data.get("comment") or "").strip()
+        if action_type not in {"approved", "rejected"}:
+            return Response(
+                {"detail": "action має бути approved або rejected."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if action_type == "rejected" and not comment:
+            return Response(
+                {"detail": "Коментар обов'язковий при скасуванні."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        _create_tender_approval_journal_entry(
+            sales_tender=tender,
+            stage=tender.stage or "",
+            action=action_type,
+            comment=comment,
+            actor=request.user,
+        )
+
+        if action_type == "rejected":
+            if tender.stage == SalesTender.Stage.APPROVAL:
+                tender.stage = SalesTender.Stage.DECISION
+            else:
+                tender.stage = SalesTender.Stage.PREPARATION
+            tender.save(update_fields=["stage"])
+        else:
+            if tender.stage == SalesTender.Stage.PREPARATION:
+                tender.stage = SalesTender.Stage.ACCEPTANCE
+                tender.save(update_fields=["stage"])
+            elif tender.stage == SalesTender.Stage.APPROVAL:
+                tender.stage = SalesTender.Stage.COMPLETED
+                tender.save(update_fields=["stage"])
+
+        return Response({"id": tender.id, "stage": tender.stage})
+
     @extend_schema(
         request={
             "application/json": {
@@ -3930,11 +4037,25 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                         pos.save()
             tender.stage = "approval"
             tender.save(update_fields=["stage"])
+            _create_tender_approval_journal_entry(
+                sales_tender=tender,
+                stage=tender.stage or "",
+                action=TenderApprovalJournal.Action.SAVED,
+                comment="Передано на затвердження",
+                actor=request.user,
+            )
             return Response({"stage": "approval", "id": tender.id})
         if mode == "cancel":
             SalesTenderPosition.objects.filter(tender=tender).update(winner_proposal=None)
             tender.stage = "approval"
             tender.save(update_fields=["stage"])
+            _create_tender_approval_journal_entry(
+                sales_tender=tender,
+                stage=tender.stage or "",
+                action=TenderApprovalJournal.Action.SAVED,
+                comment="Передано на затвердження",
+                actor=request.user,
+            )
             return Response({"stage": "approval", "id": tender.id})
         # next_round
         parent = tender

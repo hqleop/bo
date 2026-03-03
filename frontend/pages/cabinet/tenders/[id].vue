@@ -1466,7 +1466,9 @@
           v-if="displayStage === 'passport' && form.approval_model_id"
           class="mt-auto"
         >
-          <template #header><h4 class="text-sm font-semibold">Погоджувачі</h4></template>
+          <template #header
+            ><h4 class="text-sm font-semibold">Погоджувачі</h4></template
+          >
           <ul class="space-y-2 text-xs">
             <li
               v-for="step in selectedApprovalModelSteps"
@@ -1474,8 +1476,12 @@
               class="border-l-2 pl-2"
             >
               <div class="font-medium">{{ step.role_name || "Роль" }}</div>
-              <div class="text-gray-500">Підготовка: {{ ruleLabel(step.preparation_rule) }}</div>
-              <div class="text-gray-500">Затвердження: {{ ruleLabel(step.approval_rule) }}</div>
+              <div class="text-gray-500">
+                Підготовка: {{ ruleLabel(step.preparation_rule) }}
+              </div>
+              <div class="text-gray-500">
+                Затвердження: {{ ruleLabel(step.approval_rule) }}
+              </div>
             </li>
           </ul>
         </UCard>
@@ -1486,7 +1492,11 @@
       <template #content>
         <UCard>
           <template #header><h3>Журнал погодження</h3></template>
-          <UTable :data="approvalJournalRows" :columns="approvalJournalColumns" class="w-full" />
+          <UTable
+            :data="approvalJournalRows"
+            :columns="approvalJournalColumns"
+            class="w-full"
+          />
         </UCard>
       </template>
     </UModal>
@@ -1495,15 +1505,34 @@
       <template #content>
         <UCard>
           <template #header>
-            <h3>{{ pendingApprovalAction === "approved" ? "Погодити тендер" : "Скасувати тендер" }}</h3>
+            <h3>
+              {{
+                pendingApprovalAction === "approved"
+                  ? "Погодити тендер"
+                  : "Скасувати тендер"
+              }}
+            </h3>
           </template>
           <div class="space-y-4">
-            <UFormField :label="pendingApprovalAction === 'approved' ? 'Коментар (необовʼязково)' : 'Коментар (обовʼязково)'">
+            <UFormField
+              :label="
+                pendingApprovalAction === 'approved'
+                  ? 'Коментар (необовʼязково)'
+                  : 'Коментар (обовʼязково)'
+              "
+            >
               <UTextarea v-model="approvalActionComment" :rows="4" />
             </UFormField>
             <div class="flex justify-end gap-2">
-              <UButton variant="outline" @click="showApprovalActionModal = false">Скасувати</UButton>
-              <UButton :loading="approvalActionSaving" @click="submitApprovalAction">
+              <UButton
+                variant="outline"
+                @click="showApprovalActionModal = false"
+                >Скасувати</UButton
+              >
+              <UButton
+                :loading="approvalActionSaving"
+                @click="submitApprovalAction"
+              >
                 Підтвердити
               </UButton>
             </div>
@@ -2297,12 +2326,15 @@
               <UFormField label="Варіанти числових значень">
                 <div class="space-y-2">
                   <div
-                    v-for="(_val, idx) in createAttributeForm.options.numeric_choices"
+                    v-for="(_val, idx) in createAttributeForm.options
+                      .numeric_choices"
                     :key="idx"
                     class="flex gap-2 items-center"
                   >
                     <UInput
-                      v-model.number="createAttributeForm.options.numeric_choices[idx]"
+                      v-model.number="
+                        createAttributeForm.options.numeric_choices[idx]
+                      "
                       type="number"
                       class="flex-1"
                       :disabled="createAttributeSaving"
@@ -2314,7 +2346,12 @@
                       color="red"
                       aria-label="Видалити"
                       :disabled="createAttributeSaving"
-                      @click="createAttributeForm.options.numeric_choices.splice(idx, 1)"
+                      @click="
+                        createAttributeForm.options.numeric_choices.splice(
+                          idx,
+                          1,
+                        )
+                      "
                     />
                   </div>
                   <UButton
@@ -2322,7 +2359,9 @@
                     variant="outline"
                     icon="i-heroicons-plus"
                     :disabled="createAttributeSaving"
-                    @click="createAttributeForm.options.numeric_choices.push(null)"
+                    @click="
+                      createAttributeForm.options.numeric_choices.push(null)
+                    "
                   >
                     Додати значення
                   </UButton>
@@ -2333,7 +2372,8 @@
               <UFormField label="Варіанти текстових значень">
                 <div class="space-y-2">
                   <div
-                    v-for="(_val, idx) in createAttributeForm.options.text_choices"
+                    v-for="(_val, idx) in createAttributeForm.options
+                      .text_choices"
                     :key="idx"
                     class="flex gap-2 items-center"
                   >
@@ -2350,7 +2390,9 @@
                       color="red"
                       aria-label="Видалити"
                       :disabled="createAttributeSaving"
-                      @click="createAttributeForm.options.text_choices.splice(idx, 1)"
+                      @click="
+                        createAttributeForm.options.text_choices.splice(idx, 1)
+                      "
                     />
                   </div>
                   <UButton
@@ -2462,7 +2504,7 @@ const isParticipant = computed(
 const tender = ref<any | null>(null);
 const loading = ref(true);
 const saving = ref(false);
-const ACCEPTANCE_REFRESH_MS = 30000;
+const ACCEPTANCE_REFRESH_MS = 300000;
 let acceptanceRefreshInterval: ReturnType<typeof setInterval> | null = null;
 const tourOptions = ref<{ value: number; label: string }[]>([]);
 const prepTab = ref<"positions" | "criteria">("positions");
@@ -4255,7 +4297,9 @@ async function addSelectedAttributeFromPicker() {
 async function removeAttributeFromTender(attributeId: number) {
   const normalizedId = toValidAttributeId(attributeId);
   if (normalizedId == null || isViewingPreviousTour.value) return;
-  const nextIds = currentTenderAttributeIds().filter((id) => id !== normalizedId);
+  const nextIds = currentTenderAttributeIds().filter(
+    (id) => id !== normalizedId,
+  );
   const ok = await patchTender({ attribute_ids: nextIds });
   if (!ok) {
     useToast().add({
@@ -4364,9 +4408,37 @@ function flattenTree(
   return out;
 }
 
+function findCategoryById(tree: any[], id: number): any | null {
+  for (const node of tree || []) {
+    if (Number(node?.id) === Number(id)) return node;
+    if (node?.children?.length) {
+      const found = findCategoryById(node.children, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function applyCategoryCpvs(categoryId: number | null) {
+  if (categoryId == null) return;
+  const category = findCategoryById(categoryTree.value, categoryId);
+  const cpvs = Array.isArray(category?.cpvs) ? category.cpvs : [];
+  form.cpv_ids = cpvs
+    .map((c: any) => Number(c?.id))
+    .filter((id: number) => Number.isFinite(id));
+  tenderCpvLabels.value = cpvs
+    .map(
+      (c: any) =>
+        c?.label || `${c?.cpv_code || ""} - ${c?.name_ua || ""}`.trim(),
+    )
+    .filter((label: string) => !!label);
+}
+
 function toggleCategory(id: number) {
   form.category = form.category === id ? null : id;
   if (form.category) {
+    applyCategoryCpvs(form.category);
+  } else {
     form.cpv_ids = [];
     tenderCpvLabels.value = [];
   }
@@ -4669,7 +4741,10 @@ async function loadAvailableApprovalModels() {
 }
 
 async function openApprovalJournalModal() {
-  const { data } = await tendersUC.getTenderApprovalJournal(tenderId.value, isSales);
+  const { data } = await tendersUC.getTenderApprovalJournal(
+    tenderId.value,
+    isSales,
+  );
   approvalJournalRows.value = Array.isArray(data) ? data : [];
   showApprovalJournalModal.value = true;
 }
@@ -4681,7 +4756,10 @@ function openApprovalActionModal(action: "approved" | "rejected") {
 }
 
 async function submitApprovalAction() {
-  if (pendingApprovalAction.value === "rejected" && !approvalActionComment.value.trim()) {
+  if (
+    pendingApprovalAction.value === "rejected" &&
+    !approvalActionComment.value.trim()
+  ) {
     useToast().add({
       title: "Коментар обов'язковий",
       color: "error",

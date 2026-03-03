@@ -1524,6 +1524,8 @@ class TenderApprovalJournal(models.Model):
     """Approval journal entries for procurement and sales tenders."""
 
     class Action(models.TextChoices):
+        SAVED = "saved", "Збережено"
+        PUBLISHED = "published", "Опубліковано"
         APPROVED = "approved", "Погоджено"
         REJECTED = "rejected", "Скасовано"
 

@@ -2,13 +2,46 @@
   <div class="h-full min-h-0 flex flex-col gap-4">
     <div class="flex items-center justify-between">
       <h2 class="text-2xl font-bold">Довідник моделей</h2>
-      <UButton icon="i-heroicons-plus" @click="openCreateModal">Додати модель</UButton>
+      <div class="flex items-center gap-2">
+        <UButton
+          icon="i-heroicons-trash"
+          color="error"
+          variant="outline"
+          :disabled="selectedModelIds.length === 0"
+          @click="deleteSelectedModels"
+        >
+          Видалити модель
+        </UButton>
+        <UButton icon="i-heroicons-plus" @click="openCreateModal">Додати модель</UButton>
+      </div>
     </div>
 
     <div class="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-4 min-h-0 flex-1">
       <UCard class="min-h-0">
         <div class="max-h-[70vh] overflow-auto">
-          <UTable :data="filteredModels" :columns="columns" class="w-full" />
+          <UTable :data="filteredModels" :columns="columns" class="w-full">
+            <template #select-header>
+              <UCheckbox
+                :model-value="isAllFilteredSelected"
+                :indeterminate="isSomeFilteredSelected && !isAllFilteredSelected"
+                aria-label="Обрати всі моделі"
+                @update:model-value="toggleSelectAllFiltered"
+              />
+            </template>
+            <template #select-cell="{ row }">
+              <UCheckbox
+                :model-value="selectedModelIds.includes(Number(row.original.id))"
+                aria-label="Обрати модель"
+                @update:model-value="toggleSelectModel(Number(row.original.id))"
+                @click.stop
+              />
+            </template>
+            <template #name-cell="{ row }">
+              <button class="text-left hover:underline" @click="openEditModal(row.original)">
+                {{ row.original.name }}
+              </button>
+            </template>
+          </UTable>
         </div>
       </UCard>
 
@@ -151,6 +184,8 @@ const list = ref<any[]>([]);
 const categories = ref<any[]>([]);
 const ranges = ref<any[]>([]);
 const roles = ref<any[]>([]);
+const selectedModelIds = ref<number[]>([]);
+const editingModelId = ref<number | null>(null);
 
 const showModal = ref(false);
 const saving = ref(false);
@@ -161,6 +196,7 @@ const form = reactive({
   range_ids: [] as number[],
   steps: [] as Array<{
     role: number | null;
+    order?: number;
     preparation_rule: "one_of" | "all";
     approval_rule: "one_of" | "all";
   }>,
@@ -173,6 +209,7 @@ const filters = reactive({
 });
 
 const columns = [
+  { id: "select", header: "" },
   { accessorKey: "name", header: "Назва" },
   { accessorKey: "application_label", header: "Застосування" },
   { accessorKey: "is_active", header: "Активна" },
@@ -212,6 +249,15 @@ const filteredModels = computed(() => {
     return true;
   });
 });
+const filteredModelIds = computed(() =>
+  filteredModels.value.map((m: any) => Number(m.id)).filter((id: number) => Number.isFinite(id))
+);
+const isAllFilteredSelected = computed(() =>
+  filteredModelIds.value.length > 0 && filteredModelIds.value.every((id) => selectedModelIds.value.includes(id))
+);
+const isSomeFilteredSelected = computed(() =>
+  filteredModelIds.value.some((id) => selectedModelIds.value.includes(id))
+);
 
 async function ensureCompanyId() {
   if (!me.value?.memberships?.length) await refreshMe();
@@ -223,12 +269,50 @@ function addStepRow() {
 }
 
 function openCreateModal() {
+  editingModelId.value = null;
   form.name = "";
   form.application = "procurement";
   form.category_ids = [];
   form.range_ids = [];
   form.steps = [];
   showModal.value = true;
+}
+
+function openEditModal(model: any) {
+  editingModelId.value = Number(model.id);
+  form.name = model?.name || "";
+  form.application = model?.application === "sales" ? "sales" : "procurement";
+  form.category_ids = Array.isArray(model?.categories)
+    ? model.categories.map((id: any) => Number(id)).filter((id: number) => Number.isFinite(id))
+    : [];
+  form.range_ids = Array.isArray(model?.ranges)
+    ? model.ranges.map((id: any) => Number(id)).filter((id: number) => Number.isFinite(id))
+    : [];
+  form.steps = Array.isArray(model?.steps)
+    ? model.steps.map((s: any, idx: number) => ({
+        role: s?.role ? Number(s.role) : null,
+        order: Number(s?.order) || idx + 1,
+        preparation_rule: s?.preparation_rule === "all" ? "all" : "one_of",
+        approval_rule: s?.approval_rule === "all" ? "all" : "one_of",
+      }))
+    : [];
+  showModal.value = true;
+}
+
+function toggleSelectModel(id: number) {
+  if (selectedModelIds.value.includes(id)) {
+    selectedModelIds.value = selectedModelIds.value.filter((x) => x !== id);
+    return;
+  }
+  selectedModelIds.value = [...selectedModelIds.value, id];
+}
+
+function toggleSelectAllFiltered() {
+  if (isAllFilteredSelected.value) {
+    selectedModelIds.value = selectedModelIds.value.filter((id) => !filteredModelIds.value.includes(id));
+    return;
+  }
+  selectedModelIds.value = Array.from(new Set([...selectedModelIds.value, ...filteredModelIds.value]));
 }
 
 async function loadData() {
@@ -266,13 +350,29 @@ async function saveModel() {
           approval_rule: s.approval_rule,
         })),
     };
-    const { error } = await approvalUC.createApprovalModel(payload);
+    const { error } = editingModelId.value
+      ? await approvalUC.patchApprovalModel(editingModelId.value, payload)
+      : await approvalUC.createApprovalModel(payload);
     if (error) return;
+    selectedModelIds.value = [];
+    editingModelId.value = null;
     showModal.value = false;
     await loadData();
   } finally {
     saving.value = false;
   }
+}
+
+async function deleteSelectedModels() {
+  if (!selectedModelIds.value.length) return;
+  if (!confirm(`Видалити обрані моделі (${selectedModelIds.value.length})?`)) return;
+  const ids = [...selectedModelIds.value];
+  for (const id of ids) {
+    const { error } = await approvalUC.deleteApprovalModel(id);
+    if (error) return;
+  }
+  selectedModelIds.value = [];
+  await loadData();
 }
 
 onMounted(loadData);

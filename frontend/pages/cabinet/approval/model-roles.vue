@@ -1,14 +1,16 @@
 <template>
   <div class="h-full min-h-0 flex flex-col gap-4">
-    <div class="flex items-center justify-between">
+    <div class="flex items-center">
       <h2 class="text-2xl font-bold">Ролі для моделей</h2>
-      <UButton icon="i-heroicons-plus" @click="openCreateRole">Додати роль</UButton>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-0 flex-1">
       <UCard class="min-h-0 flex flex-col">
         <template #header>
-          <h3 class="font-semibold">Ролі</h3>
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="font-semibold">Ролі</h3>
+            <UButton icon="i-heroicons-plus" size="sm" @click="openCreateRole">Додати роль</UButton>
+          </div>
         </template>
         <div class="space-y-3">
           <UInput v-model="roleSearch" placeholder="Пошук ролі" />

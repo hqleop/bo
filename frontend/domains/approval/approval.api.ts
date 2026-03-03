@@ -94,3 +94,7 @@ export async function patchApprovalModel(
 ) {
   return request<any>(`/approval-models/${id}/`, { method: "PATCH", body });
 }
+
+export async function deleteApprovalModel(request: RequestFn, id: number) {
+  return request(`/approval-models/${id}/`, { method: "DELETE" });
+}

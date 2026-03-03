@@ -1012,9 +1012,27 @@ class ApprovalModelStepSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "created_at", "updated_at", "role_name")
 
 
+class ApprovalModelNestedStepSerializer(serializers.ModelSerializer):
+    role_name = serializers.CharField(source="role.name", read_only=True)
+
+    class Meta:
+        model = ApprovalModelStep
+        fields = (
+            "id",
+            "role",
+            "role_name",
+            "order",
+            "preparation_rule",
+            "approval_rule",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at", "role_name")
+
+
 class ApprovalModelSerializer(serializers.ModelSerializer):
     application_label = serializers.CharField(source="get_application_display", read_only=True)
-    steps = ApprovalModelStepSerializer(many=True, required=False)
+    steps = ApprovalModelNestedStepSerializer(many=True, required=False)
     categories_ids = serializers.PrimaryKeyRelatedField(
         many=True, queryset=Category.objects.all(), required=False, source="categories"
     )

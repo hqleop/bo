@@ -130,7 +130,7 @@
                   >
                     Параметри процедури
                   </p>
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <UFormField label="Тип проведення" required>
                       <USelectMenu
                         v-model="form.conduct_type"
@@ -146,6 +146,15 @@
                         :items="publicationTypeOptions"
                         value-key="value"
                         placeholder="Оберіть тип"
+                        size="sm"
+                      />
+                    </UFormField>
+                    <UFormField label="Модель погодження">
+                      <USelectMenu
+                        v-model="form.approval_model_id"
+                        :items="approvalModelOptions"
+                        value-key="value"
+                        placeholder="Оберіть модель"
                         size="sm"
                       />
                     </UFormField>
@@ -277,6 +286,7 @@ const form = reactive({
   publication_type: "open",
   currency: undefined as number | undefined,
   general_terms: "",
+  approval_model_id: null as number | null,
 });
 
 const selectedCategoryIds = computed(() =>
@@ -340,6 +350,13 @@ const expenseOptions = ref<{ value: number; label: string }[]>([]);
 const branchOptions = ref<{ value: number; label: string }[]>([]);
 const departmentOptions = ref<{ value: number; label: string }[]>([]);
 const currencyOptions = ref<{ value: number; label: string }[]>([]);
+const availableApprovalModels = ref<any[]>([]);
+const approvalModelOptions = computed(() =>
+  availableApprovalModels.value.map((m: any) => ({
+    value: Number(m.id),
+    label: m.name || `#${m.id}`,
+  })),
+);
 
 // Ініціалізація типу проведення за режимом
 if (isRegistrationMode.value) {
@@ -364,9 +381,37 @@ function flattenTree(
   return out;
 }
 
+function findCategoryById(items: any[], id: number): any | null {
+  for (const item of items || []) {
+    if (Number(item?.id) === Number(id)) return item;
+    if (item?.children?.length) {
+      const found = findCategoryById(item.children, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function applyCategoryCpvs(categoryId: number | undefined) {
+  if (!categoryId) return;
+  const category = findCategoryById(categoryTree.value, categoryId);
+  const cpvs = Array.isArray(category?.cpvs) ? category.cpvs : [];
+  form.cpv_ids = cpvs
+    .map((c: any) => Number(c?.id))
+    .filter((id: number) => Number.isFinite(id));
+  createCpvLabels.value = cpvs
+    .map(
+      (c: any) =>
+        c?.label || `${c?.cpv_code || ""} - ${c?.name_ua || ""}`.trim(),
+    )
+    .filter((label: string) => !!label);
+}
+
 function toggleCategory(id: number) {
   form.category = form.category === id ? undefined : id;
   if (form.category) {
+    applyCategoryCpvs(form.category);
+  } else {
     form.cpv_ids = [];
     createCpvLabels.value = [];
   }
@@ -391,6 +436,30 @@ async function loadOptions() {
   if (!form.currency && currencyOptions.value.length) {
     const firstCurrency = currencyOptions.value[0];
     if (firstCurrency) form.currency = firstCurrency.value;
+  }
+}
+
+async function loadAvailableApprovalModels() {
+  const companyId = Number((me.value as any)?.memberships?.[0]?.company?.id || 0);
+  if (!companyId) {
+    availableApprovalModels.value = [];
+    return;
+  }
+  const { data } = await tendersUC.getAvailableApprovalModels({
+    companyId,
+    application: isSales.value ? "sales" : "procurement",
+    categoryId: form.category ?? null,
+    estimatedBudget:
+      form.estimated_budget != null ? Number(form.estimated_budget) : null,
+  });
+  availableApprovalModels.value = Array.isArray(data) ? data : [];
+  if (
+    form.approval_model_id != null &&
+    !availableApprovalModels.value.some(
+      (m: any) => Number(m.id) === Number(form.approval_model_id),
+    )
+  ) {
+    form.approval_model_id = null;
   }
 }
 
@@ -450,6 +519,7 @@ async function saveTender() {
         publication_type: form.publication_type,
         currency: form.currency,
         general_terms: form.general_terms,
+        approval_model_id: form.approval_model_id,
       },
     );
 
@@ -476,7 +546,15 @@ function goBack() {
 
 onMounted(async () => {
   await loadOptions();
+  await loadAvailableApprovalModels();
 });
+
+watch(
+  () => [form.category, form.estimated_budget, isSales.value, (me.value as any)?.memberships?.[0]?.company?.id],
+  async () => {
+    await loadAvailableApprovalModels();
+  },
+);
 </script>
 
 <style scoped>

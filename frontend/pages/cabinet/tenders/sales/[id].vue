@@ -4322,9 +4322,37 @@ function flattenTree(
   return out;
 }
 
+function findCategoryById(tree: any[], id: number): any | null {
+  for (const node of tree || []) {
+    if (Number(node?.id) === Number(id)) return node;
+    if (node?.children?.length) {
+      const found = findCategoryById(node.children, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function applyCategoryCpvs(categoryId: number | null) {
+  if (categoryId == null) return;
+  const category = findCategoryById(categoryTree.value, categoryId);
+  const cpvs = Array.isArray(category?.cpvs) ? category.cpvs : [];
+  form.cpv_ids = cpvs
+    .map((c: any) => Number(c?.id))
+    .filter((id: number) => Number.isFinite(id));
+  tenderCpvLabels.value = cpvs
+    .map(
+      (c: any) =>
+        c?.label || `${c?.cpv_code || ""} - ${c?.name_ua || ""}`.trim(),
+    )
+    .filter((label: string) => !!label);
+}
+
 function toggleCategory(id: number) {
   form.category = form.category === id ? null : id;
   if (form.category) {
+    applyCategoryCpvs(form.category);
+  } else {
     form.cpv_ids = [];
     tenderCpvLabels.value = [];
   }

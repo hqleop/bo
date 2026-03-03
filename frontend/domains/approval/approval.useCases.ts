@@ -62,6 +62,10 @@ export function useApprovalUseCases() {
     return approvalApi.patchApprovalModel(fetch, id, body);
   }
 
+  async function deleteApprovalModel(id: number) {
+    return approvalApi.deleteApprovalModel(fetch, id);
+  }
+
   return {
     getModelRoles,
     createModelRole,
@@ -73,5 +77,6 @@ export function useApprovalUseCases() {
     getApprovalModels,
     createApprovalModel,
     patchApprovalModel,
+    deleteApprovalModel,
   };
 }
