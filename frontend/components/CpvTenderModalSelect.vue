@@ -6,6 +6,7 @@
         block
         variant="outline"
         :disabled="disabled"
+        class="w-full justify-between border-gray-200 text-left text-gray-700 hover:border-gray-300"
         @click="openModal"
       >
         {{ buttonText }}
@@ -42,7 +43,7 @@
           />
 
           <div
-            class="border rounded-md p-2 h-[34vh] sm:h-[38vh] overflow-y-auto overflow-x-auto"
+            class="border border-gray-200 rounded-md p-2 h-[34vh] sm:h-[38vh] overflow-y-auto overflow-x-auto"
           >
             <div
               v-if="searchMode ? loadingSearch : loadingRoot"
@@ -90,7 +91,7 @@
             </div>
           </div>
 
-          <div class="border rounded-md p-3 space-y-2">
+          <div class="border border-gray-200 rounded-md p-3 space-y-2">
             <div class="text-sm font-medium">Обрані категорії</div>
 
             <div

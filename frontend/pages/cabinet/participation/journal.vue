@@ -3,7 +3,7 @@
     <h2 class="text-2xl font-bold mb-4">Журнал участей</h2>
 
     <div class="flex-1 min-h-0 overflow-hidden flex gap-4 max-lg:flex-col">
-      <div class="flex-1 min-h-0 overflow-hidden rounded-lg bg-white flex flex-col">
+      <div class="flex-1 min-h-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm flex flex-col">
         <div class="flex-1 min-h-0 overflow-auto p-3">
           <UTable
             v-if="pagedData.length > 0"
@@ -76,7 +76,7 @@
       </div>
 
       <aside
-        class="w-[15vw] min-w-[240px] max-w-[360px] shrink-0 rounded-lg bg-white p-4 flex flex-col gap-4 overflow-hidden max-lg:w-full max-lg:min-w-0 max-lg:max-w-none"
+        class="w-[18rem] min-w-[240px] max-w-[380px] shrink-0 rounded-xl border border-gray-200 bg-white shadow-sm p-4 flex flex-col gap-4 overflow-hidden max-lg:w-full max-lg:min-w-0 max-lg:max-w-none"
       >
         <div class="w-full">
           <UButton

@@ -5,7 +5,7 @@
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-0 flex-1">
-      <UCard class="min-h-0 flex flex-col">
+      <UCard class="min-h-0 flex flex-col border border-gray-200 shadow-sm">
         <template #header>
           <div class="flex items-center justify-between gap-3">
             <h3 class="font-semibold">Ролі</h3>
@@ -14,7 +14,7 @@
         </template>
         <div class="space-y-3">
           <UInput v-model="roleSearch" placeholder="Пошук ролі" />
-          <div class="max-h-[55vh] overflow-auto border rounded">
+          <div class="max-h-[55vh] overflow-auto border border-gray-200 rounded-lg">
             <UTable
               :data="filteredRoles"
               :columns="rolesColumns"
@@ -33,7 +33,7 @@
         </div>
       </UCard>
 
-      <UCard class="min-h-0 flex flex-col">
+      <UCard class="min-h-0 flex flex-col border border-gray-200 shadow-sm">
         <template #header>
           <div class="flex items-center justify-between gap-3">
             <h3 class="font-semibold">
@@ -53,7 +53,7 @@
         <div v-if="!selectedRole" class="text-sm text-gray-500">
           Оберіть роль у лівій області.
         </div>
-        <div v-else class="max-h-[55vh] overflow-auto border rounded">
+        <div v-else class="max-h-[55vh] overflow-auto border border-gray-200 rounded-lg">
           <UTable :data="selectedRoleUsers" :columns="usersColumns" class="w-full">
             <template #actions-cell="{ row }">
               <UButton
@@ -82,6 +82,7 @@
                 v-model="createRoleForm.application"
                 :items="applicationOptions"
                 value-key="value"
+                class="w-full"
               />
             </UFormField>
             <div class="flex justify-end gap-2">
@@ -104,6 +105,7 @@
                 :items="memberOptions"
                 value-key="value"
                 placeholder="Оберіть користувача"
+                class="w-full"
               />
             </UFormField>
             <div class="flex justify-end gap-2">

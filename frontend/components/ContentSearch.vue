@@ -7,11 +7,16 @@
       @input="$emit('update:searchTerm', localSearchTerm)"
     />
     <UPopover v-else v-model:open="isOpen">
-      <UButton block variant="outline" :disabled="disabled">
-        <span v-if="selectedLabels.length">
+      <UButton
+        block
+        variant="outline"
+        :disabled="disabled"
+        class="w-full justify-between border-gray-200 text-left text-gray-700 hover:border-gray-300"
+      >
+        <span v-if="selectedLabels.length" class="truncate">
           {{ selectedLabels.join(", ") }}
         </span>
-        <span v-else>{{ placeholder }}</span>
+        <span v-else class="text-gray-500 truncate">{{ placeholder }}</span>
       </UButton>
       <template #content>
         <div class="p-2 w-80 max-h-80 overflow-y-auto space-y-2">

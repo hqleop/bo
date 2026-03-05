@@ -896,15 +896,14 @@
                                 ] = $event
                               "
                             />
-                            <UInput
+                            <DateValuePicker
                               v-else-if="attribute.type === 'date'"
-                              type="date"
-                              size="sm"
                               :model-value="
                                 ensurePositionAttributeValues(row.original)[
                                   String(attribute.id)
                                 ] ?? ''
                               "
+                              size="sm"
                               :disabled="isViewingPreviousTour || isParticipant"
                               @update:model-value="
                                 ensurePositionAttributeValues(row.original)[
@@ -1112,10 +1111,10 @@
             <template #header>
               <h3 class="text-lg font-semibold">Прийом пропозицій</h3>
             </template>
-            <div class="border rounded-lg overflow-hidden">
+                        <div class="border border-gray-200 rounded-lg overflow-hidden">
               <table class="w-full text-sm border-collapse">
                 <thead>
-                  <tr class="border-b bg-gray-50">
+                            <tr class="border-b border-gray-200 bg-gray-50">
                     <th class="text-left p-2 font-medium">Контрагент</th>
                     <th class="text-left p-2 font-medium">
                       Час підтвердження участі
@@ -1130,7 +1129,7 @@
                   <tr
                     v-for="proposal in decisionProposals"
                     :key="proposal.id"
-                    class="border-b hover:bg-gray-50/50"
+                              class="border-b border-gray-200 hover:bg-gray-50/50"
                   >
                     <td class="p-2">
                       {{
@@ -1235,10 +1234,10 @@
                 Перегляньте переможців по позиціях та підтвердьте рішення для
                 завершення тендера.
               </p>
-              <div class="border rounded-lg overflow-hidden">
+              <div class="border border-gray-200 rounded-lg overflow-hidden">
                 <table class="w-full text-sm border-collapse">
                   <thead>
-                    <tr class="border-b bg-gray-50">
+                  <tr class="border-b border-gray-200 bg-gray-50">
                       <th class="text-left p-2 font-medium">Позиція</th>
                       <th class="text-left p-2 font-medium">Кількість</th>
                       <th class="text-left p-2 font-medium">Переможець</th>
@@ -1256,7 +1255,7 @@
                     <tr
                       v-for="pos in displayTenderPositions"
                       :key="pos.id"
-                      class="border-b hover:bg-gray-50/50"
+                    class="border-b border-gray-200 hover:bg-gray-50/50"
                     >
                       <td class="p-2">{{ pos.name }}</td>
                       <td class="p-2">
@@ -1414,7 +1413,7 @@
           <UButton
             class="w-full"
             :disabled="isViewingPreviousTour"
-            @click="showDecisionModal = true"
+            @click="openDecisionModal"
           >
             Зафіксувати рішення
           </UButton>
@@ -1473,7 +1472,7 @@
             <li
               v-for="step in selectedApprovalModelSteps"
               :key="step.id || step.order"
-              class="border-l-2 pl-2"
+              class="border-l-2 border-gray-300 pl-2"
             >
               <div class="font-medium">{{ step.role_name || "Роль" }}</div>
               <div class="text-gray-500">
@@ -1546,12 +1545,49 @@
         <UCard>
           <template #header><h3>Період проведення</h3></template>
           <div class="space-y-4">
-            <UFormField label="Початок">
-              <UInput v-model="timingForm.start_at" type="datetime-local" />
-            </UFormField>
-            <UFormField label="Завершення">
-              <UInput v-model="timingForm.end_at" type="datetime-local" />
-            </UFormField>
+            <p class="text-sm text-gray-600">
+              Вкажіть дати та час початку/завершення прийому пропозицій.
+            </p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <UFormField label="Дата початку" required>
+                <DateValuePicker
+                  :model-value="publishStartDate"
+                  class="w-full"
+                  @update:model-value="publishStartDate = $event || ''"
+                />
+              </UFormField>
+              <UFormField label="Дата завершення" required>
+                <DateValuePicker
+                  :model-value="publishEndDate"
+                  class="w-full"
+                  @update:model-value="publishEndDate = $event || ''"
+                />
+              </UFormField>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <UFormField label="Час початку" required>
+                <UInputMenu
+                  v-model="publishStartTime"
+                  :items="hourlyTimeOptions"
+                  create-item="always"
+                  placeholder="Напр., 09:00"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="Час завершення" required>
+                <UInputMenu
+                  v-model="publishEndTime"
+                  :items="hourlyTimeOptions"
+                  create-item="always"
+                  placeholder="Напр., 18:00"
+                  class="w-full"
+                />
+              </UFormField>
+            </div>
+            <p class="text-xs text-gray-500">
+              Випадалка містить погодинні значення (01:00, 02:00, ...), а
+              хвилини можна ввести вручну.
+            </p>
             <div class="flex gap-2">
               <UButton class="flex-1" @click="publishTender"
                 >Підтвердити</UButton
@@ -1672,19 +1708,46 @@
             пропозицій.
           </p>
           <div class="space-y-4">
-            <UFormField label="Початок прийому пропозицій" required>
-              <UInput
-                v-model="resumeAcceptanceForm.start_at"
-                type="datetime-local"
-                :min="resumeAcceptanceMinStart"
-              />
-            </UFormField>
-            <UFormField label="Завершення прийому пропозицій" required>
-              <UInput
-                v-model="resumeAcceptanceForm.end_at"
-                type="datetime-local"
-              />
-            </UFormField>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <UFormField label="Дата початку" required>
+                <DateValuePicker
+                  :model-value="resumeAcceptanceStartDate"
+                  class="w-full"
+                  @update:model-value="resumeAcceptanceStartDate = $event || ''"
+                />
+              </UFormField>
+              <UFormField label="Дата завершення" required>
+                <DateValuePicker
+                  :model-value="resumeAcceptanceEndDate"
+                  class="w-full"
+                  @update:model-value="resumeAcceptanceEndDate = $event || ''"
+                />
+              </UFormField>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <UFormField label="Час початку" required>
+                <UInputMenu
+                  v-model="resumeAcceptanceStartTime"
+                  :items="hourlyTimeOptions"
+                  create-item="always"
+                  placeholder="Напр., 09:00"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="Час завершення" required>
+                <UInputMenu
+                  v-model="resumeAcceptanceEndTime"
+                  :items="hourlyTimeOptions"
+                  create-item="always"
+                  placeholder="Напр., 18:00"
+                  class="w-full"
+                />
+              </UFormField>
+            </div>
+            <p class="text-xs text-gray-500">
+              Випадалка містить погодинні значення (01:00, 02:00, ...), а
+              хвилини можна ввести вручну.
+            </p>
             <div class="flex gap-2">
               <UButton
                 class="flex-1"
@@ -1745,24 +1808,38 @@
       <template #content>
         <UCard>
           <template #header><h3>Зафіксувати рішення</h3></template>
-          <div class="space-y-2">
-            <UButton class="w-full" @click="fixDecision('winner')">
-              Закрити із переможцями
-            </UButton>
-            <UButton
-              class="w-full"
-              variant="outline"
-              @click="fixDecision('next_round')"
+          <div class="space-y-4">
+            <UFormField label="Варіант рішення" required>
+              <USelectMenu
+                v-model="selectedDecisionMode"
+                :items="decisionModeOptions"
+                value-key="value"
+                placeholder="Оберіть рішення"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField
+              v-if="showDecisionJustificationField"
+              label="Обґрунтування (необов'язково)"
             >
-              Перенести на наступний тур
-            </UButton>
-            <UButton
-              class="w-full"
-              variant="outline"
-              @click="fixDecision('cancel')"
-            >
-              Скасувати
-            </UButton>
+              <UTextarea
+                v-model="decisionJustification"
+                :rows="3"
+                placeholder="За потреби вкажіть обґрунтування"
+              />
+            </UFormField>
+            <div class="flex justify-end gap-2">
+              <UButton variant="outline" @click="closeDecisionModal">
+                Закрити
+              </UButton>
+              <UButton
+                :loading="saving"
+                :disabled="!selectedDecisionMode"
+                @click="confirmDecision"
+              >
+                Передати на затвердження
+              </UButton>
+            </div>
           </div>
         </UCard>
       </template>
@@ -1788,7 +1865,7 @@
               class="w-full text-sm border-collapse"
             >
               <thead>
-                <tr class="border-b bg-gray-100">
+                <tr class="border-b border-gray-200 bg-gray-100">
                   <th
                     class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap"
                   >
@@ -1820,7 +1897,7 @@
                     </th>
                   </template>
                 </tr>
-                <tr class="border-b bg-gray-50">
+                <tr class="border-b border-gray-200 bg-gray-50">
                   <th class="p-2 bg-gray-50"></th>
                   <th class="p-2 bg-gray-50"></th>
                   <template
@@ -1851,7 +1928,7 @@
                 <tr
                   v-for="pos in proposalComparisonPositions"
                   :key="pos.id"
-                  class="border-b hover:bg-gray-50/50"
+                  class="border-b border-gray-200 hover:bg-gray-50/50"
                 >
                   <td class="p-2 bg-white whitespace-nowrap">{{ pos.name }}</td>
                   <td class="p-2 bg-white whitespace-nowrap">
@@ -1933,7 +2010,7 @@
           <div class="overflow-auto min-h-0 flex-1">
             <table class="w-full text-sm border-collapse">
               <thead>
-                <tr class="border-b bg-gray-100">
+                <tr class="border-b border-gray-200 bg-gray-100">
                   <th class="text-left p-2 font-medium">Позиція</th>
                   <th class="text-left p-2 font-medium">Кількість</th>
                   <th class="text-left p-2 font-medium">
@@ -1952,7 +2029,7 @@
                 <tr
                   v-for="pos in displayTenderPositions"
                   :key="pos.id"
-                  class="border-b hover:bg-gray-50/50"
+              class="border-b border-gray-200 hover:bg-gray-50/50"
                 >
                   <td class="p-2">{{ pos.name }}</td>
                   <td class="p-2">
@@ -2504,8 +2581,6 @@ const isParticipant = computed(
 const tender = ref<any | null>(null);
 const loading = ref(true);
 const saving = ref(false);
-const ACCEPTANCE_REFRESH_MS = 300000;
-let acceptanceRefreshInterval: ReturnType<typeof setInterval> | null = null;
 const tourOptions = ref<{ value: number; label: string }[]>([]);
 const prepTab = ref<"positions" | "criteria">("positions");
 const prepTabs = [
@@ -2629,6 +2704,14 @@ const displayTenderPositions = computed(() => {
 const availableNomenclatures = ref<any[]>([]);
 
 const showPublishModal = ref(false);
+const publishStartDate = ref("");
+const publishEndDate = ref("");
+const publishStartTime = ref("");
+const publishEndTime = ref("");
+const hourlyTimeOptions = Array.from({ length: 24 }, (_, hour) => {
+  const hh = String(hour).padStart(2, "0");
+  return `${hh}:00`;
+});
 const showApprovalJournalModal = ref(false);
 const showApprovalActionModal = ref(false);
 const approvalActionSaving = ref(false);
@@ -2636,9 +2719,26 @@ const pendingApprovalAction = ref<"approved" | "rejected">("approved");
 const approvalActionComment = ref("");
 const approvalJournalRows = ref<any[]>([]);
 const showTimingModal = ref(false);
+type DecisionMode = "winner" | "cancel" | "next_round";
+const decisionModeOptions: { value: DecisionMode; label: string }[] = [
+  { value: "winner", label: "Закрити із переможцями" },
+  { value: "next_round", label: "Перенести на наступний тур" },
+  { value: "cancel", label: "Скасувати" },
+];
 const showDecisionModal = ref(false);
+const selectedDecisionMode = ref<DecisionMode | null>(null);
+const decisionJustification = ref("");
+const showDecisionJustificationField = computed(
+  () =>
+    selectedDecisionMode.value === "winner" ||
+    selectedDecisionMode.value === "cancel",
+);
 const showResumeAcceptanceModal = ref(false);
 const resumeAcceptanceForm = reactive({ start_at: "", end_at: "" });
+const resumeAcceptanceStartDate = ref("");
+const resumeAcceptanceEndDate = ref("");
+const resumeAcceptanceStartTime = ref("");
+const resumeAcceptanceEndTime = ref("");
 const resumeAcceptanceSaving = ref(false);
 const showWinnerModal = ref(false);
 const showInvitationPanel = ref(false);
@@ -3057,6 +3157,21 @@ watch(
 );
 
 const decisionProposals = ref<any[]>([]);
+const decisionProposalsFullLoaded = ref(false);
+const decisionProposalsDeltaCursor = ref<string | null>(null);
+const decisionProposalsIdleStreak = ref(0);
+const realtimeTuning = useTenderRealtimeTuning({
+  proposalCount: computed(() => decisionProposals.value.length),
+  idleStreak: decisionProposalsIdleStreak,
+});
+const REALTIME_INCREMENTAL_SYNC_CHUNK_SIZE = realtimeTuning.chunkSize;
+const REALTIME_MAX_INCREMENTAL_SYNC_IDS = realtimeTuning.maxIncrementalIds;
+const REALTIME_DELTA_SYNC_IDS_THRESHOLD = realtimeTuning.deltaSyncIdsThreshold;
+const organizerRealtimeSyncMs = realtimeTuning.organizerSyncMs;
+const organizerBurstRealtimeSyncMs = realtimeTuning.organizerBurstSyncMs;
+const organizerBurstPendingProposalIdsThreshold =
+  realtimeTuning.organizerBurstPendingThreshold;
+const hiddenRealtimeSyncMs = realtimeTuning.hiddenSyncMs;
 const estimatedMarketMethod = ref("arithmetic_mean");
 const estimatedMarketOptions = [
   { value: "arithmetic_mean", label: "Середня арифметична" },
@@ -3091,6 +3206,54 @@ const visibleStageItems = computed(() => {
 const STAGE_ORDER = computed(() => visibleStageItems.value.map((s) => s.value));
 
 const displayStage = ref<string>("passport");
+function applyRealtimeSubmittedAtUpdate(message: {
+  event?: string;
+  payload?: Record<string, unknown>;
+}) {
+  const proposalId = Number(message?.payload?.proposal_id);
+  if (!Number.isInteger(proposalId) || proposalId <= 0) return false;
+  if (!decisionProposals.value.length) return false;
+  const currentIndex = decisionProposals.value.findIndex(
+    (proposal: any) => Number(proposal?.id) === proposalId,
+  );
+  if (currentIndex === -1) return false;
+
+  const submittedAtRaw = message?.payload?.submitted_at;
+  const submittedAt =
+    typeof submittedAtRaw === "string" && submittedAtRaw.length > 0
+      ? submittedAtRaw
+      : null;
+  const currentProposal = decisionProposals.value[currentIndex];
+  if ((currentProposal?.submitted_at ?? null) === submittedAt) return true;
+
+  const next = [...decisionProposals.value];
+  next[currentIndex] = {
+    ...currentProposal,
+    submitted_at: submittedAt,
+  };
+  decisionProposals.value = next;
+  return true;
+}
+const acceptanceRealtime = useTenderProposalsRealtime({
+  tenderId,
+  isSales,
+  tenderStage: computed(() => displayStage.value),
+  isOnlineAuction: computed(() => true),
+  isParticipant,
+  eventNames: ["proposal.submitted_at.updated"],
+  onEvent: (message) => applyRealtimeSubmittedAtUpdate(message),
+  reload: async (changedProposalIds) => {
+    await loadDecisionProposals(true, changedProposalIds);
+  },
+  organizerMinSyncMs: organizerRealtimeSyncMs,
+  organizerBurstMinSyncMs: organizerBurstRealtimeSyncMs,
+  burstPendingProposalIdsThreshold: organizerBurstPendingProposalIdsThreshold,
+  hiddenTabMinSyncMs: hiddenRealtimeSyncMs,
+  maxProposalIdsPerSync: REALTIME_MAX_INCREMENTAL_SYNC_IDS,
+  fallbackWhenWsOfflineMs: realtimeTuning.fallbackWhenWsOfflineMs,
+  pauseSyncWhenHidden: realtimeTuning.pauseSyncWhenHidden,
+  syncJitterRatio: realtimeTuning.syncJitterRatio,
+});
 const currentProcessStage = computed(() =>
   normalizeStageForUi(
     tender.value?.stage,
@@ -3204,6 +3367,7 @@ const branchOptions = ref<{ value: number; label: string }[]>([]);
 const departmentOptions = ref<{ value: number; label: string }[]>([]);
 const currencyOptions = ref<{ value: number; label: string }[]>([]);
 const availableApprovalModels = ref<any[]>([]);
+let approvalModelsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const approvalModelOptions = computed(() =>
   availableApprovalModels.value.map((m: any) => ({
     value: Number(m.id),
@@ -3489,7 +3653,9 @@ function onNomenclatureTreeSelect(
 
 function addSelectedNomenclatureFromPicker() {
   if (selectedNomenclatureId.value == null) return;
-  addPositionFromNomenclature(selectedNomenclatureId.value);
+  addPositionFromNomenclature(selectedNomenclatureId.value, {
+    notifyAdded: true,
+  });
   showNomenclaturePickerModal.value = false;
 }
 
@@ -3727,7 +3893,34 @@ function formatDateTime(value?: string | null) {
   }
 }
 
-function openParticipantProposalModal(proposal: any) {
+async function openParticipantProposalModal(proposal: any) {
+  const proposalId = Number(proposal?.id);
+  const hasFullDetails = Array.isArray(proposal?.position_values);
+  if (
+    Number.isInteger(proposalId) &&
+    proposalId > 0 &&
+    !hasFullDetails &&
+    tenderId.value
+  ) {
+    const { data } = await tendersUC.getTenderProposalDetail(
+      tenderId.value,
+      proposalId,
+      isSales,
+      { skipLoader: true },
+    );
+    if (data) {
+      const nextById = new Map<number, any>();
+      for (const item of decisionProposals.value) {
+        const id = Number(item?.id);
+        if (Number.isInteger(id) && id > 0) nextById.set(id, item);
+      }
+      nextById.set(proposalId, data);
+      decisionProposals.value = Array.from(nextById.values());
+      selectedParticipantProposal.value = data;
+      showParticipantProposalModal.value = true;
+      return;
+    }
+  }
   selectedParticipantProposal.value = proposal;
   showParticipantProposalModal.value = true;
 }
@@ -4454,6 +4647,116 @@ function inputToIso(value: string) {
   return value ? new Date(value).toISOString() : null;
 }
 
+function dateFromInput(value?: string | null): string {
+  const datePart = String(value || "").trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return "";
+  return datePart;
+}
+
+function timeFromInput(value?: string | null): string {
+  const match = String(value || "")
+    .trim()
+    .match(/T(\d{2}:\d{2})/);
+  return match?.[1] || "";
+}
+
+function normalizeDateValue(value?: string | null): string {
+  const raw = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  return "";
+}
+
+function normalizeTimeValue(value?: string | null): string {
+  const raw = String(value || "").trim();
+  if (/^\d{2}:\d{2}$/.test(raw)) return raw;
+  return "";
+}
+
+function formatDateForInput(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function formatTimeForInput(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function buildDateTimeInput(dateValue: string, timeValue: string): string {
+  const normalizedDate = normalizeDateValue(dateValue);
+  const normalizedTime = normalizeTimeValue(timeValue);
+  if (!normalizedDate || !normalizedTime) return "";
+  return `${normalizedDate}T${normalizedTime}`;
+}
+
+function getDefaultPublishTimes() {
+  const now = new Date();
+  now.setSeconds(0, 0);
+  const end = new Date(now.getTime() + 60 * 60 * 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const crossesDay =
+    end.getFullYear() !== now.getFullYear() ||
+    end.getMonth() !== now.getMonth() ||
+    end.getDate() !== now.getDate();
+  return {
+    start: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
+    end: crossesDay ? "23:59" : `${pad(end.getHours())}:${pad(end.getMinutes())}`,
+  };
+}
+
+function syncPublishScheduleFromTimingForm() {
+  const fallbackTimes = getDefaultPublishTimes();
+  const todayDate = formatDateForInput(new Date());
+  publishStartDate.value =
+    normalizeDateValue(dateFromInput(timingForm.start_at)) || todayDate;
+  publishEndDate.value =
+    normalizeDateValue(dateFromInput(timingForm.end_at)) || publishStartDate.value;
+  publishStartTime.value =
+    normalizeTimeValue(timeFromInput(timingForm.start_at)) || fallbackTimes.start;
+  publishEndTime.value =
+    normalizeTimeValue(timeFromInput(timingForm.end_at)) || fallbackTimes.end;
+}
+
+function applyPublishScheduleToTimingForm() {
+  const startAt = buildDateTimeInput(publishStartDate.value, publishStartTime.value);
+  const endAt = buildDateTimeInput(publishEndDate.value, publishEndTime.value);
+  if (!startAt || !endAt) return false;
+  timingForm.start_at = startAt;
+  timingForm.end_at = endAt;
+  return true;
+}
+
+function syncResumeAcceptanceScheduleFromForm() {
+  const fallbackTimes = getDefaultPublishTimes();
+  const nowDate = formatDateForInput(new Date());
+  resumeAcceptanceStartDate.value =
+    normalizeDateValue(dateFromInput(resumeAcceptanceForm.start_at)) || nowDate;
+  resumeAcceptanceEndDate.value =
+    normalizeDateValue(dateFromInput(resumeAcceptanceForm.end_at)) ||
+    resumeAcceptanceStartDate.value;
+  resumeAcceptanceStartTime.value =
+    normalizeTimeValue(timeFromInput(resumeAcceptanceForm.start_at)) ||
+    fallbackTimes.start;
+  resumeAcceptanceEndTime.value =
+    normalizeTimeValue(timeFromInput(resumeAcceptanceForm.end_at)) ||
+    fallbackTimes.end;
+}
+
+function applyResumeAcceptanceScheduleToForm() {
+  const startAt = buildDateTimeInput(
+    resumeAcceptanceStartDate.value,
+    resumeAcceptanceStartTime.value,
+  );
+  const endAt = buildDateTimeInput(
+    resumeAcceptanceEndDate.value,
+    resumeAcceptanceEndTime.value,
+  );
+  if (!startAt || !endAt) return false;
+  resumeAcceptanceForm.start_at = startAt;
+  resumeAcceptanceForm.end_at = endAt;
+  return true;
+}
+
 async function loadTender() {
   loading.value = true;
   try {
@@ -4637,7 +4940,10 @@ async function loadNomenclaturesForPreparation() {
 }
 
 /** Додати позицію з номенклатури (подвійний клік у лівій панелі). Якщо вже є — попередження. */
-function addPositionFromNomenclature(nomenclatureId: number) {
+function addPositionFromNomenclature(
+  nomenclatureId: number,
+  options: { notifyAdded?: boolean } = {},
+) {
   if (isViewingPreviousTour.value) return;
   if (tenderPositions.value.some((p) => p.nomenclature_id === nomenclatureId)) {
     useToast().add({
@@ -4662,6 +4968,12 @@ function addPositionFromNomenclature(nomenclatureId: number) {
     attribute_values: {},
     vat: "",
   });
+  if (options.notifyAdded) {
+    useToast().add({
+      title: "Номенклатуру додано",
+      color: "success",
+    });
+  }
 }
 
 /** Видалити позицію з тендера (за рядком таблиці). */
@@ -4841,6 +5153,7 @@ function openPublishModal() {
   }
   timingForm.start_at = isoToInput(tender.value?.start_at);
   timingForm.end_at = isoToInput(tender.value?.end_at);
+  syncPublishScheduleFromTimingForm();
   showPublishModal.value = true;
 }
 
@@ -4851,7 +5164,34 @@ function openTimingModal() {
 }
 
 async function publishTender() {
-  if (!timingForm.start_at || !timingForm.end_at) return;
+  if (!applyPublishScheduleToTimingForm()) {
+    useToast().add({
+      title: "Заповніть період і час проведення",
+      color: "error",
+    });
+    return;
+  }
+  const startDate = new Date(timingForm.start_at);
+  const endDate = new Date(timingForm.end_at);
+  const now = new Date();
+  if (
+    Number.isNaN(startDate.getTime()) ||
+    Number.isNaN(endDate.getTime()) ||
+    endDate <= startDate
+  ) {
+    useToast().add({
+      title: "Час завершення має бути пізніше за час початку",
+      color: "error",
+    });
+    return;
+  }
+  if (startDate < now) {
+    useToast().add({
+      title: "Час початку не може бути меншим від поточного",
+      color: "error",
+    });
+    return;
+  }
   const prepared = await savePreparation();
   if (!prepared) {
     useToast().add({
@@ -4890,24 +5230,26 @@ async function goBackToPreparation() {
   if (ok) await loadTender();
 }
 
-const resumeAcceptanceMinStart = computed(() => {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() + 1, 0, 0);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-});
-
 function openResumeAcceptanceModal() {
   const now = new Date();
+  now.setMinutes(now.getMinutes() + 1, 0, 0);
   const end = new Date(now);
   end.setDate(end.getDate() + 1);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  resumeAcceptanceForm.start_at = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
-  resumeAcceptanceForm.end_at = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}T${pad(end.getHours())}:${pad(end.getMinutes())}`;
+  const nowTime = formatTimeForInput(now);
+  resumeAcceptanceForm.start_at = `${formatDateForInput(now)}T${nowTime}`;
+  resumeAcceptanceForm.end_at = `${formatDateForInput(end)}T${nowTime}`;
+  syncResumeAcceptanceScheduleFromForm();
   showResumeAcceptanceModal.value = true;
 }
 
 async function submitResumeAcceptance() {
+  if (!applyResumeAcceptanceScheduleToForm()) {
+    useToast().add({
+      title: "Заповніть дати та час початку і завершення",
+      color: "error",
+    });
+    return;
+  }
   const startStr = (resumeAcceptanceForm.start_at || "").trim();
   const endStr = (resumeAcceptanceForm.end_at || "").trim();
   if (!startStr || !endStr) {
@@ -4961,13 +5303,29 @@ async function autoAdvanceAcceptance() {
   }
 }
 
-async function fixDecision(mode: "winner" | "cancel" | "next_round") {
+function openDecisionModal() {
+  selectedDecisionMode.value = null;
+  decisionJustification.value = "";
+  showDecisionModal.value = true;
+}
+
+function closeDecisionModal() {
+  showDecisionModal.value = false;
+}
+
+async function confirmDecision() {
+  if (!selectedDecisionMode.value) return;
+  await fixDecision(selectedDecisionMode.value);
+}
+
+async function fixDecision(mode: DecisionMode) {
   showDecisionModal.value = false;
   saving.value = true;
   try {
     const body: {
-      mode: string;
+      mode: DecisionMode;
       position_winners?: { position_id: number; proposal_id: number }[];
+      comment?: string;
     } = { mode };
     if (mode === "winner") {
       body.position_winners = Object.entries(
@@ -4976,6 +5334,13 @@ async function fixDecision(mode: "winner" | "cancel" | "next_round") {
         position_id: Number(position_id),
         proposal_id,
       }));
+    }
+    const normalizedJustification = decisionJustification.value.trim();
+    if (
+      (mode === "winner" || mode === "cancel") &&
+      normalizedJustification.length
+    ) {
+      body.comment = normalizedJustification;
     }
     const { data, error } = await tendersUC.fixTenderDecision(
       tenderId.value,
@@ -4989,6 +5354,8 @@ async function fixDecision(mode: "winner" | "cancel" | "next_round") {
     }
     await loadTender();
   } finally {
+    selectedDecisionMode.value = null;
+    decisionJustification.value = "";
     saving.value = false;
   }
 }
@@ -4997,10 +5364,7 @@ async function approveTender() {
   openApprovalActionModal("approved");
 }
 
-async function loadDecisionProposals() {
-  if (!tenderId.value) return;
-  const { data } = await tendersUC.getTenderProposals(tenderId.value, isSales);
-  decisionProposals.value = Array.isArray(data) ? data : [];
+function refreshSelectedWinnersByPosition() {
   const next: Record<number, number> = {};
   for (const pos of displayTenderPositions.value) {
     const bestId = getBestProposalIdForPosition(pos.id, true);
@@ -5009,10 +5373,207 @@ async function loadDecisionProposals() {
   selectedWinnerByPosition.value = next;
 }
 
+function updateDecisionProposalsDeltaCursor(proposals: any[]) {
+  if (!Array.isArray(proposals) || !proposals.length) return;
+  let nextCursor = decisionProposalsDeltaCursor.value;
+  let nextCursorMs = Number.isNaN(Date.parse(String(nextCursor || "")))
+    ? null
+    : Date.parse(String(nextCursor || ""));
+  for (const proposal of proposals) {
+    const cursorRaw = String(proposal?.status_updated_at || "").trim();
+    if (!cursorRaw) continue;
+    const cursorMs = Date.parse(cursorRaw);
+    if (Number.isNaN(cursorMs)) continue;
+    if (nextCursorMs == null || cursorMs > nextCursorMs) {
+      nextCursor = cursorRaw;
+      nextCursorMs = cursorMs;
+    }
+  }
+  decisionProposalsDeltaCursor.value = nextCursor;
+}
+
+function markDecisionProposalsSyncActivity(hasChanges: boolean) {
+  if (hasChanges) {
+    decisionProposalsIdleStreak.value = 0;
+    return;
+  }
+  decisionProposalsIdleStreak.value = Math.min(
+    decisionProposalsIdleStreak.value + 1,
+    20,
+  );
+}
+
+async function fetchChangedDecisionProposals(
+  proposalIds: number[],
+  loadFullDetails: boolean,
+) {
+  const changedProposals: any[] = [];
+  for (
+    let offset = 0;
+    offset < proposalIds.length;
+    offset += REALTIME_INCREMENTAL_SYNC_CHUNK_SIZE
+  ) {
+    const chunk = proposalIds.slice(
+      offset,
+      offset + REALTIME_INCREMENTAL_SYNC_CHUNK_SIZE,
+    );
+    if (!chunk.length) continue;
+    const { data, error } = await tendersUC.getTenderProposals(tenderId.value, isSales, {
+      skipLoader: true,
+      proposalIds: chunk,
+      statusOnly: !loadFullDetails,
+    });
+    if (error || !Array.isArray(data)) return null;
+    changedProposals.push(...data);
+  }
+  return changedProposals;
+}
+
+async function loadDecisionProposals(
+  skipLoader = false,
+  changedProposalIds: number[] = [],
+  options: { forceFull?: boolean } = {},
+) {
+  if (!tenderId.value) return;
+  if (!skipLoader) decisionProposalsIdleStreak.value = 0;
+  const loadFullDetails =
+    Boolean(options.forceFull) || displayStage.value !== "acceptance";
+  const normalizedChangedIds = Array.from(
+    new Set(
+      changedProposalIds
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    ),
+  );
+  const canIncrementalSync =
+    normalizedChangedIds.length > 0 &&
+    normalizedChangedIds.length <= REALTIME_MAX_INCREMENTAL_SYNC_IDS &&
+    decisionProposals.value.length > 0;
+  const canUseStatusDeltaBase =
+    !loadFullDetails &&
+    skipLoader &&
+    decisionProposals.value.length > 0 &&
+    !!decisionProposalsDeltaCursor.value;
+  const preferStatusDeltaForManyChangedIds =
+    canUseStatusDeltaBase &&
+    normalizedChangedIds.length >= REALTIME_DELTA_SYNC_IDS_THRESHOLD;
+
+  if (!canIncrementalSync || preferStatusDeltaForManyChangedIds) {
+    const canStatusDeltaSync =
+      canUseStatusDeltaBase &&
+      (normalizedChangedIds.length === 0 || preferStatusDeltaForManyChangedIds);
+    if (canStatusDeltaSync) {
+      const { data: deltaProposals, error: deltaError } =
+        await tendersUC.getTenderProposals(tenderId.value, isSales, {
+          skipLoader: true,
+          statusOnly: true,
+          updatedSince: decisionProposalsDeltaCursor.value || undefined,
+        });
+      if (!deltaError && Array.isArray(deltaProposals)) {
+        if (deltaProposals.length) {
+          const mergedById = new Map<number, any>();
+          for (const proposal of decisionProposals.value) {
+            const id = Number(proposal?.id);
+            if (Number.isInteger(id) && id > 0) mergedById.set(id, proposal);
+          }
+          for (const proposal of deltaProposals) {
+            const id = Number(proposal?.id);
+            if (!Number.isInteger(id) || id <= 0) continue;
+            mergedById.set(id, {
+              ...(mergedById.get(id) || {}),
+              ...proposal,
+            });
+          }
+          decisionProposals.value = Array.from(mergedById.values());
+          decisionProposalsFullLoaded.value = false;
+          updateDecisionProposalsDeltaCursor(deltaProposals);
+        }
+        markDecisionProposalsSyncActivity(deltaProposals.length > 0);
+        return;
+      }
+    }
+
+    const { data } = await tendersUC.getTenderProposals(tenderId.value, isSales, {
+      skipLoader,
+      statusOnly: !loadFullDetails,
+    });
+    decisionProposals.value = Array.isArray(data) ? data : [];
+    decisionProposalsFullLoaded.value = loadFullDetails;
+    if (!loadFullDetails) {
+      decisionProposalsDeltaCursor.value = null;
+      updateDecisionProposalsDeltaCursor(decisionProposals.value);
+    }
+    if (loadFullDetails) refreshSelectedWinnersByPosition();
+    markDecisionProposalsSyncActivity(normalizedChangedIds.length > 0);
+    return;
+  }
+
+  const changedProposals = await fetchChangedDecisionProposals(
+    normalizedChangedIds,
+    loadFullDetails,
+  );
+  if (!Array.isArray(changedProposals)) {
+    const { data } = await tendersUC.getTenderProposals(tenderId.value, isSales, {
+      skipLoader: true,
+      statusOnly: !loadFullDetails,
+    });
+    decisionProposals.value = Array.isArray(data) ? data : [];
+    decisionProposalsFullLoaded.value = loadFullDetails;
+    if (!loadFullDetails) {
+      decisionProposalsDeltaCursor.value = null;
+      updateDecisionProposalsDeltaCursor(decisionProposals.value);
+    }
+    if (loadFullDetails) refreshSelectedWinnersByPosition();
+    markDecisionProposalsSyncActivity(normalizedChangedIds.length > 0);
+    return;
+  }
+  if (!changedProposals.length) {
+    markDecisionProposalsSyncActivity(false);
+    return;
+  }
+
+  const mergedById = new Map<number, any>();
+  const existingIds = new Set<number>();
+  for (const proposal of decisionProposals.value) {
+    const id = Number(proposal?.id);
+    if (Number.isInteger(id) && id > 0) {
+      mergedById.set(id, proposal);
+      existingIds.add(id);
+    }
+  }
+  let hasNewIds = false;
+  for (const proposal of changedProposals) {
+    const id = Number(proposal?.id);
+    if (!Number.isInteger(id) || id <= 0) continue;
+    const currentProposal = mergedById.get(id);
+    if (!existingIds.has(id)) hasNewIds = true;
+    if (loadFullDetails) {
+      mergedById.set(id, proposal);
+      continue;
+    }
+    mergedById.set(id, {
+      ...(currentProposal || {}),
+      ...proposal,
+    });
+  }
+  decisionProposals.value = Array.from(mergedById.values());
+  if (loadFullDetails) {
+    refreshSelectedWinnersByPosition();
+    markDecisionProposalsSyncActivity(true);
+    return;
+  }
+  updateDecisionProposalsDeltaCursor(changedProposals);
+  if (hasNewIds) decisionProposalsFullLoaded.value = false;
+  markDecisionProposalsSyncActivity(true);
+}
+
+async function ensureDecisionProposalsFullDetails(skipLoader = true) {
+  if (decisionProposalsFullLoaded.value) return;
+  await loadDecisionProposals(skipLoader, [], { forceFull: true });
+}
+
 function stopAcceptanceRefresh() {
-  if (!acceptanceRefreshInterval) return;
-  clearInterval(acceptanceRefreshInterval);
-  acceptanceRefreshInterval = null;
+  acceptanceRealtime.stop();
 }
 
 function startAcceptanceRefresh() {
@@ -5020,11 +5581,7 @@ function startAcceptanceRefresh() {
     stopAcceptanceRefresh();
     return;
   }
-  if (acceptanceRefreshInterval) return;
-  acceptanceRefreshInterval = setInterval(() => {
-    if (typeof document !== "undefined" && document.hidden) return;
-    void loadDecisionProposals();
-  }, ACCEPTANCE_REFRESH_MS);
+  acceptanceRealtime.start();
 }
 
 const proposalComparisonPositions = computed(
@@ -5097,7 +5654,7 @@ const proposalComparisonByPosition = computed(() => {
 });
 
 async function openProposalsModal() {
-  if (!decisionProposals.value?.length) await loadDecisionProposals();
+  await ensureDecisionProposalsFullDetails();
   showProposalsModal.value = true;
 }
 
@@ -5107,9 +5664,6 @@ onMounted(async () => {
     await loadOptions();
     await loadNomenclaturesForPreparation();
     if (form.branch) await loadDepartments();
-  }
-  if (["acceptance", "decision", "approval"].includes(displayStage.value)) {
-    await loadDecisionProposals();
   }
   startAcceptanceRefresh();
 });
@@ -5142,8 +5696,13 @@ watch(
 );
 watch(
   () => [form.category, form.estimated_budget, tender.value?.company],
-  async () => {
-    await loadAvailableApprovalModels();
+  () => {
+    if (approvalModelsDebounceTimer) {
+      clearTimeout(approvalModelsDebounceTimer);
+    }
+    approvalModelsDebounceTimer = setTimeout(() => {
+      void loadAvailableApprovalModels();
+    }, 250);
   },
 );
 watch(prepTab, (tab) => {
@@ -5152,6 +5711,10 @@ watch(prepTab, (tab) => {
 
 onUnmounted(() => {
   stopAcceptanceRefresh();
+  if (approvalModelsDebounceTimer) {
+    clearTimeout(approvalModelsDebounceTimer);
+    approvalModelsDebounceTimer = null;
+  }
 });
 </script>
 

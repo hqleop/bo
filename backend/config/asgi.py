@@ -17,14 +17,17 @@ django_asgi_app = get_asgi_application()
 
 try:
     from channels.routing import ProtocolTypeRouter, URLRouter
+    from channels.security.websocket import AllowedHostsOriginValidator
     from core.routing import websocket_urlpatterns
     from core.ws_auth import JwtQueryAuthMiddleware
 
     application = ProtocolTypeRouter(
         {
             "http": django_asgi_app,
-            "websocket": JwtQueryAuthMiddleware(
-                URLRouter(websocket_urlpatterns)
+            "websocket": AllowedHostsOriginValidator(
+                JwtQueryAuthMiddleware(
+                    URLRouter(websocket_urlpatterns)
+                )
             ),
         }
     )

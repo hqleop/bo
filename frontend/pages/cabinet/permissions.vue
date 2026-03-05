@@ -1,8 +1,8 @@
 <template>
   <div>
     <h2 class="text-2xl font-bold mb-4">Права доступу</h2>
-    <div class="bg-white rounded-lg shadow p-6">
-      <UTable :data="permissions" :columns="columns" />
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+      <UTable :data="permissions" :columns="columns" class="w-full" />
     </div>
   </div>
 </template>

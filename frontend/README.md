@@ -25,6 +25,8 @@ npm install
 NUXT_PUBLIC_API_BASE=http://localhost:8000/api
 ```
 
+You can copy a full template from `frontend/.env.example` to tune realtime sync behavior without editing source code.
+
 ### 3. Запуск
 
 ```bash

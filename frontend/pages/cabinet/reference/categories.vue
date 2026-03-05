@@ -1,7 +1,7 @@
 <template>
-  <div class="h-full flex gap-4">
+  <div class="h-full grid grid-cols-1 xl:grid-cols-2 gap-4">
     <!-- Область 1: Категорії -->
-    <div class="flex-1 border-r border-gray-200 p-4">
+    <div class="min-h-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div class="flex justify-between items-center mb-4">
         <h3 class="text-lg font-semibold">Категорії</h3>
         <UButton icon="i-heroicons-plus" size="sm" @click="openCategoryModal()"
@@ -29,7 +29,7 @@
     </div>
 
     <!-- Область 2: Користувачі за категорією -->
-    <div class="flex-1 p-4">
+    <div class="min-h-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div class="flex justify-between items-center mb-4">
         <h3 class="text-lg font-semibold">Користувачі за категорією</h3>
         <div class="flex gap-2">
@@ -95,10 +95,10 @@
           </template>
           <UForm :state="categoryForm" @submit="saveCategory" class="space-y-4">
             <UFormField label="Назва" name="name" required>
-              <UInput v-model="categoryForm.name" />
+              <UInput v-model="categoryForm.name" class="w-full" />
             </UFormField>
             <UFormField label="Код" name="code">
-              <UInput v-model="categoryForm.code" />
+              <UInput v-model="categoryForm.code" class="w-full" />
             </UFormField>
             <UFormField label="Батьківська категорія" name="parent_id">
               <USelectMenu
@@ -106,6 +106,7 @@
                 :items="categoryParentOptions"
                 value-key="value"
                 placeholder="Без батьківської категорії"
+                class="w-full"
               />
             </UFormField>
             <CpvTenderModalSelect
@@ -117,7 +118,7 @@
               @update:selected-labels="selectedCpvLabels = $event"
             />
             <UFormField label="Опис" name="description">
-              <UTextarea v-model="categoryForm.description" />
+              <UTextarea v-model="categoryForm.description" class="w-full" />
             </UFormField>
             <div class="flex gap-4">
               <UButton
@@ -228,6 +229,8 @@
 </template>
 
 <script setup lang="ts">
+import { getApiErrorMessage } from "~/shared/api/error";
+
 definePageMeta({
   layout: "cabinet",
   middleware: "auth",
@@ -238,6 +241,7 @@ definePageMeta({
 
 const { getAuthHeaders } = useAuth();
 const { fetch } = useApi();
+const { getCurrentCompanyId } = useCurrentCompanyId();
 
 const categories = ref<any[]>([]);
 const currentUsers = ref<any[]>([]);
@@ -328,16 +332,6 @@ const toggleUserSelection = (userId: number) => {
   }
 };
 
-const getCurrentCompany = async () => {
-  const { data } = await fetch("/auth/me/", {
-    headers: getAuthHeaders(),
-  });
-  if (data?.memberships?.[0]) {
-    return data.memberships[0].company.id;
-  }
-  return null;
-};
-
 // Категорії
 const openCategoryModal = (cat?: any) => {
   editingCategory.value = cat || null;
@@ -366,7 +360,7 @@ const openCategoryModal = (cat?: any) => {
 
 const saveCategory = async () => {
   saving.value = true;
-  const companyId = await getCurrentCompany();
+  const companyId = await getCurrentCompanyId();
   const payload: any = {
     name: categoryForm.name,
     code: categoryForm.code,
@@ -393,7 +387,7 @@ const saveCategory = async () => {
 
   saving.value = false;
   if (error) {
-    alert(error.detail || "Помилка збереження");
+    alert(getApiErrorMessage(error, "Помилка збереження"));
     return;
   }
 
@@ -451,7 +445,7 @@ const addUsers = async () => {
 
   saving.value = false;
   if (error) {
-    alert(error.detail || "Помилка додавання");
+    alert(getApiErrorMessage(error, "Помилка додавання"));
     return;
   }
 

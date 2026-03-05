@@ -166,6 +166,24 @@ class CompanySerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "created_at", "updated_at")
 
 
+class RegistrationCompanyLookupCompanySerializer(serializers.ModelSerializer):
+    """Public company fields allowed during registration lookup."""
+
+    registration_country = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = Company
+        fields = (
+            "id",
+            "edrpou",
+            "name",
+            "subject_type",
+            "registration_country",
+            "company_address",
+        )
+        read_only_fields = fields
+
+
 class CountryBusinessNumberSerializer(serializers.ModelSerializer):
     label = serializers.SerializerMethodField()
 
@@ -180,7 +198,7 @@ class CountryBusinessNumberSerializer(serializers.ModelSerializer):
 class RegistrationCompanyLookupSerializer(serializers.Serializer):
     exists = serializers.BooleanField()
     has_registered_users = serializers.BooleanField()
-    company = CompanySerializer(required=False, allow_null=True)
+    company = RegistrationCompanyLookupCompanySerializer(required=False, allow_null=True)
 
 
 class CompanyCpvSerializer(serializers.ModelSerializer):
@@ -1671,6 +1689,44 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
         return instance
 
 
+class ProcurementTenderListSerializer(serializers.ModelSerializer):
+    """Lightweight procurement tender serializer for owner journals/tasks."""
+
+    number = serializers.SerializerMethodField()
+    stage_label = serializers.CharField(source="get_stage_display", read_only=True)
+    conduct_type_label = serializers.CharField(
+        source="get_conduct_type_display", read_only=True
+    )
+    created_by_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProcurementTender
+        fields = (
+            "id",
+            "number",
+            "tour_number",
+            "name",
+            "stage",
+            "stage_label",
+            "conduct_type",
+            "conduct_type_label",
+            "created_by",
+            "created_by_display",
+            "created_at",
+            "updated_at",
+        )
+
+    def get_number(self, obj):
+        return f"p-{obj.company_id}-{obj.id}" if obj.company_id and obj.id else ""
+
+    def get_created_by_display(self, obj):
+        user = getattr(obj, "created_by", None)
+        if not user:
+            return ""
+        full_name = f"{getattr(user, 'last_name', '')} {getattr(user, 'first_name', '')}".strip()
+        return full_name or getattr(user, "email", "")
+
+
 class ProcurementParticipationTenderListSerializer(serializers.ModelSerializer):
     """Lightweight procurement tender serializer for participation list."""
 
@@ -1780,6 +1836,37 @@ class TenderProposalSerializer(serializers.ModelSerializer):
             "position_values", "created_at", "submitted_at",
         )
         read_only_fields = ("id", "tender", "created_at", "submitted_at")
+
+
+class TenderProposalStatusSerializer(serializers.ModelSerializer):
+    """Lightweight proposal payload for acceptance-stage realtime updates."""
+
+    supplier_company = serializers.SerializerMethodField()
+    supplier_company_id = serializers.IntegerField(read_only=True)
+    supplier_name = serializers.CharField(source="supplier_company.name", read_only=True)
+
+    class Meta:
+        model = TenderProposal
+        fields = (
+            "id",
+            "supplier_company",
+            "supplier_company_id",
+            "supplier_name",
+            "created_at",
+            "submitted_at",
+            "status_updated_at",
+        )
+        read_only_fields = fields
+
+    def get_supplier_company(self, obj):
+        company = getattr(obj, "supplier_company", None)
+        if not company:
+            return None
+        return {
+            "id": company.id,
+            "name": company.name,
+            "edrpou": company.edrpou,
+        }
 
 
 class TenderProposalPositionUpdateSerializer(serializers.Serializer):
@@ -2294,6 +2381,44 @@ class SalesTenderSerializer(serializers.ModelSerializer):
         return instance
 
 
+class SalesTenderListSerializer(serializers.ModelSerializer):
+    """Lightweight sales tender serializer for owner journals/tasks."""
+
+    number = serializers.SerializerMethodField()
+    stage_label = serializers.CharField(source="get_stage_display", read_only=True)
+    conduct_type_label = serializers.CharField(
+        source="get_conduct_type_display", read_only=True
+    )
+    created_by_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SalesTender
+        fields = (
+            "id",
+            "number",
+            "tour_number",
+            "name",
+            "stage",
+            "stage_label",
+            "conduct_type",
+            "conduct_type_label",
+            "created_by",
+            "created_by_display",
+            "created_at",
+            "updated_at",
+        )
+
+    def get_number(self, obj):
+        return f"s-{obj.company_id}-{obj.id}" if obj.company_id and obj.id else ""
+
+    def get_created_by_display(self, obj):
+        user = getattr(obj, "created_by", None)
+        if not user:
+            return ""
+        full_name = f"{getattr(user, 'last_name', '')} {getattr(user, 'first_name', '')}".strip()
+        return full_name or getattr(user, "email", "")
+
+
 class SalesParticipationTenderListSerializer(serializers.ModelSerializer):
     """Lightweight sales tender serializer for participation list."""
 
@@ -2403,6 +2528,37 @@ class SalesTenderProposalSerializer(serializers.ModelSerializer):
             "position_values", "created_at", "submitted_at",
         )
         read_only_fields = ("id", "tender", "created_at", "submitted_at")
+
+
+class SalesTenderProposalStatusSerializer(serializers.ModelSerializer):
+    """Lightweight proposal payload for acceptance-stage realtime updates."""
+
+    supplier_company = serializers.SerializerMethodField()
+    supplier_company_id = serializers.IntegerField(read_only=True)
+    supplier_name = serializers.CharField(source="supplier_company.name", read_only=True)
+
+    class Meta:
+        model = SalesTenderProposal
+        fields = (
+            "id",
+            "supplier_company",
+            "supplier_company_id",
+            "supplier_name",
+            "created_at",
+            "submitted_at",
+            "status_updated_at",
+        )
+        read_only_fields = fields
+
+    def get_supplier_company(self, obj):
+        company = getattr(obj, "supplier_company", None)
+        if not company:
+            return None
+        return {
+            "id": company.id,
+            "name": company.name,
+            "edrpou": company.edrpou,
+        }
 
 
 class SalesTenderFileSerializer(serializers.ModelSerializer):

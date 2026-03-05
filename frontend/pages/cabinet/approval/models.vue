@@ -17,7 +17,7 @@
     </div>
 
     <div class="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-4 min-h-0 flex-1">
-      <UCard class="min-h-0">
+      <UCard class="min-h-0 border border-gray-200 shadow-sm">
         <div class="max-h-[70vh] overflow-auto">
           <UTable :data="filteredModels" :columns="columns" class="w-full">
             <template #select-header>
@@ -45,7 +45,7 @@
         </div>
       </UCard>
 
-      <UCard>
+      <UCard class="border border-gray-200 shadow-sm">
         <template #header><h3 class="font-semibold">Фільтри</h3></template>
         <div class="space-y-4">
           <UFormField label="Застосування">
@@ -53,6 +53,7 @@
               v-model="filters.application"
               :items="[{ value: '', label: 'Усі' }, ...applicationOptions]"
               value-key="value"
+              class="w-full"
             />
           </UFormField>
           <UFormField label="Категорія">
@@ -60,6 +61,7 @@
               v-model="filters.categoryId"
               :items="categoryOptionsWithEmpty"
               value-key="value"
+              class="w-full"
             />
           </UFormField>
           <UFormField label="Діапазон">
@@ -67,6 +69,7 @@
               v-model="filters.rangeId"
               :items="rangeOptionsWithEmpty"
               value-key="value"
+              class="w-full"
             />
           </UFormField>
         </div>
@@ -87,6 +90,7 @@
                   v-model="form.application"
                   :items="applicationOptions"
                   value-key="value"
+                  class="w-full"
                 />
               </UFormField>
               <UFormField label="Категорія">
@@ -95,6 +99,7 @@
                   :items="categoryOptions"
                   value-key="value"
                   multiple
+                  class="w-full"
                 />
               </UFormField>
               <UFormField label="Діапазон застосування">
@@ -103,44 +108,48 @@
                   :items="rangeOptions"
                   value-key="value"
                   multiple
+                  class="w-full"
                 />
               </UFormField>
             </div>
 
-            <div class="border rounded">
+            <div class="border border-gray-200 rounded-lg overflow-hidden">
               <table class="w-full text-sm">
                 <thead class="bg-gray-50">
                   <tr>
-                    <th class="text-left p-2 border-b">Роль</th>
-                    <th class="text-left p-2 border-b">Підготовка процедури</th>
-                    <th class="text-left p-2 border-b">Затвердження</th>
-                    <th class="w-8 border-b"></th>
+                    <th class="text-left p-2 border-b border-gray-200">Роль</th>
+                    <th class="text-left p-2 border-b border-gray-200">Підготовка процедури</th>
+                    <th class="text-left p-2 border-b border-gray-200">Затвердження</th>
+                    <th class="w-8 border-b border-gray-200"></th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="(row, idx) in form.steps" :key="idx">
-                    <td class="p-2 border-b">
+                    <td class="p-2 border-b border-gray-200">
                       <USelectMenu
                         v-model="row.role"
                         :items="roleOptionsByApplication"
                         value-key="value"
+                        class="w-full"
                       />
                     </td>
-                    <td class="p-2 border-b">
+                    <td class="p-2 border-b border-gray-200">
                       <USelectMenu
                         v-model="row.preparation_rule"
                         :items="ruleOptions"
                         value-key="value"
+                        class="w-full"
                       />
                     </td>
-                    <td class="p-2 border-b">
+                    <td class="p-2 border-b border-gray-200">
                       <USelectMenu
                         v-model="row.approval_rule"
                         :items="ruleOptions"
                         value-key="value"
+                        class="w-full"
                       />
                     </td>
-                    <td class="p-2 border-b">
+                    <td class="p-2 border-b border-gray-200">
                       <UButton
                         icon="i-heroicons-trash"
                         size="xs"

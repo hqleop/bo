@@ -38,8 +38,7 @@ export const useTenderRealtime = () => {
   };
 
   const buildUrl = (opts: ConnectOptions) => {
-    const token = accessToken.value ? `?token=${encodeURIComponent(accessToken.value)}` : "";
-    return `${getWsBase()}/ws/tenders/${opts.kind}/${opts.tenderId}/${token}`;
+    return `${getWsBase()}/ws/tenders/${opts.kind}/${opts.tenderId}/`;
   };
 
   const closeSocket = () => {

@@ -1,7 +1,7 @@
 <template>
-  <div class="h-full flex gap-4">
+  <div class="h-full grid grid-cols-1 xl:grid-cols-2 gap-4">
     <!-- Область 1: Статті витрат -->
-    <div class="flex-1 border-r border-gray-200 p-4">
+    <div class="min-h-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div class="flex justify-between items-center mb-4">
         <h3 class="text-lg font-semibold">Статті витрат</h3>
         <UButton icon="i-heroicons-plus" size="sm" @click="openExpenseModal()">
@@ -29,7 +29,7 @@
     </div>
 
     <!-- Область 2: Користувачі -->
-    <div class="flex-1 p-4">
+    <div class="min-h-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div class="flex justify-between items-center mb-4">
         <h3 class="text-lg font-semibold">Користувачі</h3>
         <div class="flex gap-2">
@@ -97,10 +97,10 @@
           </template>
           <UForm :state="expenseForm" @submit="saveExpense" class="space-y-4">
             <UFormField label="Назва" name="name" required>
-              <UInput v-model="expenseForm.name" />
+              <UInput v-model="expenseForm.name" class="w-full" />
             </UFormField>
             <UFormField label="Код" name="code">
-              <UInput v-model="expenseForm.code" />
+              <UInput v-model="expenseForm.code" class="w-full" />
             </UFormField>
             <UFormField label="Батьківська стаття" name="parent_id">
               <USelectMenu
@@ -108,18 +108,19 @@
                 :items="expenseParentOptions"
                 value-key="value"
                 placeholder="Без батьківської статті"
+                class="w-full"
               />
             </UFormField>
             <div class="grid grid-cols-2 gap-4">
               <UFormField label="Рік початку дії" name="year_start">
-                <UInput v-model="expenseForm.year_start" type="number" />
+                <UInput v-model="expenseForm.year_start" type="number" class="w-full" />
               </UFormField>
               <UFormField label="Рік завершення дії" name="year_end">
-                <UInput v-model="expenseForm.year_end" type="number" />
+                <UInput v-model="expenseForm.year_end" type="number" class="w-full" />
               </UFormField>
             </div>
             <UFormField label="Опис" name="description">
-              <UTextarea v-model="expenseForm.description" />
+              <UTextarea v-model="expenseForm.description" class="w-full" />
             </UFormField>
             <div class="flex gap-4">
               <UButton
@@ -234,6 +235,8 @@
 </template>
 
 <script setup lang="ts">
+import { getApiErrorMessage } from "~/shared/api/error";
+
 definePageMeta({
   layout: "cabinet",
   middleware: "auth",
@@ -244,6 +247,7 @@ definePageMeta({
 
 const { getAuthHeaders } = useAuth();
 const { fetch } = useApi();
+const { getCurrentCompanyId } = useCurrentCompanyId();
 
 const expenses = ref<any[]>([]);
 const currentUsers = ref<any[]>([]);
@@ -326,16 +330,6 @@ const toggleUserSelection = (userId: number) => {
   }
 };
 
-const getCurrentCompany = async () => {
-  const { data } = await fetch("/auth/me/", {
-    headers: getAuthHeaders(),
-  });
-  if (data?.memberships?.[0]) {
-    return data.memberships[0].company.id;
-  }
-  return null;
-};
-
 // Статті витрат
 const openExpenseModal = (exp?: any) => {
   editingExpense.value = exp || null;
@@ -359,7 +353,7 @@ const openExpenseModal = (exp?: any) => {
 
 const saveExpense = async () => {
   saving.value = true;
-  const companyId = await getCurrentCompany();
+  const companyId = await getCurrentCompanyId();
   const payload: any = {
     name: expenseForm.name,
     code: expenseForm.code,
@@ -385,7 +379,7 @@ const saveExpense = async () => {
 
   saving.value = false;
   if (error) {
-    alert(error.detail || "Помилка збереження");
+    alert(getApiErrorMessage(error, "Помилка збереження"));
     return;
   }
 
@@ -443,7 +437,7 @@ const addUsers = async () => {
 
   saving.value = false;
   if (error) {
-    alert(error.detail || "Помилка додавання");
+    alert(getApiErrorMessage(error, "Помилка додавання"));
     return;
   }
 

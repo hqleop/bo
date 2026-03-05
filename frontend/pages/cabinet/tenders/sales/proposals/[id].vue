@@ -56,7 +56,7 @@
             <div class="flex gap-2 items-center">
               <span
                 v-if="selectedSupplier"
-                class="flex-1 py-2 px-3 border rounded bg-gray-50"
+                class="flex-1 py-2 px-3 border border-gray-200 rounded bg-gray-50"
               >
                 {{ selectedSupplier.label }}
                 <span
@@ -67,7 +67,7 @@
               </span>
               <span
                 v-else
-                class="flex-1 py-2 px-3 border rounded bg-gray-50 text-gray-500"
+                class="flex-1 py-2 px-3 border border-gray-200 rounded bg-gray-50 text-gray-500"
                 >Не обрано</span
               >
               <UButton
@@ -120,13 +120,19 @@
                     class="w-full"
                     @blur="savePositionValues"
                   />
-                  <UInput
+                  <DateValuePicker
                     v-else-if="criterionInputKind(c) === 'date'"
-                    v-model="generalCriterionValues[c.id]"
-                    type="date"
                     size="sm"
                     class="w-full"
-                    @blur="savePositionValues"
+                    :model-value="
+                      String(generalCriterionValues[c.id] ?? '').trim()
+                    "
+                    @update:model-value="
+                      (value) => {
+                        generalCriterionValues[c.id] = value;
+                        savePositionValues();
+                      }
+                    "
                   />
                   <USelectMenu
                     v-else-if="criterionInputKind(c) === 'boolean'"
@@ -177,7 +183,7 @@
                 <div class="overflow-x-auto">
                   <table class="w-full text-sm border-collapse">
                     <thead>
-                      <tr class="border-b bg-gray-50">
+                      <tr class="border-b border-gray-200 bg-gray-50">
                         <th class="text-left p-2 font-medium">Позиція</th>
                         <th
                           v-if="isOnlineAuction"
@@ -235,7 +241,7 @@
                       <tr
                         v-for="row in positionRows"
                         :key="row.id"
-                        class="border-b hover:bg-gray-50/50"
+                        class="border-b border-gray-200 hover:bg-gray-50/50"
                       >
                         <td class="p-2">{{ row.name }}</td>
                         <td v-if="isOnlineAuction" class="p-2">
@@ -383,13 +389,19 @@
                               class="min-w-[80px]"
                               @blur="savePositionValues"
                             />
-                            <UInput
+                            <DateValuePicker
                               v-else-if="criterionInputKind(c) === 'date'"
-                              v-model="row.criterion_values[c.id]"
-                              type="date"
                               size="sm"
                               class="min-w-[140px]"
-                              @blur="savePositionValues"
+                              :model-value="
+                                String(row.criterion_values[c.id] ?? '').trim()
+                              "
+                              @update:model-value="
+                                (value) => {
+                                  row.criterion_values[c.id] = value;
+                                  savePositionValues();
+                                }
+                              "
                             />
                             <USelectMenu
                               v-else-if="criterionInputKind(c) === 'boolean'"
@@ -441,7 +453,7 @@
                   v-if="
                     currentProposal && !isViewingPreviousTour && !isParticipant
                   "
-                  class="mt-3 pt-3 border-t"
+                  class="mt-3 pt-3 border-t border-gray-200"
                 >
                   <UButton size="sm" @click="savePositionValues"
                     >Зберегти значення</UButton
@@ -581,7 +593,7 @@
                 class="w-full text-sm border-collapse"
               >
                 <thead>
-                  <tr class="border-b bg-gray-100">
+                  <tr class="border-b border-gray-200 bg-gray-100">
                     <th
                       class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap"
                     >
@@ -611,7 +623,7 @@
                       </th>
                     </template>
                   </tr>
-                  <tr class="border-b bg-gray-50">
+                  <tr class="border-b border-gray-200 bg-gray-50">
                     <th class="p-2 bg-gray-50"></th>
                     <th class="p-2 bg-gray-50"></th>
                     <template v-for="proposal in proposals" :key="proposal.id">
@@ -639,7 +651,7 @@
                   <tr
                     v-for="pos in tenderPositions"
                     :key="pos.id"
-                    class="border-b hover:bg-gray-50/50"
+                    class="border-b border-gray-200 hover:bg-gray-50/50"
                   >
                     <td class="p-2 bg-white whitespace-nowrap">
                       {{ pos.name }}
@@ -741,6 +753,19 @@
 </template>
 
 <script setup lang="ts">
+import { getApiErrorMessage } from "~/shared/api/error";
+import {
+  criterionInputKind,
+  extractFilesArray,
+  fileModelKey,
+  formatCriterionValue,
+  formatPriceValue,
+  normalizeCriterionValueForSave,
+  normalizeCriterionValueForUi,
+  toValidNumber,
+  type CriterionValue,
+} from "~/domains/tenders/tenderProposal.utils";
+
 definePageMeta({
   layout: "cabinet",
   middleware: "auth",
@@ -753,16 +778,8 @@ const tenderId = computed(() => Number(route.params.id));
 const tender = ref<any | null>(null);
 const loading = ref(true);
 const proposals = ref<any[]>([]);
-const selectedSupplierId = ref<number | null>(null);
-const selectedSupplier = ref<{
-  value: number;
-  label: string;
-  edrpou?: string;
-} | null>(null);
 const currentProposal = ref<any | null>(null);
 const positionRows = ref<any[]>([]);
-const showSupplierModal = ref(false);
-const supplierSearch = ref("");
 const showCheckModal = ref(false);
 const showFilesModal = ref(false);
 const tenderFiles = ref<any[]>([]);
@@ -773,14 +790,9 @@ const submitWithdrawLoading = ref(false);
 const submittingPositionId = ref<number | null>(null);
 const now = ref(new Date());
 let nowInterval: ReturnType<typeof setInterval> | null = null;
-const tenderRealtime = useTenderRealtime();
-const FALLBACK_PROPOSALS_REFRESH_MS = 45000;
-let proposalsReloadTimeout: ReturnType<typeof setTimeout> | null = null;
-let fallbackProposalsInterval: ReturnType<typeof setInterval> | null = null;
 
 const isSales = true;
 const tendersUC = useTendersUseCases();
-const suppliersUC = useSuppliersUseCases();
 const { me } = useMe();
 const myCompanyId = computed(
   () => (me.value as any)?.memberships?.[0]?.company?.id ?? null,
@@ -791,6 +803,18 @@ const isParticipant = computed(
     myCompanyId.value != null &&
     Number(tender.value.company) !== myCompanyId.value,
 );
+const {
+  selectedSupplierId,
+  selectedSupplier,
+  showSupplierModal,
+  supplierSearch,
+  filteredSuppliers,
+  loadSuppliers,
+  selectSupplier,
+  initSelectedSupplierFromProposals,
+} = useTenderProposalPage({
+  onSupplierSelect,
+});
 
 const vatLabels: Record<string, string> = {
   with_vat: "з ПДВ",
@@ -812,8 +836,6 @@ const tenderCriteriaGeneral = computed(() =>
     (c: any) => (c.application || "individual") === "general",
   ),
 );
-type CriterionType = "text" | "numeric" | "date" | "file" | "boolean";
-type CriterionValue = string | number | boolean | string[] | null;
 const booleanCriterionOptions = [
   { value: true, label: "Так" },
   { value: false, label: "Ні" },
@@ -825,6 +847,15 @@ const tenderPositions = computed(() => tender.value?.positions ?? []);
 const isOnlineAuction = computed(
   () => tender.value?.conduct_type === "online_auction",
 );
+const MAX_INCREMENTAL_REALTIME_PROPOSAL_SYNC = 6;
+const proposalsRealtime = useTenderProposalsRealtime({
+  tenderId,
+  isSales,
+  tenderStage: computed(() => tender.value?.stage ?? null),
+  isOnlineAuction,
+  isParticipant,
+  reload: reloadRealtimeProposals,
+});
 
 const stageItems = [
   {
@@ -948,105 +979,6 @@ const priceColumnHeader = computed(() => {
   return parts.join(" ");
 });
 
-function criterionInputKind(criterion: any): CriterionType {
-  const t = String(criterion?.type || "").toLowerCase();
-  if (t === "numeric") return "numeric";
-  if (t === "date") return "date";
-  if (t === "boolean") return "boolean";
-  if (t === "file") return "file";
-  return "text";
-}
-
-function normalizeCriterionBoolean(value: unknown): boolean | null {
-  if (value === true || value === false) return value;
-  if (typeof value === "string") {
-    const n = value.trim().toLowerCase();
-    if (["true", "1", "yes", "y", "так", "t"].includes(n)) return true;
-    if (["false", "0", "no", "n", "ні", "ni", "f"].includes(n)) return false;
-  }
-  if (typeof value === "number") {
-    if (value === 1) return true;
-    if (value === 0) return false;
-  }
-  return null;
-}
-
-function normalizeCriterionValueForUi(
-  criterion: any,
-  rawValue: unknown,
-): CriterionValue | "" {
-  const kind = criterionInputKind(criterion);
-  if (kind === "numeric") {
-    if (rawValue == null || rawValue === "") return "";
-    const num = Number(rawValue);
-    return Number.isNaN(num) ? "" : num;
-  }
-  if (kind === "boolean") return normalizeCriterionBoolean(rawValue) ?? "";
-  if (kind === "date") return String(rawValue ?? "").trim();
-  if (kind === "file") {
-    if (Array.isArray(rawValue)) {
-      return rawValue.map((v) => String(v || "").trim()).filter(Boolean);
-    }
-    if (typeof rawValue === "string") {
-      const cleaned = rawValue.trim();
-      return cleaned ? [cleaned] : [];
-    }
-    return [];
-  }
-  return String(rawValue ?? "");
-}
-
-function normalizeCriterionValueForSave(
-  criterion: any,
-  rawValue: unknown,
-): string | number | boolean | string[] | null {
-  const kind = criterionInputKind(criterion);
-  if (kind === "numeric") {
-    if (rawValue == null || rawValue === "") return null;
-    const num = Number(rawValue);
-    return Number.isNaN(num) ? null : num;
-  }
-  if (kind === "boolean") return normalizeCriterionBoolean(rawValue);
-  if (kind === "date") {
-    const text = String(rawValue ?? "").trim();
-    return text !== "" ? text : null;
-  }
-  if (kind === "file") {
-    if (Array.isArray(rawValue)) {
-      const names = rawValue.map((v) => String(v || "").trim()).filter(Boolean);
-      return names.length ? names : null;
-    }
-    if (typeof rawValue === "string") {
-      const cleaned = rawValue.trim();
-      return cleaned ? [cleaned] : null;
-    }
-    return null;
-  }
-  const text = String(rawValue ?? "");
-  return text.trim() !== "" ? text : null;
-}
-
-function formatCriterionValue(criterion: any, value: unknown): string {
-  if (value == null || value === "") return "";
-  const kind = criterionInputKind(criterion);
-  if (kind === "boolean") {
-    const boolValue = normalizeCriterionBoolean(value);
-    if (boolValue === null) return "";
-    return boolValue ? "Так" : "Ні";
-  }
-  if (kind === "file" && Array.isArray(value)) {
-    return value
-      .map((v) => String(v || "").trim())
-      .filter(Boolean)
-      .join(", ");
-  }
-  return String(value);
-}
-
-function fileModelKey(positionId: number | "g", criterionId: number) {
-  return `${positionId}:${criterionId}`;
-}
-
 function getGeneralCriterionFileModel(criterionId: number) {
   return fileCriterionModels.value[fileModelKey("g", criterionId)] || [];
 }
@@ -1058,13 +990,6 @@ function getPositionCriterionFileModel(
   return fileCriterionModels.value[fileModelKey(positionId, criterionId)] || [];
 }
 
-function extractFilesArray(value: unknown): File[] {
-  if (!value) return [];
-  if (Array.isArray(value))
-    return value.filter((f): f is File => f instanceof File);
-  if (value instanceof File) return [value];
-  return [];
-}
 
 async function onGeneralCriterionFileChange(
   criterionId: number,
@@ -1087,20 +1012,6 @@ async function onPositionCriterionFileChange(
   if (row) row.criterion_values[criterionId] = files.map((f) => f.name);
   await savePositionValues();
 }
-
-const supplierOptions = ref<
-  { value: number; label: string; edrpou?: string }[]
->([]);
-
-const filteredSuppliers = computed(() => {
-  const q = (supplierSearch.value || "").trim().toLowerCase();
-  if (!q) return supplierOptions.value;
-  return supplierOptions.value.filter(
-    (s) =>
-      (s.label && s.label.toLowerCase().includes(q)) ||
-      (s.edrpou && String(s.edrpou).toLowerCase().includes(q)),
-  );
-});
 
 function getProposalPositionValue(proposal: any, positionId: number) {
   const list = proposal?.position_values || [];
@@ -1154,18 +1065,6 @@ function getBestWorstForPosition(positionId: number) {
   return { bestId: best.id, worstId: worst.id };
 }
 
-function toValidNumber(value: unknown): number | null {
-  if (value == null || value === "") return null;
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
-}
-
-function formatPriceValue(value: number): string {
-  return value.toLocaleString("uk-UA", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
-}
 
 function getCurrentBestPriceForPosition(positionId: number): number | null {
   const prices: number[] = [];
@@ -1270,7 +1169,7 @@ async function submitPositionPrice(positionId: number) {
     );
 
     if (error) {
-      alert(error);
+      alert(getApiErrorMessage(error));
       return;
     }
     if (data) {
@@ -1324,6 +1223,61 @@ async function loadProposals(skipLoader = false) {
   if (data) proposals.value = Array.isArray(data) ? data : [];
 }
 
+async function reloadRealtimeProposals(changedProposalIds: number[]) {
+  const normalizedIds = Array.from(
+    new Set(
+      (changedProposalIds || [])
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    ),
+  );
+
+  if (
+    !normalizedIds.length ||
+    normalizedIds.length > MAX_INCREMENTAL_REALTIME_PROPOSAL_SYNC
+  ) {
+    await loadProposals(true);
+    refreshCurrentProposalViewFromList();
+    return;
+  }
+
+  const { data: changedProposals, error: changedProposalsError } =
+    await tendersUC.getTenderProposals(tenderId.value, isSales, {
+      skipLoader: true,
+      proposalIds: normalizedIds,
+    });
+  if (changedProposalsError || !Array.isArray(changedProposals)) {
+    await loadProposals(true);
+    refreshCurrentProposalViewFromList();
+    return;
+  }
+
+  const updatedById = new Map<number, any>();
+  for (const proposal of changedProposals) {
+    const proposalId = Number(proposal?.id);
+    if (!Number.isInteger(proposalId) || proposalId <= 0) continue;
+    updatedById.set(proposalId, proposal);
+  }
+
+  const hasMissingIds = normalizedIds.some((proposalId) => !updatedById.has(proposalId));
+  if (!updatedById.size || hasMissingIds) {
+    await loadProposals(true);
+    refreshCurrentProposalViewFromList();
+    return;
+  }
+
+  const existing = proposals.value;
+  const existingIds = new Set(existing.map((proposal: any) => Number(proposal.id)));
+  const next = existing.map(
+    (proposal: any) => updatedById.get(Number(proposal.id)) || proposal,
+  );
+  for (const [proposalId, proposal] of updatedById.entries()) {
+    if (!existingIds.has(proposalId)) next.push(proposal);
+  }
+  proposals.value = next;
+  refreshCurrentProposalViewFromList();
+}
+
 function refreshCurrentProposalViewFromList() {
   const nextPriceDrafts = new Map<number, unknown>(
     positionRows.value.map((row: any) => [Number(row.id), row.next_price]),
@@ -1361,52 +1315,12 @@ function refreshCurrentProposalViewFromList() {
   restoreNextPriceDrafts();
 }
 
-function scheduleRealtimeProposalsReload() {
-  if (proposalsReloadTimeout) clearTimeout(proposalsReloadTimeout);
-  proposalsReloadTimeout = setTimeout(() => {
-    void (async () => {
-      await loadProposals(true);
-      refreshCurrentProposalViewFromList();
-    })();
-  }, 200);
-}
-
 function stopProposalsRefresh() {
-  if (proposalsReloadTimeout) {
-    clearTimeout(proposalsReloadTimeout);
-    proposalsReloadTimeout = null;
-  }
-  if (fallbackProposalsInterval) {
-    clearInterval(fallbackProposalsInterval);
-    fallbackProposalsInterval = null;
-  }
-  tenderRealtime.disconnect();
+  proposalsRealtime.stop();
 }
 
 function startProposalsRefresh() {
-  if (tender.value?.stage !== "acceptance" || !isOnlineAuction.value) {
-    stopProposalsRefresh();
-    return;
-  }
-  if (!tender.value?.id) return;
-  tenderRealtime.connect({
-    kind: isSales ? "sales" : "procurement",
-    tenderId: Number(tender.value.id),
-    onEvent: (message) => {
-      if (message?.event === "proposal.position_values.updated") {
-        scheduleRealtimeProposalsReload();
-      }
-    },
-  });
-
-  if (fallbackProposalsInterval) clearInterval(fallbackProposalsInterval);
-  fallbackProposalsInterval = setInterval(() => {
-    if (tenderRealtime.isConnected.value) return;
-    void (async () => {
-      await loadProposals(true);
-      refreshCurrentProposalViewFromList();
-    })();
-  }, FALLBACK_PROPOSALS_REFRESH_MS);
+  proposalsRealtime.start();
 }
 
 async function loadTenderFiles() {
@@ -1433,32 +1347,6 @@ function formatFileDate(value?: string) {
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return "";
   return dt.toLocaleString("uk-UA");
-}
-
-async function loadSuppliers() {
-  const { data } = await suppliersUC.getSupplierRelations();
-  if (data && Array.isArray(data)) {
-    supplierOptions.value = data
-      .filter((r: any) => r.supplier_company)
-      .map((r: any) => ({
-        value: r.supplier_company.id,
-        label:
-          r.supplier_company.name || String(r.supplier_company.edrpou || ""),
-        edrpou: r.supplier_company.edrpou,
-      }));
-  }
-}
-
-async function selectSupplier(s: {
-  value: number;
-  label: string;
-  edrpou?: string;
-}) {
-  selectedSupplierId.value = s.value;
-  selectedSupplier.value = s;
-  showSupplierModal.value = false;
-  supplierSearch.value = "";
-  await onSupplierSelect(s.value);
 }
 
 async function onSupplierSelect(id: number | null) {
@@ -1686,22 +1574,7 @@ onMounted(async () => {
       currentProposal.value = myProposal.value;
       buildPositionRows(myProposal.value);
     } else if (proposals.value.length > 0 && !selectedSupplierId.value) {
-      const first = proposals.value[0];
-      const id =
-        first.supplier_company?.id ?? first.supplier_company_id ?? null;
-      if (id) {
-        selectedSupplierId.value = id;
-        selectedSupplier.value = supplierOptions.value.find(
-          (s) => s.value === id,
-        ) || {
-          value: id,
-          label:
-            first.supplier_company?.name ||
-            String(first.supplier_company?.edrpou || ""),
-          edrpou: first.supplier_company?.edrpou,
-        };
-        onSupplierSelect(id);
-      }
+      await initSelectedSupplierFromProposals(proposals.value);
     }
     if (part) {
       nowInterval = setInterval(() => {

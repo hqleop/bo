@@ -1,4 +1,4 @@
-from django.contrib.auth.models import AbstractUser, BaseUserManager
+﻿from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models, transaction
 from django.db.models import Max
 
@@ -27,6 +27,16 @@ class UserManager(BaseUserManager):
             raise ValueError("Superuser must have is_superuser=True.")
 
         return self.create_user(email, password, **extra_fields)
+
+    def get_by_natural_key(self, username):
+        """
+        Authenticate by email case-insensitively.
+        This prevents false 401 when users type a different email case.
+        """
+        username_field = self.model.USERNAME_FIELD
+        if username_field == "email":
+            return self.get(**{f"{username_field}__iexact": username})
+        return super().get_by_natural_key(username)
 
 
 class User(AbstractUser):
@@ -1084,11 +1094,23 @@ class TenderProposal(models.Model):
         help_text="Час подачі пропозиції; null — не подано або відкликано",
     )
 
+    status_updated_at = models.DateTimeField(
+        auto_now=True,
+        db_index=True,
+        help_text="Timestamp for delta sync of acceptance status changes.",
+    )
+
     class Meta:
         verbose_name = "Пропозиція в тендері"
         verbose_name_plural = "Пропозиції в тендері"
         ordering = ["id"]
         unique_together = (("tender", "supplier_company"),)
+        indexes = [
+            models.Index(
+                fields=["tender", "status_updated_at"],
+                name="tp_tender_status_u_idx",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.tender} — {self.supplier_company.name}"
@@ -1453,11 +1475,23 @@ class SalesTenderProposal(models.Model):
         help_text="Час подачі пропозиції; null — не подано або відкликано",
     )
 
+    status_updated_at = models.DateTimeField(
+        auto_now=True,
+        db_index=True,
+        help_text="Timestamp for delta sync of acceptance status changes.",
+    )
+
     class Meta:
         verbose_name = "Пропозиція в тендері на продаж"
         verbose_name_plural = "Пропозиції в тендері на продаж"
         ordering = ["id"]
         unique_together = (("tender", "supplier_company"),)
+        indexes = [
+            models.Index(
+                fields=["tender", "status_updated_at"],
+                name="stp_tender_status_u_idx",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.tender} — {self.supplier_company.name}"
@@ -1559,3 +1593,4 @@ class TenderApprovalJournal(models.Model):
     def __str__(self) -> str:
         tender_ref = self.procurement_tender_id or self.sales_tender_id or "?"
         return f"Tender {tender_ref} {self.action} at {self.created_at}"
+

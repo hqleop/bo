@@ -351,6 +351,7 @@ const branchOptions = ref<{ value: number; label: string }[]>([]);
 const departmentOptions = ref<{ value: number; label: string }[]>([]);
 const currencyOptions = ref<{ value: number; label: string }[]>([]);
 const availableApprovalModels = ref<any[]>([]);
+let approvalModelsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const approvalModelOptions = computed(() =>
   availableApprovalModels.value.map((m: any) => ({
     value: Number(m.id),
@@ -551,10 +552,22 @@ onMounted(async () => {
 
 watch(
   () => [form.category, form.estimated_budget, isSales.value, (me.value as any)?.memberships?.[0]?.company?.id],
-  async () => {
-    await loadAvailableApprovalModels();
+  () => {
+    if (approvalModelsDebounceTimer) {
+      clearTimeout(approvalModelsDebounceTimer);
+    }
+    approvalModelsDebounceTimer = setTimeout(() => {
+      void loadAvailableApprovalModels();
+    }, 250);
   },
 );
+
+onUnmounted(() => {
+  if (approvalModelsDebounceTimer) {
+    clearTimeout(approvalModelsDebounceTimer);
+    approvalModelsDebounceTimer = null;
+  }
+});
 </script>
 
 <style scoped>

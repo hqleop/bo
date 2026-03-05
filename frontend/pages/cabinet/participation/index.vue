@@ -1,12 +1,13 @@
 <template>
-  <div class="h-full min-h-0 flex flex-col overflow-hidden">
+  <ParticipationJournalPage v-if="isJournalRoute" />
+  <div v-else class="h-full min-h-0 flex flex-col overflow-hidden">
     <h2 class="text-2xl font-bold mb-4">
-      {{ type === "purchase" ? "РўРµРЅРґРµСЂРё РЅР° Р·Р°РєСѓРїС–РІР»СЋ" : "РўРµРЅРґРµСЂРё РЅР° РїСЂРѕРґР°Р¶" }}
+      {{ type === "purchase" ? "Тендери на закупівлю" : "Тендери на продаж" }}
     </h2>
 
     <div class="flex-1 min-h-0 overflow-hidden flex gap-4 max-lg:flex-col">
       <div
-        class="flex-1 min-h-0 overflow-hidden rounded-lg bg-white flex flex-col"
+        class="flex-1 min-h-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm flex flex-col"
       >
         <div class="flex-shrink-0 p-3 pb-0">
           <UTabs v-model="activeTab" :items="tabItems" />
@@ -25,8 +26,8 @@
                 class="text-primary hover:underline font-medium text-left"
                 @click="openModal(row.original)"
               >
-                в„–{{ row.original.number
-                }}{{ ` (С‚СѓСЂ ${row.original.tour_number || 1})` }}
+                №{{ row.original.number
+                }}{{ ` (тур ${row.original.tour_number || 1})` }}
               </button>
             </template>
 
@@ -63,7 +64,7 @@
           </UTable>
 
           <div v-else class="text-center text-gray-400 py-12">
-            РќРµРјР°С” С‚РµРЅРґРµСЂС–РІ Р·Р° РѕР±СЂР°РЅРёРјРё СѓРјРѕРІР°РјРё.
+            Немає тендерів за обраними умовами.
           </div>
         </div>
 
@@ -71,7 +72,7 @@
           class="flex-shrink-0 bg-white px-3 py-2 flex items-center justify-between gap-3"
         >
           <span class="text-sm text-gray-600">
-            РџРѕРєР°Р·Р°РЅРѕ {{ tableData.length }} Р· {{ totalCount }}
+            Показано {{ tableData.length }} з {{ totalCount }}
           </span>
 
           <UPagination
@@ -85,7 +86,7 @@
       </div>
 
       <aside
-        class="w-[15vw] min-w-[240px] max-w-[360px] shrink-0 rounded-lg bg-white p-4 flex flex-col gap-4 overflow-hidden max-lg:w-full max-lg:min-w-0 max-lg:max-w-none"
+        class="w-[18rem] min-w-[240px] max-w-[380px] shrink-0 rounded-xl border border-gray-200 bg-white shadow-sm p-4 flex flex-col gap-4 overflow-hidden max-lg:w-full max-lg:min-w-0 max-lg:max-w-none"
       >
         <div class="w-full">
           <UButton
@@ -96,33 +97,33 @@
             class="w-full"
             @click="clearFilters"
           >
-            РћС‡РёСЃС‚РёС‚Рё
+            Очистити
           </UButton>
         </div>
 
-        <UFormField label="РќРѕРјРµСЂ С‚РµРЅРґРµСЂР°">
+        <UFormField label="Номер тендера">
           <UInput
             v-model="tenderNumberFilter"
-            placeholder="Р’РІРµРґС–С‚СЊ РЅРѕРјРµСЂ"
+            placeholder="Введіть номер"
             class="w-full"
           />
         </UFormField>
 
-        <UFormField label="РўРёРї РїСЂРѕРІРµРґРµРЅРЅСЏ">
+        <UFormField label="Тип проведення">
           <USelectMenu
             v-model="conductTypeFilter"
             :items="conductTypeOptions"
             value-key="value"
             label-key="label"
-            placeholder="РЈСЃС–"
+            placeholder="Усі"
             class="w-full"
           />
         </UFormField>
 
         <LazyContentSearch
-          label="РљРѕРјРїР°РЅС–СЏ"
-          placeholder="РЈСЃС– РєРѕРјРїР°РЅС–С—"
-          search-placeholder="РџРѕС€СѓРє Р·Р° РЅР°Р·РІРѕСЋ Р°Р±Рѕ РєРѕРґРѕРј"
+          label="Компанія"
+          placeholder="Усі компанії"
+          search-placeholder="Пошук за назвою або кодом"
           :tree="companyFilterTree"
           :selected-ids="companySelectedIds"
           :search-term="companySearchTerm"
@@ -142,7 +143,7 @@
         <UCheckbox
           v-if="activeTab === 'active'"
           v-model="receptionStartedOnly"
-          label="РџСЂРёР№РѕРј СЂРѕР·РїРѕС‡Р°РІСЃСЏ"
+          label="Прийом розпочався"
         />
       </aside>
     </div>
@@ -155,16 +156,16 @@
       <template #content>
         <div class="p-4 flex flex-col max-h-[85vh]">
           <h3 class="text-lg font-semibold mb-4">
-            {{ selectedTender?.name }} - СѓРјРѕРІРё РїСЂРѕРІРµРґРµРЅРЅСЏ
+            {{ selectedTender?.name }} - умови проведення
           </h3>
 
           <div class="flex gap-4 flex-1 min-h-0">
             <div class="flex-1 flex flex-col min-w-0">
               <h4 class="text-sm font-medium text-gray-600 mb-2">
-                Р—Р°РіР°Р»СЊРЅС– СѓРјРѕРІРё
+                Загальні умови
               </h4>
               <div
-                class="border rounded p-3 overflow-y-auto bg-gray-50 flex-1 min-h-[200px] max-h-[50vh]"
+                class="border border-gray-200 rounded p-3 overflow-y-auto bg-gray-50 flex-1 min-h-[200px] max-h-[50vh]"
               >
                 <div
                   v-if="selectedTender?.general_terms"
@@ -172,7 +173,7 @@
                   v-html="formattedGeneralTerms"
                 />
                 <p v-else class="whitespace-pre-wrap text-sm">
-                  РћРїРёСЃ СѓРјРѕРІ РЅРµ РґРѕРґР°РЅРѕ.
+                  Опис умов не додано.
                 </p>
               </div>
             </div>
@@ -180,24 +181,24 @@
             <div class="flex-1 flex flex-col min-w-0 gap-4">
               <div class="flex flex-col min-h-0">
                 <h4 class="text-sm font-medium text-gray-600 mb-2">
-                  РџРѕР·РёС†С–С— С‚РµРЅРґРµСЂР°
+                  Позиції тендера
                 </h4>
                 <div
-                  class="border rounded overflow-y-auto flex-1 min-h-[120px] max-h-[34vh]"
+                  class="border border-gray-200 rounded overflow-y-auto flex-1 min-h-[120px] max-h-[34vh]"
                 >
                   <table class="w-full text-sm">
                     <thead class="bg-gray-100 sticky top-0">
                       <tr>
-                        <th class="text-left p-2">РќР°Р·РІР°</th>
-                        <th class="text-right p-2">РљС–Р»СЊРєС–СЃС‚СЊ</th>
-                        <th class="text-left p-2">РћРґ. РІРёРј.</th>
+                        <th class="text-left p-2">Назва</th>
+                        <th class="text-right p-2">Кількість</th>
+                        <th class="text-left p-2">Од. вим.</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr
                         v-for="pos in tenderPositionsForModal"
                         :key="pos.id"
-                        class="border-t"
+                        class="border-t border-gray-200"
                       >
                         <td class="p-2">{{ pos.name }}</td>
                         <td class="p-2 text-right">{{ pos.quantity }}</td>
@@ -205,7 +206,7 @@
                       </tr>
                       <tr v-if="!tenderPositionsForModal.length">
                         <td colspan="3" class="p-3 text-gray-500">
-                          РџРѕР·РёС†С–С— Сѓ С†СЊРѕРјСѓ С‚РµРЅРґРµСЂС– РІС–РґСЃСѓС‚РЅС–.
+                          Позиції у цьому тендері відсутні.
                         </td>
                       </tr>
                     </tbody>
@@ -215,10 +216,10 @@
 
               <div class="flex flex-col min-h-0">
                 <h4 class="text-sm font-medium text-gray-600 mb-2">
-                  Р—Р°РіР°Р»СЊРЅС– РєСЂРёС‚РµСЂС–С—
+                  Загальні критерії
                 </h4>
                 <div
-                  class="border rounded p-3 overflow-y-auto bg-gray-50 min-h-[120px] max-h-[16vh]"
+                  class="border border-gray-200 rounded p-3 overflow-y-auto bg-gray-50 min-h-[120px] max-h-[16vh]"
                 >
                   <ul
                     v-if="tenderCriteriaForModal.length"
@@ -238,25 +239,25 @@
                     </li>
                   </ul>
                   <p v-else class="text-sm text-gray-500">
-                    РљСЂРёС‚РµСЂС–С— РЅРµ РґРѕРґР°РЅРѕ.
+                    Критерії не додано.
                   </p>
                 </div>
               </div>
             </div>
           </div>
 
-          <div class="flex justify-end gap-2 mt-4 pt-4 border-t">
+          <div class="flex justify-end gap-2 mt-4 pt-4 border-t border-gray-200">
             <UButton variant="outline" @click="modalOpen = false"
-              >Р’РёР№С‚Рё</UButton
+              >Вийти</UButton
             >
 
             <template v-if="checkingParticipation">
-              <UButton disabled :loading="true">РџРµСЂРµРІС–СЂРєР°...</UButton>
+              <UButton disabled :loading="true">Перевірка...</UButton>
             </template>
 
             <template v-else-if="participationAlreadyConfirmed">
               <UButton @click="goToProposalsPage"
-                >РџРµСЂРµР№С‚Рё РґРѕ РїСЂРѕРїРѕР·РёС†С–С—</UButton
+                >Перейти до пропозиції</UButton
               >
             </template>
 
@@ -265,7 +266,7 @@
               :loading="confirmLoading"
               @click="onConfirmParticipation"
             >
-              РџС–РґС‚РІРµСЂРґРёС‚Рё СѓС‡Р°СЃС‚СЊ
+              Підтвердити участь
             </UButton>
           </div>
         </div>
@@ -275,10 +276,13 @@
 </template>
 
 <script setup lang="ts">
+import { getApiErrorMessage } from "~/shared/api/error";
+import ParticipationJournalPage from "./journal.vue";
+
 definePageMeta({
   layout: "cabinet",
   middleware: "auth",
-  meta: { title: "РЈС‡Р°СЃС‚СЊ РІ С‚РµРЅРґРµСЂР°С…" },
+  meta: { title: "Участь в тендерах" },
 });
 
 type ParticipationTab = "active" | "processing" | "completed";
@@ -286,15 +290,18 @@ type ParticipationTab = "active" | "processing" | "completed";
 const PAGE_SIZE = 20;
 
 const route = useRoute();
+const isJournalRoute = computed(
+  () => route.path === "/cabinet/participation/journal",
+);
 const type = computed(() =>
   route.query.type === "sales" ? "sales" : "purchase",
 );
 const isSales = computed(() => type.value === "sales");
 
 const tabItems = [
-  { label: "РђРєС‚РёРІРЅС–", value: "active" },
-  { label: "РћРїСЂР°С†СЊРѕРІСѓСЋС‚СЊСЃСЏ", value: "processing" },
-  { label: "Р—Р°РІРµСЂС€РµРЅС–", value: "completed" },
+  { label: "Активні", value: "active" },
+  { label: "Опрацьовуються", value: "processing" },
+  { label: "Завершені", value: "completed" },
 ];
 
 const activeTab = ref<ParticipationTab>("active");
@@ -302,6 +309,8 @@ const currentPage = ref(1);
 
 const tenders = ref<any[]>([]);
 const totalCount = ref(0);
+const cursorByPage = ref<Record<number, string | null>>({ 1: null });
+const lastLoadedPage = ref(1);
 const companyOptions = ref<
   Array<{ id: number; label: string; name?: string; edrpou?: string }>
 >([]);
@@ -326,13 +335,13 @@ const confirmedTenderIds = ref<number[]>([]);
 
 const tableColumns = computed(() => {
   return [
-    { accessorKey: "number", header: "РќРѕРјРµСЂ" },
-    { accessorKey: "name", header: "РќР°Р·РІР°" },
-    { accessorKey: "company", header: "РљРѕРјРїР°РЅС–СЏ" },
-    { accessorKey: "stage_label", header: "Р•С‚Р°Рї" },
-    { accessorKey: "start_at", header: "РџРѕС‡Р°С‚РѕРє РїСЂРёР№РѕРјСѓ РїСЂРѕРїРѕР·РёС†С–Р№" },
-    { accessorKey: "end_at", header: "Р—Р°РІРµСЂС€РµРЅРЅСЏ РїСЂРёР№РѕРјСѓ РїСЂРѕРїРѕР·РёС†С–Р№" },
-    { accessorKey: "conduct_type_label", header: "РўРёРї РїСЂРѕРІРµРґРµРЅРЅСЏ" },
+    { accessorKey: "number", header: "Номер" },
+    { accessorKey: "name", header: "Назва" },
+    { accessorKey: "company", header: "Компанія" },
+    { accessorKey: "stage_label", header: "Етап" },
+    { accessorKey: "start_at", header: "Початок прийому пропозицій" },
+    { accessorKey: "end_at", header: "Завершення прийому пропозицій" },
+    { accessorKey: "conduct_type_label", header: "Тип проведення" },
   ];
 });
 
@@ -354,9 +363,9 @@ const companySelectedIds = computed(() =>
   selectedCompanyId.value ? [selectedCompanyId.value] : [],
 );
 const conductTypeOptions = [
-  { value: "all", label: "РЈСЃС–" },
-  { value: "rfx", label: "Р—Р±С–СЂ РїСЂРѕРїРѕР·РёС†С–Р№" },
-  { value: "online_auction", label: "РћРЅР»Р°Р№РЅ С‚РѕСЂРіРё" },
+  { value: "all", label: "Усі" },
+  { value: "rfx", label: "Збір пропозицій" },
+  { value: "online_auction", label: "Онлайн торги" },
 ];
 
 function formatDate(value?: string) {
@@ -406,12 +415,29 @@ const tenderCriteriaForModal = computed(() => {
   return Array.isArray(criteria) ? criteria : [];
 });
 
+function resetCursorPagination() {
+  cursorByPage.value = { 1: null };
+  lastLoadedPage.value = 1;
+}
+
 async function loadList() {
+  const page = currentPage.value;
+  const hasCursorForPage = Object.prototype.hasOwnProperty.call(
+    cursorByPage.value,
+    page,
+  );
+  if (page > 1 && !hasCursorForPage) {
+    currentPage.value = Math.max(1, lastLoadedPage.value);
+    return;
+  }
+  const cursor = hasCursorForPage ? (cursorByPage.value[page] ?? null) : null;
   const { data } = await tendersUC.getTendersForParticipation(
     isSales.value,
     activeTab.value,
     {
-      page: currentPage.value,
+      page,
+      cursorMode: true,
+      cursor,
       companyId: selectedCompanyId.value,
       cpvIds: cpvSelectedIds.value,
       receptionStarted:
@@ -423,7 +449,27 @@ async function loadList() {
 
   const payload = (data as any) || {};
   tenders.value = Array.isArray(payload.results) ? payload.results : [];
-  totalCount.value = Number(payload.count || 0);
+  const nextCursor =
+    typeof payload.next_cursor === "string" && payload.next_cursor.trim().length
+      ? payload.next_cursor.trim()
+      : null;
+  const hasMore = Boolean(payload.has_more && nextCursor);
+  const nextCursorByPage = { ...cursorByPage.value, [page]: cursor };
+  if (hasMore && nextCursor) {
+    nextCursorByPage[page + 1] = nextCursor;
+  } else {
+    delete nextCursorByPage[page + 1];
+  }
+  cursorByPage.value = nextCursorByPage;
+  const serverCount = Number(payload.count);
+  if (Number.isFinite(serverCount) && serverCount >= 0) {
+    totalCount.value = serverCount;
+  } else {
+    const syntheticTotal =
+      (page - 1) * PAGE_SIZE + tenders.value.length + (hasMore ? 1 : 0);
+    totalCount.value = Math.max(0, syntheticTotal);
+  }
+  lastLoadedPage.value = page;
   companyOptions.value = Array.isArray(payload.companies)
     ? payload.companies
     : [];
@@ -505,7 +551,7 @@ async function onConfirmParticipation() {
       isSales.value,
     );
     if (error) {
-      const msg = error || "РќРµ РІРґР°Р»РѕСЃСЏ РїС–РґС‚РІРµСЂРґРёС‚Рё СѓС‡Р°СЃС‚СЊ.";
+      const msg = getApiErrorMessage(error, "Не вдалося підтвердити участь.");
       useToast().add({ title: msg, color: "error" });
       return;
     }
@@ -526,7 +572,7 @@ async function onConfirmParticipation() {
     }
   } catch (e: any) {
     const msg =
-      e?.data?.detail || e?.message || "РќРµ РІРґР°Р»РѕСЃСЏ РїС–РґС‚РІРµСЂРґРёС‚Рё СѓС‡Р°СЃС‚СЊ.";
+      e?.data?.detail || e?.message || "Не вдалося підтвердити участь.";
     useToast().add({ title: msg, color: "error" });
     console.error(msg);
   } finally {
@@ -542,22 +588,28 @@ function clearFilters() {
   receptionStartedOnly.value = false;
   conductTypeFilter.value = "all";
   tenderNumberFilter.value = "";
+  resetCursorPagination();
   currentPage.value = 1;
 }
 
 onMounted(() => {
+  if (isJournalRoute.value) return;
   if (!route.query.type) {
     navigateTo({ path: "/cabinet/participation", query: { type: "purchase" } });
     return;
   }
+  resetCursorPagination();
   loadList();
 });
 
 onActivated(() => {
+  if (isJournalRoute.value) return;
   if (route.query.type) loadList();
 });
 
 watch([activeTab, type], () => {
+  if (isJournalRoute.value) return;
+  resetCursorPagination();
   currentPage.value = 1;
   if (activeTab.value !== "active") {
     receptionStartedOnly.value = false;
@@ -573,6 +625,8 @@ watch(
     cpvSelectedIds.value.join(","),
   ],
   () => {
+    if (isJournalRoute.value) return;
+    resetCursorPagination();
     currentPage.value = 1;
   },
 );
@@ -589,6 +643,7 @@ watch(
     cpvSelectedIds.value.join(","),
   ],
   () => {
+    if (isJournalRoute.value) return;
     if (route.query.type) loadList();
   },
 );
@@ -602,4 +657,3 @@ watch(
   background: white;
 }
 </style>
-

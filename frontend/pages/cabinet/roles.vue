@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="h-full min-h-0 flex flex-col">
     <div class="flex justify-between items-center mb-4">
       <h2 class="text-2xl font-bold">Ролі</h2>
       <UButton icon="i-heroicons-plus" @click="showAddModal = true"
@@ -7,7 +7,9 @@
       >
     </div>
 
-    <UTable :data="roles" :columns="columns" />
+    <div class="flex-1 min-h-0 overflow-auto rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <UTable :data="roles" :columns="columns" class="w-full" />
+    </div>
 
     <!-- Add Role Modal -->
     <UModal v-model:open="showAddModal">
@@ -18,7 +20,7 @@
           </template>
           <UForm :state="addForm" @submit="onAddRole" class="space-y-4">
             <UFormField label="Назва" name="name" required>
-              <UInput v-model="addForm.name" />
+              <UInput v-model="addForm.name" class="w-full" />
             </UFormField>
             <UFormField label="Права доступу" name="permission_ids">
               <USelectMenu
@@ -27,6 +29,7 @@
                 value-key="id"
                 label-key="label"
                 multiple
+                class="w-full"
               />
             </UFormField>
             <div class="flex gap-4">

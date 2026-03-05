@@ -1,7 +1,7 @@
 <template>
-  <div class="h-full flex gap-4">
+  <div class="h-full grid grid-cols-1 xl:grid-cols-3 gap-4">
     <!-- Ліва область: список номенклатури -->
-    <div class="flex-[2] border-r border-gray-200 p-4 flex flex-col min-h-0">
+    <div class="xl:col-span-2 rounded-xl border border-gray-200 bg-white p-4 shadow-sm flex flex-col min-h-0">
       <div class="flex justify-between items-center mb-4">
         <h2 class="text-2xl font-bold">Номенклатури</h2>
         <div class="flex gap-2">
@@ -113,7 +113,7 @@
     </div>
 
     <!-- Права область: фільтри -->
-    <div class="flex-1 p-4 space-y-4">
+    <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm space-y-4">
       <div class="flex items-center justify-between">
         <h3 class="text-lg font-semibold">Фільтри</h3>
         <UButton
@@ -131,6 +131,7 @@
         <UInput
           v-model="filters.name"
           placeholder="Пошук по назві номенклатури"
+          class="w-full"
         />
       </UFormField>
 
@@ -141,6 +142,7 @@
           value-key="value"
           placeholder="Оберіть категорію"
           :disabled="!!filters.cpvId || categoryFilterOptions.length === 0"
+          class="w-full"
           @update:model-value="onCategoryFilterChange"
         />
       </UFormField>
@@ -152,6 +154,7 @@
           value-key="value"
           placeholder="Оберіть CPV-категорію"
           :disabled="!!filters.categoryId || cpvFilterOptions.length === 0"
+          class="w-full"
           @update:model-value="onCpvFilterChange"
         />
       </UFormField>
@@ -176,7 +179,7 @@
             class="space-y-4"
           >
             <UFormField label="Назва" name="name" required>
-              <UInput v-model="nomenclatureForm.name" />
+              <UInput v-model="nomenclatureForm.name" class="w-full" />
             </UFormField>
 
             <UFormField label="Одиниця виміру" name="unit" required>
@@ -185,20 +188,21 @@
                 :items="unitOptions"
                 value-key="value"
                 placeholder="Оберіть одиницю виміру"
+                class="w-full"
               />
             </UFormField>
 
             <div class="grid grid-cols-2 gap-4">
               <UFormField label="Код / Артикул" name="code">
-                <UInput v-model="nomenclatureForm.code" />
+                <UInput v-model="nomenclatureForm.code" class="w-full" />
               </UFormField>
               <UFormField label="Зовнішній номер" name="external_number">
-                <UInput v-model="nomenclatureForm.external_number" />
+                <UInput v-model="nomenclatureForm.external_number" class="w-full" />
               </UFormField>
             </div>
 
             <UFormField label="Опис" name="description">
-              <UTextarea v-model="nomenclatureForm.description" />
+              <UTextarea v-model="nomenclatureForm.description" class="w-full" />
             </UFormField>
 
             <div class="grid grid-cols-2 gap-4">
@@ -206,12 +210,14 @@
                 <UInput
                   v-model="nomenclatureForm.specification_file"
                   placeholder="Назва або шлях до файлу"
+                  class="w-full"
                 />
               </UFormField>
               <UFormField label="Зображення (файл)" name="image_file">
                 <UInput
                   v-model="nomenclatureForm.image_file"
                   placeholder="Назва або шлях до файлу"
+                  class="w-full"
                 />
               </UFormField>
             </div>
@@ -223,6 +229,7 @@
                 value-key="value"
                 placeholder="Без категорії"
                 :disabled="selectedCpvIds.length > 0"
+                class="w-full"
                 @update:model-value="onFormCategoryChange"
               />
             </UFormField>

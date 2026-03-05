@@ -25,6 +25,38 @@ export async function getTenderList(request: RequestFn, isSales: boolean) {
   return request<TenderListItem[]>(listEndpoint(isSales))
 }
 
+export async function getTenderActiveTasks(
+  request: RequestFn,
+  isSales: boolean,
+  options?: { limit?: number; skipLoader?: boolean }
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  const params = new URLSearchParams()
+  if (options?.limit && Number.isFinite(options.limit) && options.limit > 0) {
+    params.set("limit", String(Math.trunc(options.limit)))
+  }
+  const query = params.toString()
+  return request<{ count: number; limit: number; results: TenderListItem[] }>(
+    `${prefix}/active-tasks/${query ? `?${query}` : ""}`,
+    {
+      skipLoader: options?.skipLoader,
+      cacheTtlMs: 30_000,
+    }
+  )
+}
+
+export async function getTenderActiveTasksCount(
+  request: RequestFn,
+  isSales: boolean,
+  options?: { skipLoader?: boolean }
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<{ count: number }>(`${prefix}/active-tasks/?count_only=true`, {
+    skipLoader: options?.skipLoader,
+    cacheTtlMs: 15_000,
+  })
+}
+
 export type ParticipationTab = 'active' | 'processing' | 'completed' | 'journal'
 
 export async function getTendersForParticipation(
@@ -33,6 +65,8 @@ export async function getTendersForParticipation(
   tab: ParticipationTab,
   filters?: {
     page?: number
+    cursor?: string | null
+    cursorMode?: boolean
     companyId?: number | null
     cpvIds?: number[]
     receptionStarted?: boolean
@@ -46,6 +80,8 @@ export async function getTendersForParticipation(
   const params = new URLSearchParams()
   params.set('tab', tab)
   params.set('page', String(filters?.page ?? 1))
+  if (filters?.cursorMode) params.set('cursor_mode', 'true')
+  if (filters?.cursor?.trim()) params.set('cursor', filters.cursor.trim())
   if (filters?.companyId) params.set('company_id', String(filters.companyId))
   if (filters?.cpvIds?.length) params.set('cpv_ids', filters.cpvIds.join(','))
   if (filters?.receptionStarted && tab === 'active') params.set('reception_started', 'true')
@@ -97,10 +133,50 @@ export async function getTenderProposals(
   request: RequestFn,
   id: number,
   isSales: boolean,
+  options?: {
+    skipLoader?: boolean
+    proposalIds?: number[]
+    statusOnly?: boolean
+    updatedSince?: string
+  }
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  const normalizedProposalIds = Array.from(
+    new Set(
+      (options?.proposalIds ?? [])
+        .map((proposalId) => Number(proposalId))
+        .filter((proposalId) => Number.isInteger(proposalId) && proposalId > 0)
+    )
+  )
+  const params = new URLSearchParams()
+  if (normalizedProposalIds.length > 0) {
+    params.set('ids', normalizedProposalIds.join(','))
+  }
+  if (options?.statusOnly) {
+    params.set('view', 'status')
+  }
+  const updatedSince = String(options?.updatedSince || '').trim()
+  if (updatedSince.length > 0) {
+    params.set('updated_since', updatedSince)
+  }
+  let endpoint = `${prefix}/${id}/proposals/`
+  if (params.size > 0) {
+    endpoint = `${endpoint}?${params.toString()}`
+  }
+  return request<TenderProposal[]>(endpoint, {
+    skipLoader: options?.skipLoader
+  })
+}
+
+export async function getTenderProposalDetail(
+  request: RequestFn,
+  id: number,
+  proposalId: number,
+  isSales: boolean,
   options?: { skipLoader?: boolean }
 ) {
   const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
-  return request<TenderProposal[]>(`${prefix}/${id}/proposals/`, {
+  return request<TenderProposal>(`${prefix}/${id}/proposals/${proposalId}/`, {
     skipLoader: options?.skipLoader
   })
 }
@@ -222,23 +298,25 @@ export async function createNomenclature(
 
 // Reference data used by tender pages
 export async function getCategories(request: RequestFn) {
-  return request<unknown[]>('/categories/')
+  return request<unknown[]>('/categories/', { cacheTtlMs: 5 * 60_000 })
 }
 
 export async function getExpenses(request: RequestFn) {
-  return request<unknown[]>('/expenses/')
+  return request<unknown[]>('/expenses/', { cacheTtlMs: 5 * 60_000 })
 }
 
 export async function getBranches(request: RequestFn) {
-  return request<unknown[]>('/branches/')
+  return request<unknown[]>('/branches/', { cacheTtlMs: 5 * 60_000 })
 }
 
 export async function getCurrencies(request: RequestFn) {
-  return request<unknown[]>('/currencies/')
+  return request<unknown[]>('/currencies/', { cacheTtlMs: 5 * 60_000 })
 }
 
 export async function getDepartments(request: RequestFn, branchId: number) {
-  return request<unknown[]>(`/departments/?branch_id=${branchId}`)
+  return request<unknown[]>(`/departments/?branch_id=${branchId}`, {
+    cacheTtlMs: 2 * 60_000,
+  })
 }
 
 export async function getNomenclaturesByCpv(request: RequestFn, cpvId: number) {
@@ -262,7 +340,7 @@ export async function getNomenclaturesByCategory(request: RequestFn, categoryId:
 }
 
 export async function getCategory(request: RequestFn, categoryId: number) {
-  return request<unknown>(`/categories/${categoryId}/`)
+  return request<unknown>(`/categories/${categoryId}/`, { cacheTtlMs: 5 * 60_000 })
 }
 
 export async function getCpvChildren(
@@ -365,5 +443,7 @@ export async function getAvailableApprovalModels(
   if (params.estimatedBudget != null && Number.isFinite(Number(params.estimatedBudget))) {
     q.set("estimated_budget", String(params.estimatedBudget))
   }
-  return request<unknown[]>(`/approval-models/available-for-tender/?${q.toString()}`)
+  return request<unknown[]>(`/approval-models/available-for-tender/?${q.toString()}`, {
+    cacheTtlMs: 30_000,
+  })
 }

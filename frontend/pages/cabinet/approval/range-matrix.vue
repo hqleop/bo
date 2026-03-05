@@ -13,7 +13,7 @@
       description="Поки що застосовано заглушку: курс усіх валют вважається 1."
     />
 
-    <UCard class="min-h-0 flex-1">
+    <UCard class="min-h-0 flex-1 border border-gray-200 shadow-sm">
       <div class="max-h-[65vh] overflow-auto">
         <UTable :data="ranges" :columns="columns" class="w-full" />
       </div>
@@ -31,7 +31,7 @@
               <UInput v-model.number="form.budget_to" type="number" step="0.01" />
             </UFormField>
             <UFormField label="Валюта" required>
-              <USelectMenu v-model="form.currency" :items="currencyOptions" value-key="value" />
+              <USelectMenu v-model="form.currency" :items="currencyOptions" value-key="value" class="w-full" />
             </UFormField>
             <div class="flex justify-end gap-2">
               <UButton variant="outline" @click="showCreateModal = false">Скасувати</UButton>

@@ -35,15 +35,15 @@ export async function deactivateMembership(request: RequestFn, membershipId: num
 
 // Reference data used by users page (branches, categories, expenses, departments, *-users)
 export async function getBranches(request: RequestFn) {
-  return request<unknown[]>('/branches/')
+  return request<unknown[]>('/branches/', { cacheTtlMs: 5 * 60_000 })
 }
 
 export async function getCategories(request: RequestFn) {
-  return request<unknown[]>('/categories/')
+  return request<unknown[]>('/categories/', { cacheTtlMs: 5 * 60_000 })
 }
 
 export async function getExpenses(request: RequestFn) {
-  return request<unknown[]>('/expenses/')
+  return request<unknown[]>('/expenses/', { cacheTtlMs: 5 * 60_000 })
 }
 
 export async function getDepartments(request: RequestFn, branchId: number) {

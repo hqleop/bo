@@ -25,6 +25,7 @@ export interface TenderProposal {
   supplier_company_id?: number
   supplier_name?: string
   submitted_at?: string | null
+  status_updated_at?: string
   [key: string]: unknown
 }
 
@@ -66,11 +67,19 @@ export interface ParticipationCompanyOption {
 }
 
 export interface ParticipationListResponse {
-  count: number
+  count: number | null
   page: number
   page_size: number
-  total_pages: number
+  total_pages: number | null
+  next_cursor?: string | null
+  has_more?: boolean
   companies: ParticipationCompanyOption[]
   cpv_tree?: unknown[]
   results: TenderDetail[]
+}
+
+export interface TenderActiveTasksResponse {
+  count: number
+  limit: number
+  results: TenderListItem[]
 }

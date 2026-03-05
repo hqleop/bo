@@ -12,7 +12,7 @@
       </UButton>
     </div>
 
-    <div class="flex-1 min-h-0 bg-white rounded-lg shadow p-4 overflow-auto">
+    <div class="flex-1 min-h-0 bg-white rounded-xl border border-gray-200 shadow-sm p-4 overflow-auto">
       <div
         v-if="isLoading"
         class="h-full min-h-[200px] text-gray-500 flex items-center justify-center"
@@ -93,7 +93,6 @@ const STAGE_TO_TASK: Record<string, StageTask> = {
 };
 
 const tendersUC = useTendersUseCases();
-const { me, refreshMe } = useMe();
 
 const isLoading = ref(false);
 const tasks = ref<UserTaskRow[]>([]);
@@ -108,14 +107,12 @@ const columns = [
 
 function toTaskRows(
   tenders: TenderListItem[],
-  isSales: boolean,
-  currentUserId: number
+  isSales: boolean
 ): UserTaskRow[] {
   const tenderTypeLabel = isSales ? "Продаж" : "Закупівля";
   const basePath = isSales ? "/cabinet/tenders/sales" : "/cabinet/tenders";
 
   return tenders
-    .filter((item) => Number(item.created_by) === currentUserId)
     .map((item) => {
       const stage = String(item.stage ?? "");
       const task = STAGE_TO_TASK[stage];
@@ -140,29 +137,20 @@ function toTaskRows(
 async function loadTasks() {
   isLoading.value = true;
   try {
-    if (!me.value?.user?.id) {
-      await refreshMe();
-    }
-    const currentUserId = Number(me.value?.user?.id ?? 0);
-    if (!currentUserId) {
-      tasks.value = [];
-      return;
-    }
-
-    const [{ data: purchase }, { data: sales }] = await Promise.all([
-      tendersUC.getTenderList(false),
-      tendersUC.getTenderList(true),
+    const [{ data: purchasePayload }, { data: salesPayload }] = await Promise.all([
+      tendersUC.getTenderActiveTasks(false, { limit: 1000 }),
+      tendersUC.getTenderActiveTasks(true, { limit: 1000 }),
     ]);
+    const purchase = (purchasePayload as { results?: TenderListItem[] } | null)?.results ?? [];
+    const sales = (salesPayload as { results?: TenderListItem[] } | null)?.results ?? [];
 
     const purchaseTasks = toTaskRows(
       Array.isArray(purchase) ? purchase : [],
-      false,
-      currentUserId
+      false
     );
     const salesTasks = toTaskRows(
       Array.isArray(sales) ? sales : [],
-      true,
-      currentUserId
+      true
     );
 
     tasks.value = [...purchaseTasks, ...salesTasks].sort((a, b) => {

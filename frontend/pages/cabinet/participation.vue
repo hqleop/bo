@@ -7,7 +7,7 @@
 
     <div class="flex-1 min-h-0 overflow-hidden flex gap-4 max-lg:flex-col">
       <div
-        class="flex-1 min-h-0 overflow-hidden rounded-lg bg-white flex flex-col"
+        class="flex-1 min-h-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm flex flex-col"
       >
         <div class="flex-shrink-0 p-3 pb-0">
           <UTabs v-model="activeTab" :items="tabItems" />
@@ -86,7 +86,7 @@
       </div>
 
       <aside
-        class="w-[15vw] min-w-[240px] max-w-[360px] shrink-0 rounded-lg bg-white p-4 flex flex-col gap-4 overflow-hidden max-lg:w-full max-lg:min-w-0 max-lg:max-w-none"
+        class="w-[18rem] min-w-[240px] max-w-[380px] shrink-0 rounded-xl border border-gray-200 bg-white shadow-sm p-4 flex flex-col gap-4 overflow-hidden max-lg:w-full max-lg:min-w-0 max-lg:max-w-none"
       >
         <div class="w-full">
           <UButton
@@ -165,7 +165,7 @@
                 Загальні умови
               </h4>
               <div
-                class="border rounded p-3 overflow-y-auto bg-gray-50 flex-1 min-h-[200px] max-h-[50vh]"
+                class="border border-gray-200 rounded p-3 overflow-y-auto bg-gray-50 flex-1 min-h-[200px] max-h-[50vh]"
               >
                 <div
                   v-if="selectedTender?.general_terms"
@@ -184,7 +184,7 @@
                   Позиції тендера
                 </h4>
                 <div
-                  class="border rounded overflow-y-auto flex-1 min-h-[120px] max-h-[34vh]"
+                  class="border border-gray-200 rounded overflow-y-auto flex-1 min-h-[120px] max-h-[34vh]"
                 >
                   <table class="w-full text-sm">
                     <thead class="bg-gray-100 sticky top-0">
@@ -198,7 +198,7 @@
                       <tr
                         v-for="pos in tenderPositionsForModal"
                         :key="pos.id"
-                        class="border-t"
+                        class="border-t border-gray-200"
                       >
                         <td class="p-2">{{ pos.name }}</td>
                         <td class="p-2 text-right">{{ pos.quantity }}</td>
@@ -219,7 +219,7 @@
                   Загальні критерії
                 </h4>
                 <div
-                  class="border rounded p-3 overflow-y-auto bg-gray-50 min-h-[120px] max-h-[16vh]"
+                  class="border border-gray-200 rounded p-3 overflow-y-auto bg-gray-50 min-h-[120px] max-h-[16vh]"
                 >
                   <ul
                     v-if="tenderCriteriaForModal.length"
@@ -246,7 +246,7 @@
             </div>
           </div>
 
-          <div class="flex justify-end gap-2 mt-4 pt-4 border-t">
+          <div class="flex justify-end gap-2 mt-4 pt-4 border-t border-gray-200">
             <UButton variant="outline" @click="modalOpen = false"
               >Вийти</UButton
             >
@@ -276,6 +276,7 @@
 </template>
 
 <script setup lang="ts">
+import { getApiErrorMessage } from "~/shared/api/error";
 import ParticipationJournalPage from "./participation/journal.vue";
 
 definePageMeta({
@@ -308,6 +309,8 @@ const currentPage = ref(1);
 
 const tenders = ref<any[]>([]);
 const totalCount = ref(0);
+const cursorByPage = ref<Record<number, string | null>>({ 1: null });
+const lastLoadedPage = ref(1);
 const companyOptions = ref<
   Array<{ id: number; label: string; name?: string; edrpou?: string }>
 >([]);
@@ -412,12 +415,29 @@ const tenderCriteriaForModal = computed(() => {
   return Array.isArray(criteria) ? criteria : [];
 });
 
+function resetCursorPagination() {
+  cursorByPage.value = { 1: null };
+  lastLoadedPage.value = 1;
+}
+
 async function loadList() {
+  const page = currentPage.value;
+  const hasCursorForPage = Object.prototype.hasOwnProperty.call(
+    cursorByPage.value,
+    page,
+  );
+  if (page > 1 && !hasCursorForPage) {
+    currentPage.value = Math.max(1, lastLoadedPage.value);
+    return;
+  }
+  const cursor = hasCursorForPage ? (cursorByPage.value[page] ?? null) : null;
   const { data } = await tendersUC.getTendersForParticipation(
     isSales.value,
     activeTab.value,
     {
-      page: currentPage.value,
+      page,
+      cursorMode: true,
+      cursor,
       companyId: selectedCompanyId.value,
       cpvIds: cpvSelectedIds.value,
       receptionStarted:
@@ -429,7 +449,27 @@ async function loadList() {
 
   const payload = (data as any) || {};
   tenders.value = Array.isArray(payload.results) ? payload.results : [];
-  totalCount.value = Number(payload.count || 0);
+  const nextCursor =
+    typeof payload.next_cursor === "string" && payload.next_cursor.trim().length
+      ? payload.next_cursor.trim()
+      : null;
+  const hasMore = Boolean(payload.has_more && nextCursor);
+  const nextCursorByPage = { ...cursorByPage.value, [page]: cursor };
+  if (hasMore && nextCursor) {
+    nextCursorByPage[page + 1] = nextCursor;
+  } else {
+    delete nextCursorByPage[page + 1];
+  }
+  cursorByPage.value = nextCursorByPage;
+  const serverCount = Number(payload.count);
+  if (Number.isFinite(serverCount) && serverCount >= 0) {
+    totalCount.value = serverCount;
+  } else {
+    const syntheticTotal =
+      (page - 1) * PAGE_SIZE + tenders.value.length + (hasMore ? 1 : 0);
+    totalCount.value = Math.max(0, syntheticTotal);
+  }
+  lastLoadedPage.value = page;
   companyOptions.value = Array.isArray(payload.companies)
     ? payload.companies
     : [];
@@ -511,7 +551,7 @@ async function onConfirmParticipation() {
       isSales.value,
     );
     if (error) {
-      const msg = error || "Не вдалося підтвердити участь.";
+      const msg = getApiErrorMessage(error, "Не вдалося підтвердити участь.");
       useToast().add({ title: msg, color: "error" });
       return;
     }
@@ -548,6 +588,7 @@ function clearFilters() {
   receptionStartedOnly.value = false;
   conductTypeFilter.value = "all";
   tenderNumberFilter.value = "";
+  resetCursorPagination();
   currentPage.value = 1;
 }
 
@@ -557,6 +598,7 @@ onMounted(() => {
     navigateTo({ path: "/cabinet/participation", query: { type: "purchase" } });
     return;
   }
+  resetCursorPagination();
   loadList();
 });
 
@@ -567,6 +609,7 @@ onActivated(() => {
 
 watch([activeTab, type], () => {
   if (isJournalRoute.value) return;
+  resetCursorPagination();
   currentPage.value = 1;
   if (activeTab.value !== "active") {
     receptionStartedOnly.value = false;
@@ -583,6 +626,7 @@ watch(
   ],
   () => {
     if (isJournalRoute.value) return;
+    resetCursorPagination();
     currentPage.value = 1;
   },
 );

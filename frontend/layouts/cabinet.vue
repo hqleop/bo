@@ -1,72 +1,21 @@
 <template>
   <div
-    class="cabinet-density h-screen flex flex-col overflow-hidden bg-gray-50"
+    class="cabinet-density h-screen flex flex-col overflow-hidden bg-gradient-to-b from-gray-50 to-gray-100/60"
   >
     <!-- Sidebar + Main: фіксована висота по екрану, окремий скрол у сайдбарі та в контенті -->
     <div class="flex flex-1 min-h-0">
       <!-- Sidebar: висота по екрану, скрол лише у навігації -->
-      <aside
-        :class="[
-          'flex-shrink-0 h-full flex flex-col overflow-visible bg-white shadow-sm border-r border-gray-200 transition-[width] duration-200',
-          isSidebarCollapsed ? 'w-20' : 'w-64',
-        ]"
-      >
-        <div
-          :class="[
-            'h-14 flex-shrink-0 flex items-center justify-between',
-            isSidebarCollapsed ? 'px-2' : 'px-3',
-          ]"
-        >
-          <h2
-            v-if="!isSidebarCollapsed"
-            class="text-lg font-bold text-gray-900 whitespace-nowrap"
-          >
-            Bid Open
-          </h2>
-          <div v-else class="w-full flex justify-center">
-            <span class="text-sm font-bold text-gray-900">BO</span>
-          </div>
-          <UButton
-            :icon="
-              isSidebarCollapsed
-                ? 'i-heroicons-chevron-double-right'
-                : 'i-heroicons-chevron-double-left'
-            "
-            variant="ghost"
-            color="neutral"
-            size="sm"
-            class="shrink-0"
-            @click="toggleSidebar"
-          />
-        </div>
-        <nav
-          :class="[
-            'flex-1 min-h-0 overflow-y-auto',
-            isSidebarCollapsed ? 'p-2' : 'p-4',
-          ]"
-        >
-          <UNavigationMenu
-            orientation="vertical"
-            :items="navigationItems"
-            :collapsed="isSidebarCollapsed"
-            :tooltip="true"
-            :popover="true"
-            :ui="{
-              content: 'p-2',
-              childLabel: 'text-base font-semibold px-2 py-1',
-              childIcon: 'text-lg',
-            }"
-            color="neutral"
-            variant="link"
-            highlight
-            class="data-[orientation=vertical]:w-full data-[orientation=vertical]:flex-col data-[orientation=vertical]:gap-0.5"
-          />
-        </nav>
-      </aside>
+      <UDashboardSidebar
+        :items="navigationItems"
+        :collapsed="isSidebarCollapsed"
+        title="Bid Open"
+        compact-title="BO"
+        @toggle="toggleSidebar"
+      />
 
       <!-- Main: висота по екрану, скрол лише у робочій області -->
       <main class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
-        <header class="h-14 flex-shrink-0 bg-white shadow-sm">
+        <header class="h-14 flex-shrink-0 bg-white shadow-sm border-b border-gray-200">
           <div class="px-4 py-2 flex justify-between items-center h-full">
             <h1 class="text-lg font-semibold text-gray-900">{{ pageTitle }}</h1>
             <div class="flex items-center gap-3">
@@ -91,7 +40,7 @@
               />
               <NuxtLink
                 to="/cabinet/profile"
-                class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-gray-100 shrink-0"
+                class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-gray-100 ring-1 ring-transparent hover:ring-gray-200 transition shrink-0"
               >
                 <UAvatar
                   :src="headerAvatar"
@@ -143,12 +92,12 @@
             Немає сповіщень
           </div>
           <div v-else class="space-y-2">
-            <div
-              v-for="notification in notifications"
-              :key="notification.id"
-              class="p-3 border rounded"
-              :class="{ 'bg-gray-50': notification.is_read }"
-            >
+              <div
+                v-for="notification in notifications"
+                :key="notification.id"
+                class="p-3 border border-gray-200 rounded-lg"
+                :class="{ 'bg-gray-50': notification.is_read }"
+              >
               <h4 class="font-semibold">{{ notification.title }}</h4>
               <p class="text-sm text-gray-600">{{ notification.body }}</p>
               <p class="text-xs text-gray-400 mt-1">
@@ -503,40 +452,22 @@ const usersUC = useUsersUseCases();
 const tendersUC = useTendersUseCases();
 const notifications = ref<{ id: number; is_read?: boolean }[]>([]);
 const activeTasksCount = ref(0);
-
-function countActiveTasksByStage(
-  list: Array<{ created_by?: number | null; stage?: string }>,
-  userId: number,
-): number {
-  const activeStages = new Set(["preparation", "decision", "approval"]);
-  return list.filter(
-    (item) =>
-      Number(item.created_by) === userId &&
-      activeStages.has(String(item.stage ?? "")),
-  ).length;
-}
+let activeTasksRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
 async function loadActiveTasksCount() {
-  const currentUserId = Number(me.value?.user?.id ?? 0);
-  if (!currentUserId) {
+  if (!me.value?.user?.id) {
     activeTasksCount.value = 0;
     return;
   }
 
   try {
     const [{ data: purchase }, { data: sales }] = await Promise.all([
-      tendersUC.getTenderList(false),
-      tendersUC.getTenderList(true),
+      tendersUC.getTenderActiveTasksCount(false, { skipLoader: true }),
+      tendersUC.getTenderActiveTasksCount(true, { skipLoader: true }),
     ]);
-    const purchaseCount = countActiveTasksByStage(
-      Array.isArray(purchase) ? purchase : [],
-      currentUserId,
-    );
-    const salesCount = countActiveTasksByStage(
-      Array.isArray(sales) ? sales : [],
-      currentUserId,
-    );
-    activeTasksCount.value = purchaseCount + salesCount;
+    activeTasksCount.value =
+      Number((purchase as { count?: number } | null)?.count ?? 0) +
+      Number((sales as { count?: number } | null)?.count ?? 0);
   } catch {
     activeTasksCount.value = 0;
   }
@@ -548,14 +479,20 @@ onMounted(async () => {
     loadActiveTasksCount(),
   ]);
   notifications.value = data ?? [];
+
+  if (!activeTasksRefreshTimer) {
+    activeTasksRefreshTimer = setInterval(() => {
+      void loadActiveTasksCount();
+    }, 60_000);
+  }
 });
 
-watch(
-  () => route.fullPath,
-  () => {
-    void loadActiveTasksCount();
-  },
-);
+onBeforeUnmount(() => {
+  if (activeTasksRefreshTimer) {
+    clearInterval(activeTasksRefreshTimer);
+    activeTasksRefreshTimer = null;
+  }
+});
 const unreadNotificationsCount = computed(
   () => notifications.value?.filter((n) => !n.is_read).length || 0,
 );

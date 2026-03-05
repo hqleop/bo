@@ -33,9 +33,10 @@ export const useAuth = () => {
   })
 
   const login = async (email: string, password: string) => {
+    const normalizedEmail = String(email || '').trim().toLowerCase()
     const result = await apiClient.request<{ access: string; refresh: string }>('/auth/login/', {
       method: 'POST',
-      body: { email, password }
+      body: { email: normalizedEmail, password }
     })
     if (result.error) {
       return { success: false, error: result.error }

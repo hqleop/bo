@@ -1,3 +1,9 @@
+import base64
+import hashlib
+import json
+import logging
+import time
+
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError as DRFValidationError
@@ -10,12 +16,14 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth.password_validation import validate_password
+from django.core.cache import cache
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Q, Exists, OuterRef
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from drf_spectacular.types import OpenApiTypes
 
@@ -75,6 +83,7 @@ from .serializers import (
     CompanyCpvSerializer,
     CountryBusinessNumberSerializer,
     RegistrationCompanyLookupSerializer,
+    RegistrationCompanyLookupCompanySerializer,
     PermissionSerializer,
     RoleSerializer,
     CompanyUserSerializer,
@@ -103,19 +112,37 @@ from .serializers import (
     ApprovalModelSerializer,
     ApprovalModelStepSerializer,
     ProcurementTenderSerializer,
+    ProcurementTenderListSerializer,
     ProcurementParticipationTenderListSerializer,
     TenderProposalSerializer,
+    TenderProposalStatusSerializer,
     TenderProposalPositionUpdateSerializer,
     ProcurementTenderFileSerializer,
     SalesTenderSerializer,
+    SalesTenderListSerializer,
     SalesParticipationTenderListSerializer,
     SalesTenderProposalSerializer,
+    SalesTenderProposalStatusSerializer,
     SalesTenderFileSerializer,
     TenderApprovalJournalSerializer,
 )
 from .realtime import publish_tender_event
 
 User = get_user_model()
+status_sync_logger = logging.getLogger("core.status_sync")
+try:
+    STATUS_SYNC_CACHE_TTL_SECONDS = max(
+        0, int(getattr(settings, "STATUS_SYNC_CACHE_TTL_SECONDS", 2))
+    )
+except (TypeError, ValueError):
+    STATUS_SYNC_CACHE_TTL_SECONDS = 2
+try:
+    STATUS_SYNC_THROTTLE_PER_MINUTE = max(
+        0, int(getattr(settings, "STATUS_SYNC_THROTTLE_PER_MINUTE", 120))
+    )
+except (TypeError, ValueError):
+    STATUS_SYNC_THROTTLE_PER_MINUTE = 120
+STATUS_SYNC_LOG_METRICS = bool(getattr(settings, "STATUS_SYNC_LOG_METRICS", False))
 
 
 def _resolve_request_company_id(request):
@@ -190,6 +217,153 @@ def _parse_int_list_param(raw_values):
                 continue
     # preserve order, drop duplicates
     return list(dict.fromkeys(out))
+
+
+def _parse_iso_datetime_param(raw_value):
+    value = str(raw_value or "").strip()
+    if not value:
+        return None
+    parsed = parse_datetime(value)
+    if parsed is None:
+        return None
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
+
+
+def _build_status_sync_cache_key(
+    *,
+    kind: str,
+    tender_id: int,
+    user_id: int,
+    updated_since,
+):
+    raw = "|".join(
+        [
+            "status-sync-v1",
+            str(kind),
+            str(tender_id),
+            str(user_id),
+            str(updated_since.isoformat() if updated_since is not None else ""),
+        ]
+    )
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()
+    return f"status-sync:{kind}:{tender_id}:{user_id}:{digest}"
+
+
+def _status_sync_log(event: str, **payload):
+    if not STATUS_SYNC_LOG_METRICS:
+        return
+    details = " ".join(f"{k}={v}" for k, v in payload.items())
+    status_sync_logger.info("status_sync event=%s %s", event, details)
+
+
+def _status_sync_rate_limit_key(*, kind: str, tender_id: int, actor_key: str, minute_bucket: int):
+    raw = f"status-sync-rate-v1|{kind}|{tender_id}|{actor_key}|{minute_bucket}"
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()
+    return f"status-sync-rate:{digest}"
+
+
+def _enforce_status_sync_rate_limit(*, request, kind: str, tender_id: int):
+    if STATUS_SYNC_THROTTLE_PER_MINUTE <= 0:
+        return None, None
+
+    actor_key = "anon"
+    user_id = None
+    if request.user and request.user.is_authenticated:
+        user_id = int(request.user.id)
+        actor_key = f"user:{user_id}"
+    else:
+        actor_key = f"ip:{str(request.META.get('REMOTE_ADDR') or 'unknown')}"
+    now_ts = int(time.time())
+    minute_bucket = now_ts // 60
+    cache_key = _status_sync_rate_limit_key(
+        kind=kind,
+        tender_id=int(tender_id),
+        actor_key=actor_key,
+        minute_bucket=minute_bucket,
+    )
+
+    current = cache.get(cache_key)
+    if current is None:
+        cache.set(cache_key, 1, 65)
+        current = 1
+    else:
+        try:
+            current = cache.incr(cache_key)
+        except ValueError:
+            cache.set(cache_key, 1, 65)
+            current = 1
+    remaining = max(0, STATUS_SYNC_THROTTLE_PER_MINUTE - int(current))
+    if int(current) <= STATUS_SYNC_THROTTLE_PER_MINUTE:
+        return None, remaining
+
+    retry_after = max(1, 60 - (now_ts % 60))
+    response = Response(
+        {"detail": "Too many status sync requests. Please retry shortly."},
+        status=status.HTTP_429_TOO_MANY_REQUESTS,
+    )
+    response["Retry-After"] = str(retry_after)
+    response["X-Status-Sync-RateLimit-Limit"] = str(STATUS_SYNC_THROTTLE_PER_MINUTE)
+    response["X-Status-Sync-RateLimit-Remaining"] = "0"
+    _status_sync_log(
+        "throttle",
+        kind=kind,
+        tender_id=int(tender_id),
+        user_id=user_id,
+        actor=actor_key,
+        limit=STATUS_SYNC_THROTTLE_PER_MINUTE,
+    )
+    return response, 0
+
+
+def _encode_cursor_token(updated_at, object_id: int):
+    if updated_at is None:
+        return None
+    payload = {
+        "u": updated_at.isoformat(),
+        "id": int(object_id),
+    }
+    raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _decode_cursor_token(raw_cursor):
+    raw_value = str(raw_cursor or "").strip()
+    if not raw_value:
+        return None
+    try:
+        padded = raw_value + ("=" * ((4 - len(raw_value) % 4) % 4))
+        decoded = base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
+        payload = json.loads(decoded)
+        updated_at = _parse_iso_datetime_param(payload.get("u"))
+        object_id = int(payload.get("id"))
+        if updated_at is None or object_id <= 0:
+            return None
+        return updated_at, object_id
+    except Exception:
+        return None
+
+
+def _paginate_by_updated_cursor(*, qs, cursor, page_size: int):
+    cursor_payload = _decode_cursor_token(cursor)
+    if cursor_payload is not None:
+        cursor_updated_at, cursor_object_id = cursor_payload
+        qs = qs.filter(
+            Q(updated_at__lt=cursor_updated_at)
+            | (Q(updated_at=cursor_updated_at) & Q(id__lt=cursor_object_id))
+        )
+    rows = list(qs.order_by("-updated_at", "-id")[: page_size + 1])
+    has_more = len(rows) > page_size
+    rows = rows[:page_size]
+    next_cursor = None
+    if has_more and rows:
+        last_item = rows[-1]
+        next_cursor = _encode_cursor_token(
+            getattr(last_item, "updated_at", None),
+            int(getattr(last_item, "id", 0)),
+        )
+    return rows, next_cursor, has_more
 
 
 def _create_tender_approval_journal_entry(
@@ -628,7 +802,9 @@ def registration_company_lookup(request):
     payload = {
         "exists": True,
         "has_registered_users": has_registered_users,
-        "company": CompanySerializer(company, context={"request": request}).data,
+        "company": RegistrationCompanyLookupCompanySerializer(
+            company, context={"request": request}
+        ).data,
     }
     return Response(payload, status=status.HTTP_200_OK)
 
@@ -1595,6 +1771,59 @@ def _is_allowed_avatar_content_type(content_type):
         return False
     ct = content_type.split(";")[0].strip().lower()
     return ct in ("image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp") or ct.startswith("image/")
+
+
+TENDER_FILE_MAX_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
+ALLOWED_TENDER_FILE_CONTENT_TYPES = {
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "text/plain",
+    "text/csv",
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp",
+    "application/zip",
+    "application/x-zip-compressed",
+}
+ALLOWED_TENDER_FILE_EXTENSIONS = {
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".txt",
+    ".csv",
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+    ".zip",
+}
+
+
+def _file_extension(filename):
+    name = str(filename or "")
+    if "." not in name:
+        return ""
+    return f".{name.rsplit('.', 1)[1].lower()}"
+
+
+def _is_allowed_tender_file(file_obj):
+    ct = (getattr(file_obj, "content_type", "") or "").split(";")[0].strip().lower()
+    ext = _file_extension(getattr(file_obj, "name", ""))
+    return ct in ALLOWED_TENDER_FILE_CONTENT_TYPES or ext in ALLOWED_TENDER_FILE_EXTENSIONS
+
+
+def _validate_tender_file(file_obj):
+    if getattr(file_obj, "size", 0) > TENDER_FILE_MAX_SIZE_BYTES:
+        return "File size must not exceed 20 MB."
+    if not _is_allowed_tender_file(file_obj):
+        return "Allowed formats: PDF, DOC/DOCX, XLS/XLSX, TXT, CSV, JPG/PNG/WEBP, ZIP."
+    return None
 
 
 @extend_schema(
@@ -2801,10 +3030,18 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
     serializer_class = ProcurementTenderSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_serializer_class(self):
+        if self.action in ("list", "active_tasks"):
+            return ProcurementTenderListSerializer
+        return super().get_serializer_class()
+
     def get_queryset(self):
         user = self.request.user
-        if user.is_superuser:
-            return ProcurementTender.objects.all().select_related(
+        base_qs = ProcurementTender.objects.all()
+        if self.action in ("list", "active_tasks"):
+            base_qs = base_qs.select_related("created_by")
+        else:
+            base_qs = base_qs.select_related(
                 "company", "category", "cpv_category", "expense_article",
                 "branch", "department", "currency", "created_by", "parent",
             ).prefetch_related(
@@ -2812,19 +3049,12 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 "tender_criteria",
                 "criteria_items__reference_criterion",
             )
+        if user.is_superuser:
+            return base_qs
         user_companies = CompanyUser.objects.filter(
             user=user, status=CompanyUser.Status.APPROVED
         ).values_list("company_id", flat=True)
-        return ProcurementTender.objects.filter(
-            company_id__in=user_companies
-        ).select_related(
-            "company", "category", "cpv_category", "expense_article",
-            "branch", "department", "currency", "created_by", "parent",
-        ).prefetch_related(
-            "positions__nomenclature__unit",
-            "tender_criteria",
-            "criteria_items__reference_criterion",
-        )
+        return base_qs.filter(company_id__in=user_companies)
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -2887,6 +3117,52 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         parameters=[
+            OpenApiParameter(
+                name="count_only",
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description="Return only count of active tasks.",
+            ),
+            OpenApiParameter(
+                name="limit",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Max rows when count_only=false (default 200, max 1000).",
+            ),
+        ],
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=False, methods=["get"], url_path="active-tasks")
+    def active_tasks(self, request):
+        active_stages = ["preparation", "decision", "approval"]
+        count_only = str(request.query_params.get("count_only", "")).strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        limit = _parse_int_param(request.query_params.get("limit"), default=200, min_value=1)
+        limit = min(limit, 1000)
+
+        qs = self.get_queryset().filter(
+            stage__in=active_stages,
+            created_by=request.user,
+        ).order_by("-created_at", "-id")
+
+        total = qs.count()
+        if count_only:
+            return Response({"count": total})
+
+        serializer = self.get_serializer(qs[:limit], many=True)
+        return Response(
+            {
+                "count": total,
+                "limit": limit,
+                "results": serializer.data,
+            }
+        )
+
+    @extend_schema(
+        parameters=[
             OpenApiParameter(name="tab", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="active | processing | completed | journal"),
             OpenApiParameter(name="page", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY),
             OpenApiParameter(name="company_id", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY),
@@ -2896,6 +3172,8 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             OpenApiParameter(name="tender_number", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="Tender number exact match"),
             OpenApiParameter(name="submitted_only", type=OpenApiTypes.BOOL, location=OpenApiParameter.QUERY, description="Only tenders with submitted proposal by current company (for tab=journal: with at least one position proposal)"),
             OpenApiParameter(name="participation_result", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="participation | win"),
+            OpenApiParameter(name="cursor_mode", type=OpenApiTypes.BOOL, location=OpenApiParameter.QUERY, description="Use cursor pagination"),
+            OpenApiParameter(name="cursor", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="Opaque cursor token from previous page"),
         ],
         responses=OpenApiTypes.OBJECT,
     )
@@ -2914,6 +3192,8 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 "page": 1,
                 "page_size": 20,
                 "total_pages": 0,
+                "next_cursor": None,
+                "has_more": False,
                 "companies": [],
                 "cpv_tree": [],
                 "results": [],
@@ -2921,6 +3201,8 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
 
         tab = (request.query_params.get("tab") or "active").strip().lower()
         page = _parse_int_param(request.query_params.get("page"), default=1, min_value=1)
+        cursor_mode = str(request.query_params.get("cursor_mode", "")).strip().lower() in ("1", "true", "yes")
+        cursor_token = (request.query_params.get("cursor") or "").strip()
         page_size = 20
         reception_started = str(request.query_params.get("reception_started", "")).strip().lower() in ("1", "true", "yes")
         conduct_type = (request.query_params.get("conduct_type") or "").strip().lower()
@@ -3018,6 +3300,27 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             if item.get("company_id")
         ]
 
+        if cursor_mode:
+            rows, next_cursor, has_more = _paginate_by_updated_cursor(
+                qs=qs,
+                cursor=cursor_token,
+                page_size=page_size,
+            )
+            serializer = ProcurementParticipationTenderListSerializer(
+                rows, many=True, context={"request": request}
+            )
+            return Response({
+                "count": None,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": None,
+                "next_cursor": next_cursor,
+                "has_more": has_more,
+                "companies": companies,
+                "cpv_tree": cpv_tree,
+                "results": serializer.data,
+            })
+
         total = qs.count()
         total_pages = (total + page_size - 1) // page_size
         start = (page - 1) * page_size
@@ -3032,6 +3335,8 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             "page": page,
             "page_size": page_size,
             "total_pages": total_pages,
+            "next_cursor": None,
+            "has_more": page < total_pages,
             "companies": companies,
             "cpv_tree": cpv_tree,
             "results": serializer.data,
@@ -3127,12 +3432,25 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             return Response(required_criteria_error, status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
             proposal.submitted_at = timezone.now()
-            proposal.save(update_fields=["submitted_at"])
+            proposal.status_updated_at = timezone.now()
+            proposal.save(update_fields=["submitted_at", "status_updated_at"])
             CompanySupplier.objects.get_or_create(
                 owner_company_id=tender.company_id,
                 supplier_company_id=supplier_company_id,
                 defaults={"source": CompanySupplier.Source.PARTICIPATION},
             )
+        payload_for_ws = {
+            "proposal_id": proposal.id,
+            "submitted_at": proposal.submitted_at.isoformat() if proposal.submitted_at else None,
+        }
+        transaction.on_commit(
+            lambda: publish_tender_event(
+                "procurement",
+                int(tender.id),
+                "proposal.submitted_at.updated",
+                payload_for_ws,
+            )
+        )
         serializer = TenderProposalSerializer(proposal)
         return Response(serializer.data)
 
@@ -3175,7 +3493,20 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
         proposal.submitted_at = None
-        proposal.save(update_fields=["submitted_at"])
+        proposal.status_updated_at = timezone.now()
+        proposal.save(update_fields=["submitted_at", "status_updated_at"])
+        payload_for_ws = {
+            "proposal_id": proposal.id,
+            "submitted_at": None,
+        }
+        transaction.on_commit(
+            lambda: publish_tender_event(
+                "procurement",
+                int(tender.id),
+                "proposal.submitted_at.updated",
+                payload_for_ws,
+            )
+        )
         serializer = TenderProposalSerializer(proposal)
         return Response(serializer.data)
 
@@ -3255,6 +3586,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                         "type": "array",
                         "items": {"type": "object", "properties": {"position_id": {"type": "integer"}, "proposal_id": {"type": "integer"}}},
                     },
+                    "comment": {"type": "string"},
                 },
                 "required": ["mode"],
             }
@@ -3268,6 +3600,8 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         """
         tender = self.get_object()
         mode = request.data.get("mode")
+        comment = str(request.data.get("comment") or "").strip()
+        journal_comment = comment or "Передано на затвердження"
         if mode not in ("winner", "cancel", "next_round"):
             return Response(
                 {"detail": "mode має бути: winner, cancel або next_round."},
@@ -3291,7 +3625,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 procurement_tender=tender,
                 stage=tender.stage or "",
                 action=TenderApprovalJournal.Action.SAVED,
-                comment="Передано на затвердження",
+                comment=journal_comment,
                 actor=request.user,
             )
             return Response({"stage": "approval", "id": tender.id})
@@ -3303,7 +3637,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 procurement_tender=tender,
                 stage=tender.stage or "",
                 action=TenderApprovalJournal.Action.SAVED,
-                comment="Передано на затвердження",
+                comment=journal_comment,
                 actor=request.user,
             )
             return Response({"stage": "approval", "id": tender.id})
@@ -3366,11 +3700,105 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
     def proposals_list(self, request, pk=None):
         """Список пропозицій по тендеру."""
         tender = self.get_object()
+        view_mode = str(request.query_params.get("view") or "").strip().lower()
+        updated_since = _parse_iso_datetime_param(
+            request.query_params.get("updated_since")
+        )
+        proposal_ids_raw = request.query_params.getlist("ids")
+        if not proposal_ids_raw:
+            proposal_ids_raw = request.query_params.get("ids")
+        proposal_ids = _parse_int_list_param(proposal_ids_raw)
+        if view_mode == "status":
+            throttled_response, rate_limit_remaining = _enforce_status_sync_rate_limit(
+                request=request,
+                kind="procurement",
+                tender_id=int(tender.id),
+            )
+            if throttled_response is not None:
+                return throttled_response
+            use_delta_cache = updated_since is not None and not proposal_ids
+            cache_key = None
+            if use_delta_cache and request.user and request.user.is_authenticated:
+                cache_key = _build_status_sync_cache_key(
+                    kind="procurement",
+                    tender_id=int(tender.id),
+                    user_id=int(request.user.id),
+                    updated_since=updated_since,
+                )
+                cached_data = cache.get(cache_key)
+                if cached_data is not None:
+                    response = Response(cached_data)
+                    response["X-Status-Sync-Cache"] = "HIT"
+                    if rate_limit_remaining is not None:
+                        response["X-Status-Sync-RateLimit-Limit"] = str(
+                            STATUS_SYNC_THROTTLE_PER_MINUTE
+                        )
+                        response["X-Status-Sync-RateLimit-Remaining"] = str(
+                            rate_limit_remaining
+                        )
+                    _status_sync_log(
+                        "cache_hit",
+                        kind="procurement",
+                        tender_id=int(tender.id),
+                        user_id=int(request.user.id),
+                        rows=len(cached_data),
+                    )
+                    return response
+            qs = TenderProposal.objects.filter(tender=tender).select_related(
+                "supplier_company"
+            )
+            if updated_since is not None:
+                qs = qs.filter(status_updated_at__gt=updated_since)
+            if proposal_ids:
+                qs = qs.filter(id__in=proposal_ids)
+            elif "ids" in request.query_params:
+                return Response([])
+            serializer = TenderProposalStatusSerializer(qs, many=True)
+            data = list(serializer.data)
+            if cache_key:
+                cache.set(cache_key, data, STATUS_SYNC_CACHE_TTL_SECONDS)
+                response = Response(data)
+                response["X-Status-Sync-Cache"] = "MISS"
+                if rate_limit_remaining is not None:
+                    response["X-Status-Sync-RateLimit-Limit"] = str(
+                        STATUS_SYNC_THROTTLE_PER_MINUTE
+                    )
+                    response["X-Status-Sync-RateLimit-Remaining"] = str(
+                        rate_limit_remaining
+                    )
+                _status_sync_log(
+                    "cache_miss",
+                    kind="procurement",
+                    tender_id=int(tender.id),
+                    user_id=int(request.user.id) if request.user and request.user.is_authenticated else None,
+                    rows=len(data),
+                )
+                return response
+            response = Response(data)
+            if rate_limit_remaining is not None:
+                response["X-Status-Sync-RateLimit-Limit"] = str(
+                    STATUS_SYNC_THROTTLE_PER_MINUTE
+                )
+                response["X-Status-Sync-RateLimit-Remaining"] = str(
+                    rate_limit_remaining
+                )
+            _status_sync_log(
+                "no_cache",
+                kind="procurement",
+                tender_id=int(tender.id),
+                user_id=int(request.user.id) if request.user and request.user.is_authenticated else None,
+                rows=len(data),
+            )
+            return response
         qs = TenderProposal.objects.filter(tender=tender).select_related(
             "supplier_company"
         ).prefetch_related(
             "position_values__tender_position__nomenclature__unit",
         )
+        if proposal_ids:
+            qs = qs.filter(id__in=proposal_ids)
+        elif "ids" in request.query_params:
+            return Response([])
         serializer = TenderProposalSerializer(qs, many=True)
         return Response(serializer.data)
 
@@ -3503,6 +3931,9 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 {"detail": "Надішліть файл у полі file або file_upload."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        validation_error = _validate_tender_file(file_obj)
+        if validation_error:
+            return Response({"detail": validation_error}, status=status.HTTP_400_BAD_REQUEST)
         name = request.data.get("name", "") or file_obj.name
         visible = request.data.get("visible_to_participants", True)
         if isinstance(visible, str):
@@ -3552,10 +3983,18 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
     serializer_class = SalesTenderSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_serializer_class(self):
+        if self.action in ("list", "active_tasks"):
+            return SalesTenderListSerializer
+        return super().get_serializer_class()
+
     def get_queryset(self):
         user = self.request.user
-        if user.is_superuser:
-            return SalesTender.objects.all().select_related(
+        base_qs = SalesTender.objects.all()
+        if self.action in ("list", "active_tasks"):
+            base_qs = base_qs.select_related("created_by")
+        else:
+            base_qs = base_qs.select_related(
                 "company", "category", "cpv_category", "expense_article",
                 "branch", "department", "currency", "created_by", "parent",
             ).prefetch_related(
@@ -3563,19 +4002,12 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                 "tender_criteria",
                 "criteria_items__reference_criterion",
             )
+        if user.is_superuser:
+            return base_qs
         user_companies = CompanyUser.objects.filter(
             user=user, status=CompanyUser.Status.APPROVED
         ).values_list("company_id", flat=True)
-        return SalesTender.objects.filter(
-            company_id__in=user_companies
-        ).select_related(
-            "company", "category", "cpv_category", "expense_article",
-            "branch", "department", "currency", "created_by", "parent",
-        ).prefetch_related(
-            "positions__nomenclature__unit",
-            "tender_criteria",
-            "criteria_items__reference_criterion",
-        )
+        return base_qs.filter(company_id__in=user_companies)
 
     def get_object(self):
         """Дозволити доступ до тендера організатора або до тендера, де компанія користувача має пропозицію (учасник)."""
@@ -3638,6 +4070,52 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         parameters=[
+            OpenApiParameter(
+                name="count_only",
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description="Return only count of active tasks.",
+            ),
+            OpenApiParameter(
+                name="limit",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Max rows when count_only=false (default 200, max 1000).",
+            ),
+        ],
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=False, methods=["get"], url_path="active-tasks")
+    def active_tasks(self, request):
+        active_stages = ["preparation", "decision", "approval"]
+        count_only = str(request.query_params.get("count_only", "")).strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        limit = _parse_int_param(request.query_params.get("limit"), default=200, min_value=1)
+        limit = min(limit, 1000)
+
+        qs = self.get_queryset().filter(
+            stage__in=active_stages,
+            created_by=request.user,
+        ).order_by("-created_at", "-id")
+
+        total = qs.count()
+        if count_only:
+            return Response({"count": total})
+
+        serializer = self.get_serializer(qs[:limit], many=True)
+        return Response(
+            {
+                "count": total,
+                "limit": limit,
+                "results": serializer.data,
+            }
+        )
+
+    @extend_schema(
+        parameters=[
             OpenApiParameter(name="tab", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="active | processing | completed | journal"),
             OpenApiParameter(name="page", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY),
             OpenApiParameter(name="company_id", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY),
@@ -3647,6 +4125,8 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             OpenApiParameter(name="tender_number", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="Tender number exact match"),
             OpenApiParameter(name="submitted_only", type=OpenApiTypes.BOOL, location=OpenApiParameter.QUERY, description="Only tenders with submitted proposal by current company (for tab=journal: with at least one position proposal)"),
             OpenApiParameter(name="participation_result", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="participation | win"),
+            OpenApiParameter(name="cursor_mode", type=OpenApiTypes.BOOL, location=OpenApiParameter.QUERY, description="Use cursor pagination"),
+            OpenApiParameter(name="cursor", type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="Opaque cursor token from previous page"),
         ],
         responses=OpenApiTypes.OBJECT,
     )
@@ -3665,6 +4145,8 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                 "page": 1,
                 "page_size": 20,
                 "total_pages": 0,
+                "next_cursor": None,
+                "has_more": False,
                 "companies": [],
                 "cpv_tree": [],
                 "results": [],
@@ -3672,6 +4154,8 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
 
         tab = (request.query_params.get("tab") or "active").strip().lower()
         page = _parse_int_param(request.query_params.get("page"), default=1, min_value=1)
+        cursor_mode = str(request.query_params.get("cursor_mode", "")).strip().lower() in ("1", "true", "yes")
+        cursor_token = (request.query_params.get("cursor") or "").strip()
         page_size = 20
         reception_started = str(request.query_params.get("reception_started", "")).strip().lower() in ("1", "true", "yes")
         conduct_type = (request.query_params.get("conduct_type") or "").strip().lower()
@@ -3769,6 +4253,27 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             if item.get("company_id")
         ]
 
+        if cursor_mode:
+            rows, next_cursor, has_more = _paginate_by_updated_cursor(
+                qs=qs,
+                cursor=cursor_token,
+                page_size=page_size,
+            )
+            serializer = SalesParticipationTenderListSerializer(
+                rows, many=True, context={"request": request}
+            )
+            return Response({
+                "count": None,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": None,
+                "next_cursor": next_cursor,
+                "has_more": has_more,
+                "companies": companies,
+                "cpv_tree": cpv_tree,
+                "results": serializer.data,
+            })
+
         total = qs.count()
         total_pages = (total + page_size - 1) // page_size
         start = (page - 1) * page_size
@@ -3783,6 +4288,8 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             "page": page,
             "page_size": page_size,
             "total_pages": total_pages,
+            "next_cursor": None,
+            "has_more": page < total_pages,
             "companies": companies,
             "cpv_tree": cpv_tree,
             "results": serializer.data,
@@ -3878,12 +4385,25 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             return Response(required_criteria_error, status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
             proposal.submitted_at = timezone.now()
-            proposal.save(update_fields=["submitted_at"])
+            proposal.status_updated_at = timezone.now()
+            proposal.save(update_fields=["submitted_at", "status_updated_at"])
             CompanySupplier.objects.get_or_create(
                 owner_company_id=tender.company_id,
                 supplier_company_id=supplier_company_id,
                 defaults={"source": CompanySupplier.Source.PARTICIPATION},
             )
+        payload_for_ws = {
+            "proposal_id": proposal.id,
+            "submitted_at": proposal.submitted_at.isoformat() if proposal.submitted_at else None,
+        }
+        transaction.on_commit(
+            lambda: publish_tender_event(
+                "sales",
+                int(tender.id),
+                "proposal.submitted_at.updated",
+                payload_for_ws,
+            )
+        )
         serializer = SalesTenderProposalSerializer(proposal)
         return Response(serializer.data)
 
@@ -3926,7 +4446,20 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
         proposal.submitted_at = None
-        proposal.save(update_fields=["submitted_at"])
+        proposal.status_updated_at = timezone.now()
+        proposal.save(update_fields=["submitted_at", "status_updated_at"])
+        payload_for_ws = {
+            "proposal_id": proposal.id,
+            "submitted_at": None,
+        }
+        transaction.on_commit(
+            lambda: publish_tender_event(
+                "sales",
+                int(tender.id),
+                "proposal.submitted_at.updated",
+                payload_for_ws,
+            )
+        )
         serializer = SalesTenderProposalSerializer(proposal)
         return Response(serializer.data)
 
@@ -4006,6 +4539,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                         "type": "array",
                         "items": {"type": "object", "properties": {"position_id": {"type": "integer"}, "proposal_id": {"type": "integer"}}},
                     },
+                    "comment": {"type": "string"},
                 },
                 "required": ["mode"],
             }
@@ -4019,6 +4553,8 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
         """
         tender = self.get_object()
         mode = request.data.get("mode")
+        comment = str(request.data.get("comment") or "").strip()
+        journal_comment = comment or "Передано на затвердження"
         if mode not in ("winner", "cancel", "next_round"):
             return Response(
                 {"detail": "mode має бути: winner, cancel або next_round."},
@@ -4041,7 +4577,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                 sales_tender=tender,
                 stage=tender.stage or "",
                 action=TenderApprovalJournal.Action.SAVED,
-                comment="Передано на затвердження",
+                comment=journal_comment,
                 actor=request.user,
             )
             return Response({"stage": "approval", "id": tender.id})
@@ -4053,7 +4589,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                 sales_tender=tender,
                 stage=tender.stage or "",
                 action=TenderApprovalJournal.Action.SAVED,
-                comment="Передано на затвердження",
+                comment=journal_comment,
                 actor=request.user,
             )
             return Response({"stage": "approval", "id": tender.id})
@@ -4116,11 +4652,105 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
     def proposals_list(self, request, pk=None):
         """Список пропозицій по тендеру на продаж."""
         tender = self.get_object()
+        view_mode = str(request.query_params.get("view") or "").strip().lower()
+        updated_since = _parse_iso_datetime_param(
+            request.query_params.get("updated_since")
+        )
+        proposal_ids_raw = request.query_params.getlist("ids")
+        if not proposal_ids_raw:
+            proposal_ids_raw = request.query_params.get("ids")
+        proposal_ids = _parse_int_list_param(proposal_ids_raw)
+        if view_mode == "status":
+            throttled_response, rate_limit_remaining = _enforce_status_sync_rate_limit(
+                request=request,
+                kind="sales",
+                tender_id=int(tender.id),
+            )
+            if throttled_response is not None:
+                return throttled_response
+            use_delta_cache = updated_since is not None and not proposal_ids
+            cache_key = None
+            if use_delta_cache and request.user and request.user.is_authenticated:
+                cache_key = _build_status_sync_cache_key(
+                    kind="sales",
+                    tender_id=int(tender.id),
+                    user_id=int(request.user.id),
+                    updated_since=updated_since,
+                )
+                cached_data = cache.get(cache_key)
+                if cached_data is not None:
+                    response = Response(cached_data)
+                    response["X-Status-Sync-Cache"] = "HIT"
+                    if rate_limit_remaining is not None:
+                        response["X-Status-Sync-RateLimit-Limit"] = str(
+                            STATUS_SYNC_THROTTLE_PER_MINUTE
+                        )
+                        response["X-Status-Sync-RateLimit-Remaining"] = str(
+                            rate_limit_remaining
+                        )
+                    _status_sync_log(
+                        "cache_hit",
+                        kind="sales",
+                        tender_id=int(tender.id),
+                        user_id=int(request.user.id),
+                        rows=len(cached_data),
+                    )
+                    return response
+            qs = SalesTenderProposal.objects.filter(tender=tender).select_related(
+                "supplier_company"
+            )
+            if updated_since is not None:
+                qs = qs.filter(status_updated_at__gt=updated_since)
+            if proposal_ids:
+                qs = qs.filter(id__in=proposal_ids)
+            elif "ids" in request.query_params:
+                return Response([])
+            serializer = SalesTenderProposalStatusSerializer(qs, many=True)
+            data = list(serializer.data)
+            if cache_key:
+                cache.set(cache_key, data, STATUS_SYNC_CACHE_TTL_SECONDS)
+                response = Response(data)
+                response["X-Status-Sync-Cache"] = "MISS"
+                if rate_limit_remaining is not None:
+                    response["X-Status-Sync-RateLimit-Limit"] = str(
+                        STATUS_SYNC_THROTTLE_PER_MINUTE
+                    )
+                    response["X-Status-Sync-RateLimit-Remaining"] = str(
+                        rate_limit_remaining
+                    )
+                _status_sync_log(
+                    "cache_miss",
+                    kind="sales",
+                    tender_id=int(tender.id),
+                    user_id=int(request.user.id) if request.user and request.user.is_authenticated else None,
+                    rows=len(data),
+                )
+                return response
+            response = Response(data)
+            if rate_limit_remaining is not None:
+                response["X-Status-Sync-RateLimit-Limit"] = str(
+                    STATUS_SYNC_THROTTLE_PER_MINUTE
+                )
+                response["X-Status-Sync-RateLimit-Remaining"] = str(
+                    rate_limit_remaining
+                )
+            _status_sync_log(
+                "no_cache",
+                kind="sales",
+                tender_id=int(tender.id),
+                user_id=int(request.user.id) if request.user and request.user.is_authenticated else None,
+                rows=len(data),
+            )
+            return response
         qs = SalesTenderProposal.objects.filter(tender=tender).select_related(
             "supplier_company"
         ).prefetch_related(
             "position_values__tender_position__nomenclature__unit",
         )
+        if proposal_ids:
+            qs = qs.filter(id__in=proposal_ids)
+        elif "ids" in request.query_params:
+            return Response([])
         serializer = SalesTenderProposalSerializer(qs, many=True)
         return Response(serializer.data)
 
@@ -4251,6 +4881,9 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                 {"detail": "Надішліть файл у полі file або file_upload."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        validation_error = _validate_tender_file(file_obj)
+        if validation_error:
+            return Response({"detail": validation_error}, status=status.HTTP_400_BAD_REQUEST)
         name = request.data.get("name", "") or file_obj.name
         visible = request.data.get("visible_to_participants", True)
         if isinstance(visible, str):

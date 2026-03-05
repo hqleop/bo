@@ -7,11 +7,38 @@ export function useTendersUseCases() {
     return tendersApi.getTenderList(fetch, isSales)
   }
 
+  async function getTenderActiveTasks(
+    isSales: boolean,
+    options?: { limit?: number; skipLoader?: boolean }
+  ) {
+    const { data, error } = await tendersApi.getTenderActiveTasks(fetch, isSales, options)
+    const payload = data as { count?: number; limit?: number; results?: unknown[] } | null
+    const results = Array.isArray(payload?.results) ? (payload?.results as unknown[]) : []
+    return {
+      data: {
+        count: Number(payload?.count ?? 0),
+        limit: Number(payload?.limit ?? 0),
+        results,
+      },
+      error,
+    }
+  }
+
+  async function getTenderActiveTasksCount(
+    isSales: boolean,
+    options?: { skipLoader?: boolean }
+  ) {
+    const { data, error } = await tendersApi.getTenderActiveTasksCount(fetch, isSales, options)
+    return { data: { count: Number((data as any)?.count ?? 0) }, error }
+  }
+
   async function getTendersForParticipation(
     isSales: boolean,
     tab: 'active' | 'processing' | 'completed' | 'journal',
     filters?: {
       page?: number
+      cursor?: string | null
+      cursorMode?: boolean
       companyId?: number | null
       cpvIds?: number[]
       receptionStarted?: boolean
@@ -59,9 +86,23 @@ export function useTendersUseCases() {
   async function getTenderProposals(
     id: number,
     isSales: boolean,
-    options?: { skipLoader?: boolean }
+    options?: {
+      skipLoader?: boolean
+      proposalIds?: number[]
+      statusOnly?: boolean
+      updatedSince?: string
+    }
   ) {
     return tendersApi.getTenderProposals(fetch, id, isSales, options)
+  }
+
+  async function getTenderProposalDetail(
+    id: number,
+    proposalId: number,
+    isSales: boolean,
+    options?: { skipLoader?: boolean }
+  ) {
+    return tendersApi.getTenderProposalDetail(fetch, id, proposalId, isSales, options)
   }
 
   async function getTenderFiles(id: number, isSales: boolean) {
@@ -257,6 +298,8 @@ export function useTendersUseCases() {
 
   return {
     getTenderList,
+    getTenderActiveTasks,
+    getTenderActiveTasksCount,
     getTendersForParticipation,
     confirmParticipation,
     getTender,
@@ -264,6 +307,7 @@ export function useTendersUseCases() {
     createTender,
     getTenderTours,
     getTenderProposals,
+    getTenderProposalDetail,
     getTenderFiles,
     uploadTenderFile,
     deleteTenderFile,

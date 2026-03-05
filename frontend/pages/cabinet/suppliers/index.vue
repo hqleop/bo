@@ -10,7 +10,7 @@
     <div class="flex flex-1 min-h-0 gap-4">
       <!-- Таблиця зліва -->
       <div
-        class="flex-1 min-w-0 min-h-0 flex flex-col border rounded-lg bg-white"
+        class="flex-1 min-w-0 min-h-0 flex flex-col border border-gray-200 rounded-lg bg-white shadow-sm"
       >
         <div class="flex-1 min-h-0 overflow-auto">
           <UTable
@@ -45,14 +45,16 @@
       </div>
 
       <!-- Пошук справа -->
-      <aside class="w-64 flex-shrink-0">
-        <UFormField label="Пошук контрагента">
-          <UInput
-            v-model="searchTerm"
-            placeholder="Назва або код"
-            class="w-full"
-          />
-        </UFormField>
+      <aside class="w-[18rem] min-w-[16rem] max-lg:w-full max-lg:min-w-0 flex-shrink-0">
+        <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+          <UFormField label="Пошук контрагента">
+            <UInput
+              v-model="searchTerm"
+              placeholder="Назва або код"
+              class="w-full"
+            />
+          </UFormField>
+        </div>
       </aside>
     </div>
 
@@ -248,5 +250,4 @@ watch(
 
 onMounted(() => loadSuppliers());
 </script>
-
 

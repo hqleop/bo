@@ -7,7 +7,7 @@
     <div
       class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden"
     >
-      <UCard class="h-full flex flex-col min-h-0">
+      <UCard class="h-full flex flex-col min-h-0 border border-gray-200 shadow-sm">
         <template #header>
           <div class="flex items-center justify-between">
             <h3 class="font-semibold">Продаж</h3>
@@ -58,7 +58,7 @@
         </div>
       </UCard>
 
-      <UCard class="h-full flex flex-col min-h-0">
+      <UCard class="h-full flex flex-col min-h-0 border border-gray-200 shadow-sm">
         <template #header>
           <div class="flex items-center justify-between">
             <h3 class="font-semibold">Закупівля</h3>
@@ -125,6 +125,7 @@
               <UInput
                 v-model="form.name"
                 placeholder="Наприклад: Ціна за одиницю"
+                class="w-full"
               />
             </UFormField>
 
@@ -134,6 +135,7 @@
                 :items="typeOptions"
                 value-key="value"
                 placeholder="Оберіть тип"
+                class="w-full"
               />
             </UFormField>
 
@@ -143,6 +145,7 @@
                 :items="applicationOptions"
                 value-key="value"
                 placeholder="Оберіть застосування"
+                class="w-full"
               />
             </UFormField>
 
@@ -160,6 +163,7 @@
                     v-model.number="form.options.range_min"
                     type="number"
                     placeholder="Не обмежено"
+                    class="w-full"
                   />
                 </UFormField>
                 <UFormField label="Макс. значення" name="range_max">
@@ -167,6 +171,7 @@
                     v-model.number="form.options.range_max"
                     type="number"
                     placeholder="Не обмежено"
+                    class="w-full"
                   />
                 </UFormField>
               </div>
@@ -245,10 +250,12 @@
                     :key="idx"
                     class="flex gap-2 items-center"
                   >
-                    <UInput
-                      v-model="form.options.date_choices[idx]"
-                      type="date"
+                    <DateValuePicker
+                      :model-value="form.options.date_choices[idx] || ''"
                       class="flex-1"
+                      @update:model-value="
+                        form.options.date_choices[idx] = $event || ''
+                      "
                     />
                     <UButton
                       icon="i-heroicons-trash"

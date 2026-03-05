@@ -1,7 +1,7 @@
 <template>
-  <div class="h-full flex gap-4">
+  <div class="h-full grid grid-cols-1 xl:grid-cols-3 gap-4">
     <!-- Колонка 1: Філіали -->
-    <div class="flex-1 border-r border-gray-200 p-4">
+    <div class="min-h-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div class="flex justify-between items-center mb-4">
         <h3 class="text-lg font-semibold">Філіали</h3>
         <UButton icon="i-heroicons-plus" size="sm" @click="openBranchModal()"
@@ -29,7 +29,7 @@
     </div>
 
     <!-- Колонка 2: Підрозділи -->
-    <div class="flex-1 border-r border-gray-200 p-4">
+    <div class="min-h-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div class="flex justify-between items-center mb-4">
         <h3 class="text-lg font-semibold">Підрозділи</h3>
         <UButton
@@ -65,7 +65,7 @@
     </div>
 
     <!-- Колонка 3: Користувачі -->
-    <div class="flex-1 p-4">
+    <div class="min-h-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div class="flex justify-between items-center mb-4">
         <h3 class="text-lg font-semibold">Користувачі</h3>
         <div class="flex gap-2">
@@ -133,10 +133,10 @@
           </template>
           <UForm :state="branchForm" @submit="saveBranch" class="space-y-4">
             <UFormField label="Назва" name="name" required>
-              <UInput v-model="branchForm.name" />
+              <UInput v-model="branchForm.name" class="w-full" />
             </UFormField>
             <UFormField label="Код" name="code">
-              <UInput v-model="branchForm.code" />
+              <UInput v-model="branchForm.code" class="w-full" />
             </UFormField>
             <UFormField label="Батьківський філіал" name="parent_id">
               <USelectMenu
@@ -144,6 +144,7 @@
                 :items="branchParentOptions"
                 value-key="value"
                 placeholder="Без батьківського філіалу"
+                class="w-full"
               />
             </UFormField>
             <div class="flex gap-4">
@@ -179,7 +180,7 @@
             class="space-y-4"
           >
             <UFormField label="Назва" name="name" required>
-              <UInput v-model="departmentForm.name" />
+              <UInput v-model="departmentForm.name" class="w-full" />
             </UFormField>
             <UFormField label="Батьківський підрозділ" name="parent_id">
               <USelectMenu
@@ -187,6 +188,7 @@
                 :items="departmentParentOptions"
                 value-key="value"
                 placeholder="Без батьківського підрозділу"
+                class="w-full"
               />
             </UFormField>
             <div class="flex gap-4">
@@ -298,6 +300,8 @@
 </template>
 
 <script setup lang="ts">
+import { getApiErrorMessage } from "~/shared/api/error";
+
 definePageMeta({
   layout: "cabinet",
   middleware: "auth",
@@ -309,6 +313,7 @@ definePageMeta({
 const config = useRuntimeConfig();
 const { getAuthHeaders } = useAuth();
 const { fetch } = useApi();
+const { getCurrentCompanyId } = useCurrentCompanyId();
 
 // Дані
 const branches = ref<any[]>([]);
@@ -453,7 +458,7 @@ const saveBranch = async () => {
   const payload: any = {
     name: branchForm.name,
     code: branchForm.code,
-    company: selectedBranch.value?.company || (await getCurrentCompany()),
+    company: selectedBranch.value?.company || (await getCurrentCompanyId()),
   };
   if (branchForm.parent_id) {
     payload.parent = branchForm.parent_id;
@@ -472,7 +477,7 @@ const saveBranch = async () => {
 
   saving.value = false;
   if (error) {
-    alert(error.detail || "Помилка збереження");
+    alert(getApiErrorMessage(error, "Помилка збереження"));
     return;
   }
 
@@ -538,7 +543,7 @@ const saveDepartment = async () => {
 
   saving.value = false;
   if (error) {
-    alert(error.detail || "Помилка збереження");
+    alert(getApiErrorMessage(error, "Помилка збереження"));
     return;
   }
 
@@ -606,7 +611,7 @@ const addUsers = async () => {
 
   saving.value = false;
   if (error) {
-    alert(error.detail || "Помилка додавання");
+    alert(getApiErrorMessage(error, "Помилка додавання"));
     return;
   }
 
@@ -745,16 +750,6 @@ const departmentParentOptions = computed(() => {
     ...withPrefix,
   ];
 });
-
-const getCurrentCompany = async () => {
-  const { data } = await fetch("/auth/me/", {
-    headers: getAuthHeaders(),
-  });
-  if (data?.memberships?.[0]) {
-    return data.memberships[0].company.id;
-  }
-  return null;
-};
 
 // Ініціалізація
 onMounted(async () => {

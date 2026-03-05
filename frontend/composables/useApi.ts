@@ -26,6 +26,8 @@ export const useApi = () => {
       headers?: Record<string, string>
       query?: Record<string, string>
       skipLoader?: boolean
+      dedupe?: boolean
+      cacheTtlMs?: number
     } = {}
   ) => {
     if (!getAuthHeaders().Authorization) {
@@ -37,6 +39,8 @@ export const useApi = () => {
       headers: options.headers,
       query: options.query,
       skipLoader: options.skipLoader,
+      dedupe: options.dedupe,
+      cacheTtlMs: options.cacheTtlMs,
     });
   };
 

@@ -67,6 +67,7 @@
               value-key="value"
               label-key="label"
               placeholder="Оберіть тип суб'єкта"
+              class="w-full"
               :disabled="isCompanyDataLocked"
             />
           </UFormField>
@@ -101,6 +102,7 @@
               value-key="value"
               label-key="label"
               placeholder="Оберіть країну"
+              class="w-full"
               :disabled="isCompanyDataLocked"
             />
           </UFormField>
@@ -242,6 +244,7 @@
 </template>
 
 <script setup lang="ts">
+import { getApiErrorMessage } from "~/shared/api/error";
 import { onBeforeUnmount } from "vue";
 
 definePageMeta({
@@ -522,7 +525,7 @@ const onStep1Submit = async () => {
   loading.value = false;
 
   if (error) {
-    alert(error);
+    alert(getApiErrorMessage(error));
     return;
   }
 
@@ -596,7 +599,7 @@ const onStep2Submit = async () => {
     loading.value = false;
 
     if (error) {
-      alert(error);
+      alert(getApiErrorMessage(error));
       return;
     }
 
@@ -644,7 +647,7 @@ const onStep2Submit = async () => {
   loading.value = false;
 
   if (error) {
-    alert(error);
+    alert(getApiErrorMessage(error));
     return;
   }
 
@@ -703,7 +706,7 @@ const onStep3Submit = async () => {
   loading.value = false;
 
   if (error) {
-    alert(error);
+    alert(getApiErrorMessage(error));
     return;
   }
 

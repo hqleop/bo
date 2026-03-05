@@ -1,9 +1,14 @@
 <template>
   <UFormField :label="label">
     <UPopover v-model:open="isOpen">
-      <UButton block variant="outline" :disabled="disabled">
-        <span v-if="selectedText">{{ selectedText }}</span>
-        <span v-else>{{ placeholder }}</span>
+      <UButton
+        block
+        variant="outline"
+        :disabled="disabled"
+        class="w-full justify-between border-gray-200 text-left text-gray-700 hover:border-gray-300"
+      >
+        <span v-if="selectedText" class="truncate">{{ selectedText }}</span>
+        <span v-else class="text-gray-500 truncate">{{ placeholder }}</span>
       </UButton>
 
       <template #content>

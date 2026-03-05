@@ -13,6 +13,21 @@ from dotenv import load_dotenv
 import os
 import importlib.util
 
+
+def _int_env(name: str, default: int, min_value: int = 0) -> int:
+    raw = os.getenv(name, str(default))
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = default
+    return max(min_value, value)
+
+
+def _bool_env(name: str, default: bool = False) -> bool:
+    raw = str(os.getenv(name, str(int(default)))).strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -191,6 +206,14 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rest_framework.throttling.UserRateThrottle",
+        "rest_framework.throttling.AnonRateThrottle",
+    ),
+    "DEFAULT_THROTTLE_RATES": {
+        "user": os.getenv("DRF_THROTTLE_USER", "300/min"),
+        "anon": os.getenv("DRF_THROTTLE_ANON", "60/min"),
+    },
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
@@ -206,6 +229,34 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(days=1),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
 }
+
+WS_ALLOW_QUERY_TOKEN = os.getenv("WS_ALLOW_QUERY_TOKEN", "0").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+STATUS_SYNC_CACHE_TTL_SECONDS = _int_env(
+    "STATUS_SYNC_CACHE_TTL_SECONDS",
+    2,
+    0,
+)
+STATUS_SYNC_THROTTLE_PER_MINUTE = _int_env(
+    "STATUS_SYNC_THROTTLE_PER_MINUTE",
+    120,
+    0,
+)
+STATUS_SYNC_LOG_METRICS = _bool_env("STATUS_SYNC_LOG_METRICS", False)
+REALTIME_PROPOSAL_EVENT_COALESCE_MS = _int_env(
+    "REALTIME_PROPOSAL_EVENT_COALESCE_MS",
+    250,
+    0,
+)
+REALTIME_PROPOSAL_EVENT_COALESCE_MAX_IDS = _int_env(
+    "REALTIME_PROPOSAL_EVENT_COALESCE_MAX_IDS",
+    300,
+    1,
+)
 
 DEFAULT_CHARSET = 'utf-8'
 
