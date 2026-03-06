@@ -1,7 +1,7 @@
 <template>
-  <div class="h-full flex gap-4">
+  <div class="h-full flex gap-4 max-lg:flex-col">
     <!-- Ліва область: список користувачів -->
-    <div class="flex-[2] border-r border-gray-200 p-4 flex flex-col">
+    <div class="flex-1 border-r border-gray-200 p-4 flex flex-col">
       <div class="flex justify-between items-center mb-4">
         <h2 class="text-2xl font-bold">Користувачі</h2>
         <div class="flex gap-2">
@@ -80,7 +80,7 @@
     </div>
 
     <!-- Права область: фільтри -->
-    <div class="flex-1 p-4 space-y-4">
+    <div class="w-[224px] min-w-[224px] max-w-[224px] p-4 space-y-4 max-lg:w-full max-lg:min-w-0 max-lg:max-w-none">
       <div class="flex items-center justify-between">
         <h3 class="text-lg font-semibold">Фільтри</h3>
 

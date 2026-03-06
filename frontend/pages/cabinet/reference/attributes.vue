@@ -29,15 +29,18 @@
             class="w-full"
             @on-select="(_e, row) => selectAttribute(row.original)"
           >
+            <template #name-cell="{ row }">
+              <button
+                type="button"
+                class="text-primary hover:underline font-medium text-left"
+                @click.stop="openModal(row.original, 'sales')"
+              >
+                {{ row.original.name }}
+              </button>
+            </template>
             <template #actions-cell="{ row }">
               <div class="flex gap-1">
-                <UButton
-                  icon="i-heroicons-pencil-square"
-                  size="xs"
-                  variant="ghost"
-                  aria-label="Редагувати"
-                  @click.stop="openModal(row.original, 'sales')"
-                />
+                
                 <UButton
                   icon="i-heroicons-trash"
                   size="xs"
@@ -80,15 +83,18 @@
             class="w-full"
             @on-select="(_e, row) => selectAttribute(row.original)"
           >
+            <template #name-cell="{ row }">
+              <button
+                type="button"
+                class="text-primary hover:underline font-medium text-left"
+                @click.stop="openModal(row.original, 'procurement')"
+              >
+                {{ row.original.name }}
+              </button>
+            </template>
             <template #actions-cell="{ row }">
               <div class="flex gap-1">
-                <UButton
-                  icon="i-heroicons-pencil-square"
-                  size="xs"
-                  variant="ghost"
-                  aria-label="Редагувати"
-                  @click.stop="openModal(row.original, 'procurement')"
-                />
+                
                 <UButton
                   icon="i-heroicons-trash"
                   size="xs"

@@ -335,11 +335,6 @@ const menuLinks = computed(() => {
       icon: "i-heroicons-users",
     },
     {
-      label: "Групи для прав доступу",
-      to: "/cabinet/roles",
-      icon: "i-heroicons-shield-check",
-    },
-    {
       label: "Права доступу",
       to: "/cabinet/permissions",
       icon: "i-heroicons-key",

@@ -1,7 +1,7 @@
 <template>
-  <div class="h-full grid grid-cols-1 xl:grid-cols-3 gap-4">
+  <div class="h-full grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_224px] gap-4">
     <!-- Ліва область: список номенклатури -->
-    <div class="xl:col-span-2 rounded-xl border border-gray-200 bg-white p-4 shadow-sm flex flex-col min-h-0">
+    <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm flex flex-col min-h-0">
       <div class="flex justify-between items-center mb-4">
         <h2 class="text-2xl font-bold">Номенклатури</h2>
         <div class="flex gap-2">
@@ -76,14 +76,14 @@
               @click.stop
             />
           </template>
-          <template #actions-cell="{ row }">
-            <UButton
-              icon="i-heroicons-pencil-square"
-              size="xs"
-              variant="ghost"
-              aria-label="Редагувати"
+          <template #name-cell="{ row }">
+            <button
+              type="button"
+              class="text-primary hover:underline font-medium text-left"
               @click.stop="openNomenclatureModal(row.original)"
-            />
+            >
+              {{ row.original.name }}
+            </button>
           </template>
         </UTable>
         <div
@@ -556,7 +556,6 @@ const tableColumns = [
     header: "Активна",
     cell: ({ getValue }) => (getValue() ? "Так" : "Ні"),
   },
-  { id: "actions", header: "Дії" },
 ];
 
 // Підсвітка обраних рядків

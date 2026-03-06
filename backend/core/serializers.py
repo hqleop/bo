@@ -46,6 +46,21 @@ from .models import (
 User = get_user_model()
 
 
+def _format_tender_number(
+    *,
+    company_id,
+    tender_number,
+    fallback_id,
+    suffix,
+):
+    if not company_id:
+        return ""
+    normalized_number = tender_number if tender_number not in (None, "") else fallback_id
+    if not normalized_number:
+        return ""
+    return f"{company_id}{normalized_number}{suffix}"
+
+
 class UserSerializer(serializers.ModelSerializer):
     """User serializer for read operations."""
 
@@ -1442,7 +1457,12 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
         return not obj.next_tours.exists()
 
     def get_number(self, obj):
-        return f"p-{obj.company_id}-{obj.id}" if obj.company_id and obj.id else ""
+        return _format_tender_number(
+            company_id=obj.company_id,
+            tender_number=getattr(obj, "number", None),
+            fallback_id=obj.id,
+            suffix="p",
+        )
 
     def get_current_user_has_proposal(self, obj):
         request = self.context.get("request")
@@ -1717,7 +1737,12 @@ class ProcurementTenderListSerializer(serializers.ModelSerializer):
         )
 
     def get_number(self, obj):
-        return f"p-{obj.company_id}-{obj.id}" if obj.company_id and obj.id else ""
+        return _format_tender_number(
+            company_id=obj.company_id,
+            tender_number=getattr(obj, "number", None),
+            fallback_id=obj.id,
+            suffix="p",
+        )
 
     def get_created_by_display(self, obj):
         user = getattr(obj, "created_by", None)
@@ -1771,7 +1796,12 @@ class ProcurementParticipationTenderListSerializer(serializers.ModelSerializer):
         }
 
     def get_number(self, obj):
-        return f"p-{obj.company_id}-{obj.id}" if obj.company_id and obj.id else ""
+        return _format_tender_number(
+            company_id=obj.company_id,
+            tender_number=getattr(obj, "number", None),
+            fallback_id=obj.id,
+            suffix="p",
+        )
 
     def get_cpv_categories(self, obj):
         return [
@@ -2192,7 +2222,12 @@ class SalesTenderSerializer(serializers.ModelSerializer):
         return not obj.next_tours.exists()
 
     def get_number(self, obj):
-        return f"s-{obj.company_id}-{obj.id}" if obj.company_id and obj.id else ""
+        return _format_tender_number(
+            company_id=obj.company_id,
+            tender_number=getattr(obj, "number", None),
+            fallback_id=obj.id,
+            suffix="s",
+        )
 
     def get_current_user_has_proposal(self, obj):
         request = self.context.get("request")
@@ -2409,7 +2444,12 @@ class SalesTenderListSerializer(serializers.ModelSerializer):
         )
 
     def get_number(self, obj):
-        return f"s-{obj.company_id}-{obj.id}" if obj.company_id and obj.id else ""
+        return _format_tender_number(
+            company_id=obj.company_id,
+            tender_number=getattr(obj, "number", None),
+            fallback_id=obj.id,
+            suffix="s",
+        )
 
     def get_created_by_display(self, obj):
         user = getattr(obj, "created_by", None)
@@ -2463,7 +2503,12 @@ class SalesParticipationTenderListSerializer(serializers.ModelSerializer):
         }
 
     def get_number(self, obj):
-        return f"s-{obj.company_id}-{obj.id}" if obj.company_id and obj.id else ""
+        return _format_tender_number(
+            company_id=obj.company_id,
+            tender_number=getattr(obj, "number", None),
+            fallback_id=obj.id,
+            suffix="s",
+        )
 
     def get_cpv_categories(self, obj):
         return [

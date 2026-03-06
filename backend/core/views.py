@@ -2,6 +2,7 @@ import base64
 import hashlib
 import json
 import logging
+import re
 import time
 
 from rest_framework import viewsets, status, permissions
@@ -217,6 +218,36 @@ def _parse_int_list_param(raw_values):
                 continue
     # preserve order, drop duplicates
     return list(dict.fromkeys(out))
+
+
+def _normalize_alnum_token(value):
+    return re.sub(r"[^0-9a-zа-яіїєґ]", "", str(value or "").strip().casefold())
+
+
+def _filter_participation_qs_by_tender_number(qs, tender_number, suffix):
+    token = _normalize_alnum_token(tender_number)
+    if not token:
+        return qs
+
+    if token.isdigit():
+        try:
+            return qs.filter(number=int(token))
+        except (TypeError, ValueError):
+            return qs.none()
+
+    matched_ids = []
+    for item in qs.values("id", "company_id", "number"):
+        company_id = item.get("company_id")
+        number = item.get("number")
+        if not company_id or not number:
+            continue
+        display_token = _normalize_alnum_token(f"{company_id}{number}{suffix}")
+        if display_token == token:
+            matched_ids.append(item["id"])
+
+    if not matched_ids:
+        return qs.none()
+    return qs.filter(id__in=matched_ids)
 
 
 def _parse_iso_datetime_param(raw_value):
@@ -2434,20 +2465,23 @@ class CpvDictionaryChildrenView(APIView):
         search = (request.query_params.get("search") or "").strip()
 
         if search:
-            qs = CpvDictionary.objects.filter(
-                Q(cpv_code__icontains=search)
-                | Q(name_ua__icontains=search)
-                | Q(name_en__icontains=search)
-            )
+            search_term = search.casefold()
+            qs = CpvDictionary.objects.all()
+            items = [
+                item
+                for item in qs.order_by("cpv_code")
+                if search_term in str(getattr(item, "cpv_code", "") or "").casefold()
+                or search_term in str(getattr(item, "name_ua", "") or "").casefold()
+                or search_term in str(getattr(item, "name_en", "") or "").casefold()
+            ]
         elif parent_level_code:
             qs = CpvDictionary.objects.filter(cpv_parent_code=parent_level_code)
+            items = list(qs.order_by("cpv_code"))
         else:
             qs = CpvDictionary.objects.filter(
                 Q(cpv_parent_code__isnull=True) | Q(cpv_parent_code="") | Q(cpv_parent_code="0")
             )
-
-        qs = qs.order_by("cpv_code")
-        items = list(qs)
+            items = list(qs.order_by("cpv_code"))
         level_codes = [item.cpv_level_code for item in items if item.cpv_level_code]
 
         ancestors_by_level_code = {}
@@ -3267,10 +3301,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         if company_id:
             qs = qs.filter(company_id=company_id)
         if tender_number:
-            try:
-                qs = qs.filter(number=int(tender_number))
-            except (TypeError, ValueError):
-                qs = qs.none()
+            qs = _filter_participation_qs_by_tender_number(qs, tender_number, "p")
 
         cpv_tree = _build_cpv_tree_for_tenders_queryset(qs)
 
@@ -4220,10 +4251,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
         if company_id:
             qs = qs.filter(company_id=company_id)
         if tender_number:
-            try:
-                qs = qs.filter(number=int(tender_number))
-            except (TypeError, ValueError):
-                qs = qs.none()
+            qs = _filter_participation_qs_by_tender_number(qs, tender_number, "s")
 
         cpv_tree = _build_cpv_tree_for_tenders_queryset(qs)
 

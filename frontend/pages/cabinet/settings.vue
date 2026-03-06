@@ -6,6 +6,10 @@
         v-model="activeTab"
         :items="tabItems"
         value-key="value"
+        :ui="{
+          list: 'w-fit',
+          trigger: 'min-w-[120px] px-3 py-1 text-xs sm:min-w-[140px]',
+        }"
         class="flex-1 min-h-0 flex flex-col"
         content
       >
@@ -46,7 +50,7 @@
                 :selected-ids="assignedCpvIds"
                 :selected-labels="assignedCpvLabels"
                 @update:selected-ids="onCpvSelectedIds"
-                @update:selected-labels="assignedCpvLabels = $event"
+                @update:selected-labels="onCpvSelectedLabels"
               />
               <p class="mt-2 text-xs text-gray-500">
                 Обрані тут CPV-категорії будуть закріплені за компанією та
@@ -174,25 +178,31 @@ const isSomeSelected = computed(() => {
   return assignedCpvs.value.some((r) => ids.includes(r.id));
 });
 
-const onCpvSelectedIds = (ids: number[]) => {
-  assignedCpvIds.value = ids;
-  // Відповідні labels приходять у assignedCpvLabels, формуємо список для таблиці
+const syncAssignedCpvs = (ids: number[], labels: string[]) => {
   const map = new Map<number, string>();
   assignedCpvs.value.forEach((c) => map.set(c.id, c.label));
   ids.forEach((id, index) => {
-    const label =
-      assignedCpvLabels.value[index] ||
-      map.get(id) ||
-      `#${id.toString()}`;
+    const label = labels[index] || map.get(id) || `#${id.toString()}`;
     map.set(id, label);
   });
   assignedCpvs.value = ids.map((id) => ({
     id,
     label: map.get(id) || `#${id.toString()}`,
   }));
-  selectedAssignedIds.value = [];
+  selectedAssignedIds.value = selectedAssignedIds.value.filter((id) =>
+    ids.includes(id),
+  );
 };
 
+const onCpvSelectedIds = (ids: number[]) => {
+  assignedCpvIds.value = ids;
+  syncAssignedCpvs(ids, assignedCpvLabels.value);
+};
+
+const onCpvSelectedLabels = (labels: string[]) => {
+  assignedCpvLabels.value = labels;
+  syncAssignedCpvs(assignedCpvIds.value, labels);
+};
 const toggleSelect = (id: number) => {
   const idx = selectedAssignedIds.value.indexOf(id);
   if (idx === -1) {
