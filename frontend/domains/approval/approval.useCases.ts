@@ -18,6 +18,16 @@ export function useApprovalUseCases() {
     return approvalApi.createModelRole(fetch, body);
   }
 
+  async function patchModelRole(
+    roleId: number,
+    body: Partial<{
+      name: string;
+      application: "procurement" | "sales";
+    }>
+  ) {
+    return approvalApi.patchModelRole(fetch, roleId, body);
+  }
+
   async function getModelRoleUsers(roleId: number) {
     const { data, error } = await approvalApi.getModelRoleUsers(fetch, roleId);
     return { data: Array.isArray(data) ? data : [], error };
@@ -69,6 +79,7 @@ export function useApprovalUseCases() {
   return {
     getModelRoles,
     createModelRole,
+    patchModelRole,
     getModelRoleUsers,
     createModelRoleUser,
     deleteModelRoleUser,

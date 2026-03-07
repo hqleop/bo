@@ -152,13 +152,16 @@
                           :disabled="isViewingPreviousTour"
                         />
                       </UFormField>
-                      <UFormField label="Модель погодження">
+                      <UFormField
+                        label="Модель погодження"
+                        :required="isApprovalModelRequired"
+                      >
                         <USelectMenu
                           v-model="form.approval_model_id"
                           :items="approvalModelOptions"
                           value-key="value"
                           placeholder="Оберіть модель"
-                          :disabled="isViewingPreviousTour || !form.category"
+                          :disabled="isViewingPreviousTour || !isApprovalModelLookupReady"
                         />
                       </UFormField>
                     </div>
@@ -1296,7 +1299,7 @@
         </template>
       </div>
 
-      <aside class="w-56 flex-shrink-0 space-y-3">
+      <aside class="w-56 flex-shrink-0 flex min-h-0 flex-col gap-3">
         <template v-if="displayStage === 'passport'">
           <UButton
             class="w-full"
@@ -1309,24 +1312,50 @@
         </template>
 
         <template v-else-if="displayStage === 'preparation'">
-          <template v-if="form.conduct_type === 'registration'">
+          <template v-if="canShowApproverActionButtons">
             <UButton
               class="w-full"
-              :disabled="isViewingPreviousTour"
-              @click="openSubmitProposal"
-              :loading="saving"
+              :loading="approvalActionSaving"
+              :disabled="isViewingPreviousTourOnly"
+              @click="openApprovalActionModal('approved')"
             >
-              Подати пропозицію
+              Погодити
+            </UButton>
+            <UButton
+              class="w-full"
+              color="error"
+              variant="outline"
+              :disabled="isViewingPreviousTourOnly"
+              @click="openApprovalActionModal('rejected')"
+            >
+              Відхилити
             </UButton>
           </template>
-          <template v-else>
-            <UButton
-              class="w-full"
-              :disabled="isViewingPreviousTour"
-              @click="openPublishModal"
-            >
-              Затвердити
-            </UButton>
+          <UButton
+            v-if="canShowPreparationSubmitButton"
+            class="w-full"
+            :disabled="isViewingPreviousTour"
+            @click="openApprovalSubmitModal"
+          >
+            Зберегти
+          </UButton>
+          <UButton
+            v-if="canShowPreparationGoDecisionButton"
+            class="w-full"
+            :disabled="isViewingPreviousTour"
+            @click="goToDecision"
+          >
+            Перейти на вибір рішення
+          </UButton>
+          <UButton
+            v-if="canShowPreparationPublishButtons"
+            class="w-full"
+            :disabled="isViewingPreviousTour"
+            @click="openPublishModal"
+          >
+            Затвердити
+          </UButton>
+          <template v-if="isTenderAuthor">
             <UButton
               v-if="!showInvitationPanel"
               class="w-full"
@@ -1428,22 +1457,43 @@
         </template>
 
         <template v-else-if="displayStage === 'approval'">
-          <UButton
-            class="w-full"
-            :disabled="isViewingPreviousTour"
-            @click="openApprovalActionModal('approved')"
-          >
-            Затвердити
-          </UButton>
-          <UButton
-            class="w-full"
-            color="error"
-            variant="outline"
-            :disabled="isViewingPreviousTour"
-            @click="openApprovalActionModal('rejected')"
-          >
-            Скасувати
-          </UButton>
+          <template v-if="canShowApproverActionButtons">
+            <UButton
+              class="w-full"
+              :loading="approvalActionSaving"
+              :disabled="isViewingPreviousTourOnly"
+              @click="openApprovalActionModal('approved')"
+            >
+              Погодити
+            </UButton>
+            <UButton
+              class="w-full"
+              color="error"
+              variant="outline"
+              :disabled="isViewingPreviousTourOnly"
+              @click="openApprovalActionModal('rejected')"
+            >
+              Відхилити
+            </UButton>
+          </template>
+          <template v-else-if="canShowAuthorApprovalButtons">
+            <UButton
+              class="w-full"
+              :disabled="isViewingPreviousTour"
+              @click="openApprovalActionModal('approved')"
+            >
+              Затвердити
+            </UButton>
+            <UButton
+              class="w-full"
+              color="error"
+              variant="outline"
+              :disabled="isViewingPreviousTour"
+              @click="openApprovalActionModal('rejected')"
+            >
+              Скасувати
+            </UButton>
+          </template>
           <UButton
             class="w-full"
             variant="outline"
@@ -1461,6 +1511,51 @@
         >
           Журнал погодження
         </UButton>
+        <UCard
+          v-if="showApprovalRouteCard"
+          class="mt-auto min-h-[264px] basis-2/5 flex flex-col"
+        >
+          <template #header
+            ><h4 class="text-sm font-semibold">Маршрут погодження</h4></template
+          >
+          <div class="mt-2 flex-1 min-h-0 overflow-auto text-xs">
+            <div class="space-y-2 pr-1 min-w-max">
+              <div
+                v-for="(node, index) in approvalRouteNodes"
+                :key="`${node.kind}-${node.order || index}-${index}`"
+                class="rounded border border-gray-200 p-2 min-w-[260px]"
+              >
+                <div class="flex items-center gap-2 font-medium whitespace-nowrap">
+                  <UIcon
+                    :name="node.kind === 'role' ? 'i-lucide-users-round' : 'i-lucide-user-round'"
+                    class="size-4 text-gray-600"
+                  />
+                  <span>{{ node.label || (node.kind === "role" ? "Роль" : "Автор тендера") }}</span>
+                </div>
+                <div class="mt-2 space-y-1.5">
+                  <div
+                    v-for="userNode in node.users || []"
+                    :key="`${node.order || index}-${userNode.id || userNode.short_name}`"
+                    class="ml-4 flex items-center gap-2"
+                  >
+                    <span
+                      class="inline-flex h-6 w-6 items-center justify-center rounded-full"
+                      :class="approvalUserStatusClass(userNode.status)"
+                    >
+                      <UIcon :name="approvalUserStatusIcon(userNode.status)" class="size-4" />
+                    </span>
+                    <span class="whitespace-nowrap">{{
+                      userNode.short_name || userNode.full_name || "—"
+                    }}</span>
+                  </div>
+                </div>
+              </div>
+              <p v-if="!approvalRouteNodes.length" class="text-gray-500">
+                Маршрут погодження ще не сформовано.
+              </p>
+            </div>
+          </div>
+        </UCard>
         <UCard
           v-if="displayStage === 'passport' && form.approval_model_id"
           class="mt-auto"
@@ -1540,6 +1635,35 @@
       </template>
     </UModal>
 
+    <UModal v-model:open="showApprovalSubmitModal">
+      <template #content>
+        <UCard>
+          <template #header>
+            <h3>Зберегти та передати на погодження</h3>
+          </template>
+          <div class="space-y-4">
+            <UFormField label="Коментар (необовʼязково)">
+              <UTextarea v-model="approvalSubmitComment" :rows="4" />
+            </UFormField>
+            <div class="flex justify-end gap-2">
+              <UButton
+                variant="outline"
+                @click="showApprovalSubmitModal = false"
+              >
+                Скасувати
+              </UButton>
+              <UButton
+                :loading="approvalSubmitSaving"
+                @click="submitApprovalSubmit"
+              >
+                Зберегти
+              </UButton>
+            </div>
+          </div>
+        </UCard>
+      </template>
+    </UModal>
+
     <UModal v-model:open="showPublishModal">
       <template #content>
         <UCard>
@@ -1566,27 +1690,28 @@
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <UFormField label="Час початку" required>
-                <UInputMenu
+                <UInput
                   v-model="publishStartTime"
-                  :items="hourlyTimeOptions"
-                  create-item="always"
-                  placeholder="Напр., 09:00"
+                  type="text"
+                  inputmode="numeric"
+                  placeholder="ГГ:ХХ"
+                  maxlength="5"
                   class="w-full"
                 />
               </UFormField>
               <UFormField label="Час завершення" required>
-                <UInputMenu
+                <UInput
                   v-model="publishEndTime"
-                  :items="hourlyTimeOptions"
-                  create-item="always"
-                  placeholder="Напр., 18:00"
+                  type="text"
+                  inputmode="numeric"
+                  placeholder="ГГ:ХХ"
+                  maxlength="5"
                   class="w-full"
                 />
               </UFormField>
             </div>
             <p class="text-xs text-gray-500">
-              Випадалка містить погодинні значення (01:00, 02:00, ...), а
-              хвилини можна ввести вручну.
+              Введіть час вручну у форматі ГГ:ХХ (наприклад 9:30 або 09:30).
             </p>
             <div class="flex gap-2">
               <UButton class="flex-1" @click="publishTender"
@@ -1726,27 +1851,28 @@
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <UFormField label="Час початку" required>
-                <UInputMenu
+                <UInput
                   v-model="resumeAcceptanceStartTime"
-                  :items="hourlyTimeOptions"
-                  create-item="always"
-                  placeholder="Напр., 09:00"
+                  type="text"
+                  inputmode="numeric"
+                  placeholder="ГГ:ХХ"
+                  maxlength="5"
                   class="w-full"
                 />
               </UFormField>
               <UFormField label="Час завершення" required>
-                <UInputMenu
+                <UInput
                   v-model="resumeAcceptanceEndTime"
-                  :items="hourlyTimeOptions"
-                  create-item="always"
-                  placeholder="Напр., 18:00"
+                  type="text"
+                  inputmode="numeric"
+                  placeholder="ГГ:ХХ"
+                  maxlength="5"
                   class="w-full"
                 />
               </UFormField>
             </div>
             <p class="text-xs text-gray-500">
-              Випадалка містить погодинні значення (01:00, 02:00, ...), а
-              хвилини можна ввести вручну.
+              Введіть час вручну у форматі ГГ:ХХ (наприклад 9:30 або 09:30).
             </p>
             <div class="flex gap-2">
               <UButton
@@ -2076,7 +2202,7 @@
         <UCard class="min-w-0">
           <template #header><h3>Прикріплені файли</h3></template>
           <div class="space-y-4 min-w-0">
-            <div>
+            <div v-if="!isReadOnlyApprover">
               <input
                 ref="attachedFilesInput"
                 type="file"
@@ -2135,6 +2261,7 @@
                     <td class="py-2 px-3 w-10">
                       <UCheckbox
                         :model-value="f.visible_to_participants"
+                        :disabled="isReadOnlyApprover"
                         @update:model-value="toggleFileVisibility(f.id, $event)"
                       />
                     </td>
@@ -2159,6 +2286,7 @@
                           title="Скачати"
                         />
                         <UButton
+                          v-if="!isReadOnlyApprover"
                           variant="ghost"
                           size="xs"
                           icon="i-heroicons-trash"
@@ -2708,16 +2836,17 @@ const publishStartDate = ref("");
 const publishEndDate = ref("");
 const publishStartTime = ref("");
 const publishEndTime = ref("");
-const hourlyTimeOptions = Array.from({ length: 24 }, (_, hour) => {
-  const hh = String(hour).padStart(2, "0");
-  return `${hh}:00`;
-});
 const showApprovalJournalModal = ref(false);
 const showApprovalActionModal = ref(false);
 const approvalActionSaving = ref(false);
 const pendingApprovalAction = ref<"approved" | "rejected">("approved");
 const approvalActionComment = ref("");
 const approvalJournalRows = ref<any[]>([]);
+const approvalRoutePayload = ref<any | null>(null);
+const isReadOnlyApprover = ref(false);
+const showApprovalSubmitModal = ref(false);
+const approvalSubmitComment = ref("");
+const approvalSubmitSaving = ref(false);
 const showTimingModal = ref(false);
 type DecisionMode = "winner" | "cancel" | "next_round";
 const decisionModeOptions: { value: DecisionMode; label: string }[] = [
@@ -3282,9 +3411,114 @@ const isEditLocked = computed(
   () =>
     !!isViewingPreviousTourOnly.value ||
     isPastStageView.value ||
+    isReadOnlyApprover.value ||
     currentProcessStage.value === "completed",
 );
-const isViewingPreviousTour = computed(() => isEditLocked.value);
+const authorHasActivePreparationTask = computed(() => {
+  if (
+    isParticipant.value ||
+    displayStage.value !== "preparation" ||
+    !isTenderAuthor.value
+  ) {
+    return false;
+  }
+  const route = approvalRoutePayload.value;
+  if (!route) return false;
+  if (!route.has_approvers) return true;
+  return !!route.can_author_submit || !!route.can_author_publish;
+});
+const isViewingPreviousTour = computed(() => {
+  const authorLockedByRoute =
+    !isParticipant.value &&
+    displayStage.value === "preparation" &&
+    isTenderAuthor.value &&
+    !authorHasActivePreparationTask.value;
+  return isEditLocked.value || authorLockedByRoute;
+});
+const currentUserId = computed(() => Number((me.value as any)?.id || 0) || null);
+const isTenderAuthor = computed(
+  () =>
+    !!tender.value &&
+    currentUserId.value != null &&
+    Number(tender.value.created_by || 0) === Number(currentUserId.value),
+);
+const approvalRouteNodes = computed(() =>
+  Array.isArray(approvalRoutePayload.value?.nodes)
+    ? approvalRoutePayload.value.nodes
+    : [],
+);
+const approvalRouteHasApprovers = computed(
+  () => !!approvalRoutePayload.value?.has_approvers,
+);
+const approvalRouteCanAuthorSubmit = computed(
+  () => !!approvalRoutePayload.value?.can_author_submit,
+);
+const approvalRouteStatus = computed(() =>
+  String(approvalRoutePayload.value?.status || ""),
+);
+const approvalRouteCanAuthorPublish = computed(
+  () => !!approvalRoutePayload.value?.can_author_publish,
+);
+const approvalRouteCanApproverAction = computed(
+  () => !!approvalRoutePayload.value?.can_approver_action,
+);
+const approvalRouteIsCurrentUserAuthor = computed(() => {
+  const userId = currentUserId.value;
+  if (userId == null) return false;
+  return approvalRouteNodes.value.some((node: any) => {
+    if (node?.kind !== "author" || !Array.isArray(node?.users)) return false;
+    return node.users.some(
+      (userNode: any) => Number(userNode?.id || 0) === Number(userId),
+    );
+  });
+});
+const showApprovalRouteCard = computed(
+  () =>
+    !isParticipant.value &&
+    (displayStage.value === "preparation" || displayStage.value === "approval"),
+);
+const canShowPreparationSubmitButton = computed(
+  () =>
+    displayStage.value === "preparation" &&
+    !isParticipant.value &&
+    approvalRouteHasApprovers.value &&
+    (approvalRouteCanAuthorSubmit.value ||
+      (approvalRouteIsCurrentUserAuthor.value &&
+        ["waiting_author", "rejected"].includes(approvalRouteStatus.value))) &&
+    !approvalRouteCanAuthorPublish.value &&
+    !isViewingPreviousTour.value,
+);
+const canShowPreparationPublishButtons = computed(
+  () =>
+    displayStage.value === "preparation" &&
+    !isParticipant.value &&
+    !isRegistration.value &&
+    !isViewingPreviousTour.value &&
+    (!approvalRouteHasApprovers.value || approvalRouteCanAuthorPublish.value),
+);
+const canShowPreparationGoDecisionButton = computed(
+  () =>
+    displayStage.value === "preparation" &&
+    !isParticipant.value &&
+    isRegistration.value &&
+    !isViewingPreviousTour.value &&
+    (!approvalRouteHasApprovers.value || approvalRouteCanAuthorPublish.value),
+);
+const canShowApproverActionButtons = computed(
+  () =>
+    !isParticipant.value &&
+    (displayStage.value === "preparation" || displayStage.value === "approval") &&
+    !isViewingPreviousTourOnly.value &&
+    approvalRouteCanApproverAction.value,
+);
+const canShowAuthorApprovalButtons = computed(
+  () =>
+    displayStage.value === "approval" &&
+    !isParticipant.value &&
+    !isViewingPreviousTour.value &&
+    isTenderAuthor.value &&
+    !approvalRouteHasApprovers.value,
+);
 
 const stepperItems = computed(() => {
   const progressIndex = currentProcessIndex.value;
@@ -3306,6 +3540,14 @@ const currentStepValue = computed({
   set: (value: string) => {
     const currentIndex = currentProcessIndex.value;
     const targetIndex = STAGE_ORDER.value.indexOf(value);
+    if (
+      isReadOnlyApprover.value &&
+      !isParticipant.value &&
+      targetIndex !== -1
+    ) {
+      displayStage.value = value;
+      return;
+    }
     if (targetIndex !== -1 && targetIndex <= currentIndex) {
       displayStage.value = value;
     }
@@ -3373,6 +3615,19 @@ const approvalModelOptions = computed(() =>
     value: Number(m.id),
     label: m.name || `#${m.id}`,
   })),
+);
+const isApprovalModelLookupReady = computed(() => {
+  const categoryId = Number(form.category || 0);
+  const hasCategory = Number.isInteger(categoryId) && categoryId > 0;
+  const budgetRaw = form.estimated_budget;
+  const hasBudget =
+    budgetRaw != null && Number.isFinite(Number(budgetRaw));
+  return hasCategory && hasBudget;
+});
+const isApprovalModelRequired = computed(
+  () =>
+    isApprovalModelLookupReady.value &&
+    approvalModelOptions.value.length > 0,
 );
 const selectedApprovalModelSteps = computed(() => {
   const selected = availableApprovalModels.value.find(
@@ -3634,13 +3889,12 @@ function onNomenclatureTreeSelect(
   const isDoubleClick = (orig as { detail?: number })?.detail === 2;
   if (isLeaf && item.id != null) {
     const numId = typeof item.id === "number" ? item.id : Number(item.id);
-    if (!Number.isNaN(numId)) {
-      selectedNomenclatureId.value = numId;
-      if (isDoubleClick) {
-        addPositionFromNomenclature(numId);
-        showNomenclaturePickerModal.value = false;
+      if (!Number.isNaN(numId)) {
+        selectedNomenclatureId.value = numId;
+        if (isDoubleClick) {
+          addPositionFromNomenclature(numId);
+        }
       }
-    }
   } else {
     selectedNomenclatureId.value = null;
   }
@@ -3656,7 +3910,6 @@ function addSelectedNomenclatureFromPicker() {
   addPositionFromNomenclature(selectedNomenclatureId.value, {
     notifyAdded: true,
   });
-  showNomenclaturePickerModal.value = false;
 }
 
 const canEditStart = computed(() => {
@@ -4668,8 +4921,14 @@ function normalizeDateValue(value?: string | null): string {
 
 function normalizeTimeValue(value?: string | null): string {
   const raw = String(value || "").trim();
-  if (/^\d{2}:\d{2}$/.test(raw)) return raw;
-  return "";
+  const parsed = raw.match(/^(\d{1,2}):(\d{1,2})$/);
+  if (!parsed) return "";
+  const hours = Number(parsed[1]);
+  const minutes = Number(parsed[2]);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return "";
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(hours)}:${pad(minutes)}`;
 }
 
 function formatDateForInput(date: Date): string {
@@ -4760,6 +5019,7 @@ function applyResumeAcceptanceScheduleToForm() {
 async function loadTender() {
   loading.value = true;
   try {
+    isReadOnlyApprover.value = false;
     const loadFromParticipationList = async () => {
       const tabs: Array<"active" | "processing" | "completed"> = [
         "active",
@@ -4861,6 +5121,7 @@ async function loadTender() {
     timingForm.end_at = isoToInput(tenderData.end_at);
     await loadTours();
     await autoAdvanceAcceptance();
+    await loadApprovalRoute();
   } finally {
     loading.value = false;
   }
@@ -4929,11 +5190,6 @@ async function loadNomenclaturesForPreparation() {
     }
 
     availableNomenclatures.value = items;
-
-    const availableIds = new Set(items.map((n: any) => n.id));
-    tenderPositions.value = tenderPositions.value.filter((p) =>
-      availableIds.has(p.nomenclature_id),
-    );
   } finally {
     loadingNomenclatures.value = false;
   }
@@ -5021,6 +5277,11 @@ async function patchTender(payload: Record<string, unknown>) {
       tender.value?.conduct_type ?? form.conduct_type,
     );
   }
+  if (displayStage.value === "preparation" || displayStage.value === "approval") {
+    await loadApprovalRoute();
+  } else {
+    approvalRoutePayload.value = null;
+  }
   return true;
 }
 
@@ -5030,8 +5291,9 @@ function ruleLabel(value: string) {
 
 async function loadAvailableApprovalModels() {
   const companyId = Number(tender.value?.company || myCompanyId.value || 0);
-  if (!companyId) {
+  if (!companyId || !isApprovalModelLookupReady.value) {
     availableApprovalModels.value = [];
+    form.approval_model_id = null;
     return;
   }
   const { data } = await tendersUC.getAvailableApprovalModels({
@@ -5049,6 +5311,116 @@ async function loadAvailableApprovalModels() {
     )
   ) {
     form.approval_model_id = null;
+  }
+}
+
+async function loadApprovalRoute() {
+  if (!tender.value?.id) {
+    approvalRoutePayload.value = null;
+    return;
+  }
+  const stage = displayStage.value;
+  if (stage !== "preparation" && stage !== "approval") {
+    approvalRoutePayload.value = null;
+    return;
+  }
+  const { data, error } = await tendersUC.getTenderApprovalRoute(
+    tender.value.id,
+    isSales,
+  );
+  if (error) return;
+  approvalRoutePayload.value = data || null;
+  if (
+    !isTenderAuthor.value &&
+    currentUserId.value != null &&
+    Array.isArray((data as any)?.nodes)
+  ) {
+    const inApproverRoute = (data as any).nodes.some((node: any) => {
+      if (node?.kind !== "role" || !Array.isArray(node?.users)) return false;
+      return node.users.some(
+        (userNode: any) =>
+          Number(userNode?.id || 0) === Number(currentUserId.value),
+      );
+    });
+    if (inApproverRoute) {
+      isReadOnlyApprover.value = true;
+    }
+  }
+}
+
+function approvalUserStatusClass(status: string | undefined) {
+  if (status === "active") return "bg-yellow-100 text-yellow-700";
+  if (status === "approved") return "bg-green-100 text-green-700";
+  return "bg-gray-100 text-gray-500";
+}
+
+function approvalUserStatusIcon(status: string | undefined) {
+  return status === "approved" ? "i-lucide-user-round-check" : "i-lucide-user-round";
+}
+
+function openApprovalSubmitModal() {
+  approvalSubmitComment.value = "";
+  showApprovalSubmitModal.value = true;
+}
+
+function validatePreparationReadinessBeforePublication() {
+  const hasPositions = tenderPositions.value.length >= 1;
+  const hasPriceParams =
+    !!priceCriterionVat.value && !!priceCriterionDelivery.value;
+  if (hasPositions && hasPriceParams) return true;
+  const msg = !hasPositions
+    ? "Додайте хоча б одну позицію тендера."
+    : "Налаштуйте параметри цінового критерію (ПДВ та Доставка).";
+  useToast().add({
+    title: "Збереження неможливе",
+    description: msg,
+    color: "error",
+  });
+  return false;
+}
+
+async function submitApprovalSubmit() {
+  if (
+    approvalRouteHasApprovers.value &&
+    !validatePreparationReadinessBeforePublication()
+  ) {
+    return;
+  }
+  approvalSubmitSaving.value = true;
+  try {
+    const preparationSaved = await savePreparation();
+    if (!preparationSaved) return;
+
+    const { data, error } = await tendersUC.submitTenderApprovalSubmit(
+      tenderId.value,
+      isSales,
+      { comment: approvalSubmitComment.value.trim() },
+    );
+    if (error) {
+      useToast().add({
+        title: "Збереження неможливе",
+        description: String(error),
+        color: "error",
+      });
+      return;
+    }
+    const routePayload = (data as any)?.route;
+    if (routePayload) {
+      approvalRoutePayload.value = routePayload;
+    }
+    if ((data as any)?.stage) {
+      displayStage.value = normalizeStageForUi(
+        String((data as any).stage || ""),
+        tender.value?.conduct_type ?? form.conduct_type,
+      );
+    }
+    showApprovalSubmitModal.value = false;
+    await loadTender();
+    if (displayStage.value === "preparation" || displayStage.value === "approval") {
+      await loadApprovalRoute();
+    }
+  } finally {
+    approvalSubmitSaving.value = false;
   }
 }
 
@@ -5080,7 +5452,7 @@ async function submitApprovalAction() {
   }
   approvalActionSaving.value = true;
   try {
-    const { error } = await tendersUC.submitTenderApprovalAction(
+    const { data, error } = await tendersUC.submitTenderApprovalAction(
       tenderId.value,
       isSales,
       {
@@ -5089,8 +5461,21 @@ async function submitApprovalAction() {
       },
     );
     if (error) return;
+    const routePayload = (data as any)?.route;
+    if (routePayload) {
+      approvalRoutePayload.value = routePayload;
+    }
+    if ((data as any)?.stage) {
+      displayStage.value = normalizeStageForUi(
+        String((data as any).stage || ""),
+        tender.value?.conduct_type ?? form.conduct_type,
+      );
+    }
     showApprovalActionModal.value = false;
     await loadTender();
+    if (displayStage.value === "preparation" || displayStage.value === "approval") {
+      await loadApprovalRoute();
+    }
   } finally {
     approvalActionSaving.value = false;
   }
@@ -5102,6 +5487,14 @@ async function savePassport() {
     useToast().add({
       title: "Заповніть обовʼязкове поле",
       description: "Оберіть хоча б одну категорію CPV.",
+      color: "error",
+    });
+    return;
+  }
+  if (isApprovalModelRequired.value && !form.approval_model_id) {
+    useToast().add({
+      title: "Заповніть обовʼязкове поле",
+      description: "Оберіть модель погодження.",
       color: "error",
     });
     return;
@@ -5135,20 +5528,8 @@ async function savePassport() {
   }
 }
 
-const toast = useToast();
 function openPublishModal() {
-  const hasPositions = tenderPositions.value.length >= 1;
-  const hasPriceParams =
-    !!priceCriterionVat.value && !!priceCriterionDelivery.value;
-  if (!hasPositions || !hasPriceParams) {
-    const msg = !hasPositions
-      ? "Публікація неможлива: додайте хоча б одну позицію тендера."
-      : "Публікація неможлива: налаштуйте параметри цінового критерія (ПДВ та Доставка).";
-    toast.add({
-      title: "Публікація неможлива",
-      description: msg,
-      color: "error",
-    });
+  if (!validatePreparationReadinessBeforePublication()) {
     return;
   }
   timingForm.start_at = isoToInput(tender.value?.start_at);
@@ -5675,6 +6056,11 @@ watch(displayStage, async (stage) => {
   }
   if (stage === "acceptance" || stage === "decision" || stage === "approval") {
     await loadDecisionProposals();
+  }
+  if (stage === "preparation" || stage === "approval") {
+    await loadApprovalRoute();
+  } else {
+    approvalRoutePayload.value = null;
   }
   startAcceptanceRefresh();
 });

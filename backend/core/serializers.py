@@ -58,7 +58,7 @@ def _format_tender_number(
     normalized_number = tender_number if tender_number not in (None, "") else fallback_id
     if not normalized_number:
         return ""
-    return f"{company_id}{normalized_number}{suffix}"
+    return f"{normalized_number}-{company_id}-{suffix}"
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -604,7 +604,10 @@ class BranchSerializer(serializers.ModelSerializer):
     def get_children(self, obj):
         """Get direct children branches."""
         children = obj.children.all()
-        return BranchSerializer(children, many=True).data
+        allowed_ids = self.context.get("allowed_ids")
+        if allowed_ids is not None:
+            children = children.filter(id__in=allowed_ids)
+        return BranchSerializer(children, many=True, context=self.context).data
 
     def get_user_count(self, obj):
         """Get count of users in branch."""
@@ -625,7 +628,10 @@ class DepartmentSerializer(serializers.ModelSerializer):
     def get_children(self, obj):
         """Get direct children departments."""
         children = obj.children.all()
-        return DepartmentSerializer(children, many=True).data
+        allowed_ids = self.context.get("allowed_ids")
+        if allowed_ids is not None:
+            children = children.filter(id__in=allowed_ids)
+        return DepartmentSerializer(children, many=True, context=self.context).data
 
     def get_user_count(self, obj):
         """Get count of users in department."""
@@ -749,7 +755,10 @@ class ExpenseArticleSerializer(serializers.ModelSerializer):
 
     def get_children(self, obj):
         children = obj.children.all()
-        return ExpenseArticleSerializer(children, many=True).data
+        allowed_ids = self.context.get("allowed_ids")
+        if allowed_ids is not None:
+            children = children.filter(id__in=allowed_ids)
+        return ExpenseArticleSerializer(children, many=True, context=self.context).data
 
     def get_user_count(self, obj):
         return obj.users.count()
@@ -1292,6 +1301,52 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
                 raise drf.ValidationError(
                     {"attribute_ids": "Selected attributes do not belong to procurement dictionary."}
                 )
+        company = attrs.get("company") or (self.instance.company if self.instance else None)
+        category = attrs.get("category") if "category" in attrs else (
+            self.instance.category if self.instance else None
+        )
+        approval_model = attrs.get("approval_model") if "approval_model" in attrs else (
+            self.instance.approval_model if self.instance else None
+        )
+        stage_value = attrs.get("stage") or (self.instance.stage if self.instance else None)
+        estimated_budget = attrs.get("estimated_budget") if "estimated_budget" in attrs else (
+            self.instance.estimated_budget if self.instance else None
+        )
+        if approval_model and company and approval_model.company_id != company.id:
+            from rest_framework import serializers as drf
+            raise drf.ValidationError(
+                {"approval_model_id": "Модель погодження належить іншій компанії."}
+            )
+        if (
+            stage_value == ProcurementTender.Stage.PREPARATION
+            and company
+            and category
+            and estimated_budget not in (None, "")
+        ):
+            try:
+                budget_val = Decimal(str(estimated_budget))
+            except (InvalidOperation, ValueError, TypeError):
+                budget_val = None
+            available_qs = ApprovalModel.objects.none()
+            if budget_val is not None:
+                available_qs = ApprovalModel.objects.filter(
+                    company=company,
+                    application=ApprovalModel.Application.PROCUREMENT,
+                    is_active=True,
+                    categories__id=category.id,
+                    ranges__budget_from__lte=budget_val,
+                    ranges__budget_to__gte=budget_val,
+                ).distinct()
+            if available_qs.exists():
+                from rest_framework import serializers as drf
+                if not approval_model:
+                    raise drf.ValidationError(
+                        {"approval_model_id": "Оберіть модель погодження для цієї категорії."}
+                    )
+                if not available_qs.filter(id=approval_model.id).exists():
+                    raise drf.ValidationError(
+                        {"approval_model_id": "Обрана модель не відповідає параметрам застосування."}
+                    )
         return attrs
 
     criterion_ids = serializers.PrimaryKeyRelatedField(
@@ -2145,6 +2200,52 @@ class SalesTenderSerializer(serializers.ModelSerializer):
                 raise drf.ValidationError(
                     {"attribute_ids": "Selected attributes do not belong to sales dictionary."}
                 )
+        company = attrs.get("company") or (self.instance.company if self.instance else None)
+        category = attrs.get("category") if "category" in attrs else (
+            self.instance.category if self.instance else None
+        )
+        approval_model = attrs.get("approval_model") if "approval_model" in attrs else (
+            self.instance.approval_model if self.instance else None
+        )
+        stage_value = attrs.get("stage") or (self.instance.stage if self.instance else None)
+        estimated_budget = attrs.get("estimated_budget") if "estimated_budget" in attrs else (
+            self.instance.estimated_budget if self.instance else None
+        )
+        if approval_model and company and approval_model.company_id != company.id:
+            from rest_framework import serializers as drf
+            raise drf.ValidationError(
+                {"approval_model_id": "Модель погодження належить іншій компанії."}
+            )
+        if (
+            stage_value == SalesTender.Stage.PREPARATION
+            and company
+            and category
+            and estimated_budget not in (None, "")
+        ):
+            try:
+                budget_val = Decimal(str(estimated_budget))
+            except (InvalidOperation, ValueError, TypeError):
+                budget_val = None
+            available_qs = ApprovalModel.objects.none()
+            if budget_val is not None:
+                available_qs = ApprovalModel.objects.filter(
+                    company=company,
+                    application=ApprovalModel.Application.SALES,
+                    is_active=True,
+                    categories__id=category.id,
+                    ranges__budget_from__lte=budget_val,
+                    ranges__budget_to__gte=budget_val,
+                ).distinct()
+            if available_qs.exists():
+                from rest_framework import serializers as drf
+                if not approval_model:
+                    raise drf.ValidationError(
+                        {"approval_model_id": "Оберіть модель погодження для цієї категорії."}
+                    )
+                if not available_qs.filter(id=approval_model.id).exists():
+                    raise drf.ValidationError(
+                        {"approval_model_id": "Обрана модель не відповідає параметрам застосування."}
+                    )
         return attrs
 
     class Meta:

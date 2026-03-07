@@ -116,19 +116,28 @@ function toTaskRows(
     .map((item) => {
       const stage = String(item.stage ?? "");
       const task = STAGE_TO_TASK[stage];
-      if (!task) return null;
+      const taskAction =
+        typeof item.task_action === "string" && item.task_action.trim()
+          ? item.task_action.trim()
+          : "";
+      if (!task && !taskAction) return null;
 
       const numberRaw = String(item.number ?? item.id ?? "");
       return {
-        task_key: `${isSales ? "sales" : "purchase"}-${item.id}-${stage}`,
-        task_label: task.action,
-        stage_label: item.stage_label || task.stage_label,
+        task_key: `${isSales ? "sales" : "purchase"}-${item.id}-${stage}-${String(item.task_kind ?? "author")}`,
+        task_label: taskAction || task!.action,
+        stage_label: item.stage_label || task?.stage_label || "",
         tender_type: tenderTypeLabel,
         tender_number: `№${numberRaw}`,
         tender_name: String(item.name ?? ""),
         tour_number: Number(item.tour_number ?? 1),
         tender_link: `${basePath}/${item.id}`,
-        created_at: typeof item.created_at === "string" ? item.created_at : undefined,
+        created_at:
+          typeof item.task_created_at === "string"
+            ? item.task_created_at
+            : typeof item.created_at === "string"
+              ? item.created_at
+              : undefined,
       } as UserTaskRow;
     })
     .filter((item): item is UserTaskRow => item !== null);

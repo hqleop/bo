@@ -14,7 +14,7 @@ PERMISSIONS = [
     ("reference.view", "Довідник"),
     ("nomenclature.view", "Номенклатури"),
     ("categories.view", "Категорії"),
-    ("expenses.view", "Статті витрат"),
+    ("expenses.view", "Статті бюджету"),
     ("branches.view", "Філіали підрозділи"),
     ("templates.view", "Шаблони"),
     ("settings.view", "Налаштування"),

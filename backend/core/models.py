@@ -379,7 +379,7 @@ class CategoryUser(models.Model):
 
 class ExpenseArticle(models.Model):
     """
-    Стаття витрат (дерево всередині компанії).
+    Стаття бюджету (дерево всередині компанії).
     """
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="expense_articles")
@@ -395,8 +395,8 @@ class ExpenseArticle(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = "Стаття витрат"
-        verbose_name_plural = "Статті витрат"
+        verbose_name = "Стаття бюджету"
+        verbose_name_plural = "Статті бюджету"
         ordering = ["name"]
 
     def __str__(self) -> str:  # pragma: no cover
@@ -405,7 +405,7 @@ class ExpenseArticle(models.Model):
 
 class ExpenseArticleUser(models.Model):
     """
-    Прив'язка користувачів до статті витрат.
+    Прив'язка користувачів до статті бюджету.
     """
 
     expense = models.ForeignKey(ExpenseArticle, on_delete=models.CASCADE, related_name="users")
@@ -414,8 +414,8 @@ class ExpenseArticleUser(models.Model):
 
     class Meta:
         unique_together = (("expense", "user"),)
-        verbose_name = "Користувач статті витрат"
-        verbose_name_plural = "Користувачі статей витрат"
+        verbose_name = "Користувач статті бюджету"
+        verbose_name_plural = "Користувачі статей бюджету"
 
     def __str__(self) -> str:  # pragma: no cover
         return f"{self.user.email} - {self.expense.name}"
@@ -1593,4 +1593,132 @@ class TenderApprovalJournal(models.Model):
     def __str__(self) -> str:
         tender_ref = self.procurement_tender_id or self.sales_tender_id or "?"
         return f"Tender {tender_ref} {self.action} at {self.created_at}"
+
+
+class TenderApprovalStageState(models.Model):
+    """Approval route state for a tender stage."""
+
+    class Stage(models.TextChoices):
+        PREPARATION = "preparation", "Підготовка процедури"
+        APPROVAL = "approval", "Затвердження"
+
+    class Status(models.TextChoices):
+        WAITING_AUTHOR = "waiting_author", "Очікує дії автора"
+        IN_PROGRESS = "in_progress", "В процесі погодження"
+        APPROVED = "approved", "Погоджено"
+        REJECTED = "rejected", "Відхилено"
+
+    procurement_tender = models.ForeignKey(
+        ProcurementTender,
+        on_delete=models.CASCADE,
+        related_name="approval_stage_states",
+        null=True,
+        blank=True,
+    )
+    sales_tender = models.ForeignKey(
+        SalesTender,
+        on_delete=models.CASCADE,
+        related_name="approval_stage_states",
+        null=True,
+        blank=True,
+    )
+    stage = models.CharField(max_length=20, choices=Stage.choices)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.WAITING_AUTHOR,
+    )
+    current_order = models.PositiveIntegerField(null=True, blank=True)
+    cycle = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Стан погодження етапу тендера"
+        verbose_name_plural = "Стани погодження етапів тендерів"
+        ordering = ["-updated_at", "-id"]
+        unique_together = (
+            ("procurement_tender", "stage"),
+            ("sales_tender", "stage"),
+        )
+
+    def __str__(self) -> str:
+        tender_ref = self.procurement_tender_id or self.sales_tender_id or "?"
+        return f"StageState {tender_ref}:{self.stage}:{self.status}"
+
+
+class TenderApprovalStageStep(models.Model):
+    """Snapshot row for role in tender approval route."""
+
+    stage_state = models.ForeignKey(
+        TenderApprovalStageState,
+        on_delete=models.CASCADE,
+        related_name="steps",
+    )
+    order = models.PositiveIntegerField(default=1)
+    role = models.ForeignKey(
+        ApprovalModelRole,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    role_name = models.CharField(max_length=255, blank=True, default="")
+    approval_rule = models.CharField(
+        max_length=20,
+        choices=ApprovalModelStep.DecisionRule.choices,
+        default=ApprovalModelStep.DecisionRule.ONE_OF,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Крок погодження етапу тендера"
+        verbose_name_plural = "Кроки погодження етапів тендерів"
+        ordering = ["order", "id"]
+        unique_together = (("stage_state", "order"),)
+
+    def __str__(self) -> str:
+        return f"{self.stage_state_id}:{self.order}:{self.role_name or self.role_id}"
+
+
+class TenderApprovalStageStepUser(models.Model):
+    """Snapshot user row for route step."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Очікує"
+        ACTIVE = "active", "Активне завдання"
+        APPROVED = "approved", "Погоджено"
+        SKIPPED = "skipped", "Пропущено"
+        REJECTED = "rejected", "Відхилено"
+
+    step = models.ForeignKey(
+        TenderApprovalStageStep,
+        on_delete=models.CASCADE,
+        related_name="step_users",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    full_name = models.CharField(max_length=255, blank=True, default="")
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    acted_at = models.DateTimeField(null=True, blank=True)
+    comment = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Користувач кроку погодження"
+        verbose_name_plural = "Користувачі кроків погодження"
+        ordering = ["id"]
+        unique_together = (("step", "user"),)
+
+    def __str__(self) -> str:
+        return f"{self.step_id}:{self.user_id or '?'}:{self.status}"
 

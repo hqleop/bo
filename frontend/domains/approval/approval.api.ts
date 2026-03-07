@@ -24,6 +24,20 @@ export async function createModelRole(
   });
 }
 
+export async function patchModelRole(
+  request: RequestFn,
+  roleId: number,
+  body: Partial<{
+    name: string;
+    application: "procurement" | "sales";
+  }>
+) {
+  return request<any>(`/approval-model-roles/${roleId}/`, {
+    method: "PATCH",
+    body: body as unknown as Record<string, unknown>,
+  });
+}
+
 export async function getModelRoleUsers(
   request: RequestFn,
   roleId: number

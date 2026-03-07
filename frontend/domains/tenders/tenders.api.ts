@@ -6,7 +6,8 @@ import type {
   TenderProposal,
   TenderCriterion,
   TenderAttribute,
-  TenderFile
+  TenderFile,
+  TenderApprovalRoutePayload
 } from './tenders.types'
 
 const PROCUREMENT_PREFIX = '/procurement-tenders'
@@ -302,11 +303,11 @@ export async function getCategories(request: RequestFn) {
 }
 
 export async function getExpenses(request: RequestFn) {
-  return request<unknown[]>('/expenses/', { cacheTtlMs: 5 * 60_000 })
+  return request<unknown[]>('/expenses/?assigned_only=1', { cacheTtlMs: 5 * 60_000 })
 }
 
 export async function getBranches(request: RequestFn) {
-  return request<unknown[]>('/branches/', { cacheTtlMs: 5 * 60_000 })
+  return request<unknown[]>('/branches/?assigned_only=1', { cacheTtlMs: 5 * 60_000 })
 }
 
 export async function getCurrencies(request: RequestFn) {
@@ -314,7 +315,7 @@ export async function getCurrencies(request: RequestFn) {
 }
 
 export async function getDepartments(request: RequestFn, branchId: number) {
-  return request<unknown[]>(`/departments/?branch_id=${branchId}`, {
+  return request<unknown[]>(`/departments/?branch_id=${branchId}&assigned_only=1`, {
     cacheTtlMs: 2 * 60_000,
   })
 }
@@ -414,6 +415,31 @@ export async function getTenderApprovalJournal(
   return request<unknown[]>(`${prefix}/${tenderId}/approval-journal/`)
 }
 
+export async function getTenderApprovalRoute(
+  request: RequestFn,
+  tenderId: number,
+  isSales: boolean
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<TenderApprovalRoutePayload>(`${prefix}/${tenderId}/approval-route/`)
+}
+
+export async function submitTenderApprovalSubmit(
+  request: RequestFn,
+  tenderId: number,
+  isSales: boolean,
+  body?: { comment?: string }
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<{ id: number; stage?: string; route?: TenderApprovalRoutePayload }>(
+    `${prefix}/${tenderId}/approval-submit/`,
+    {
+      method: "POST",
+      body: (body ?? {}) as unknown as Record<string, unknown>,
+    }
+  )
+}
+
 export async function submitTenderApprovalAction(
   request: RequestFn,
   tenderId: number,
@@ -421,7 +447,7 @@ export async function submitTenderApprovalAction(
   body: { action: "approved" | "rejected"; comment?: string }
 ) {
   const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
-  return request<{ id: number; stage?: string }>(`${prefix}/${tenderId}/approval-action/`, {
+  return request<{ id: number; stage?: string; route?: TenderApprovalRoutePayload }>(`${prefix}/${tenderId}/approval-action/`, {
     method: "POST",
     body: body as unknown as Record<string, unknown>,
   })

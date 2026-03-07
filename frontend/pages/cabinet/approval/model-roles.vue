@@ -23,7 +23,7 @@
               <template #name-cell="{ row }">
                 <button
                   class="text-left hover:underline"
-                  @click="selectRole(row.original)"
+                  @click="openEditRole(row.original)"
                 >
                   {{ row.original.name }}
                 </button>
@@ -94,6 +94,31 @@
       </template>
     </UModal>
 
+    <UModal v-model:open="showEditRoleModal">
+      <template #content>
+        <UCard>
+          <template #header><h3>Редагувати роль</h3></template>
+          <div class="space-y-4">
+            <UFormField label="Назва ролі" required>
+              <UInput v-model="editRoleForm.name" />
+            </UFormField>
+            <UFormField label="Призначення" required>
+              <USelectMenu
+                v-model="editRoleForm.application"
+                :items="applicationOptions"
+                value-key="value"
+                class="w-full"
+              />
+            </UFormField>
+            <div class="flex justify-end gap-2">
+              <UButton variant="outline" @click="showEditRoleModal = false">Скасувати</UButton>
+              <UButton :loading="savingEditRole" @click="saveEditedRole">Зберегти</UButton>
+            </div>
+          </div>
+        </UCard>
+      </template>
+    </UModal>
+
     <UModal v-model:open="showAddUserModal">
       <template #content>
         <UCard>
@@ -138,6 +163,13 @@ const createRoleForm = reactive({
   name: "",
   application: "procurement" as "procurement" | "sales",
 });
+const showEditRoleModal = ref(false);
+const savingEditRole = ref(false);
+const editRoleForm = reactive({
+  id: null as number | null,
+  name: "",
+  application: "procurement" as "procurement" | "sales",
+});
 
 const showAddUserModal = ref(false);
 const selectedUserIdToAdd = ref<number | null>(null);
@@ -163,12 +195,31 @@ const filteredRoles = computed(() => {
   return roles.value.filter((r) => `${r.name} ${r.application_label || ""}`.toLowerCase().includes(q));
 });
 
-const memberOptions = computed(() =>
-  members.value.map((m) => ({
-    value: Number(m?.user?.id),
-    label: `${m?.user?.full_name || `${m?.user?.last_name || ""} ${m?.user?.first_name || ""}`.trim() || m?.user?.email || m?.user?.id}`,
-  }))
+const selectedRoleUserIds = computed(
+  () =>
+    new Set(
+      selectedRoleUsers.value
+        .map((item) => Number(item?.user || 0))
+        .filter((id) => Number.isFinite(id) && id > 0),
+    ),
 );
+
+const memberOptions = computed(() => {
+  const seen = new Set<number>();
+  return members.value
+    .map((m) => ({
+      value: Number(m?.user?.id),
+      label: `${m?.user?.full_name || `${m?.user?.last_name || ""} ${m?.user?.first_name || ""}`.trim() || m?.user?.email || m?.user?.id}`,
+    }))
+    .filter((option) => {
+      const id = Number(option.value || 0);
+      if (!Number.isFinite(id) || id <= 0) return false;
+      if (selectedRoleUserIds.value.has(id)) return false;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+});
 
 async function ensureCompanyId() {
   if (!me.value?.memberships?.length) await refreshMe();
@@ -187,8 +238,18 @@ async function loadMembers() {
 
 async function selectRole(role: any) {
   selectedRole.value = role;
+  selectedUserIdToAdd.value = null;
   const { data } = await approvalUC.getModelRoleUsers(Number(role.id));
   selectedRoleUsers.value = data;
+}
+
+async function openEditRole(role: any) {
+  await selectRole(role);
+  editRoleForm.id = Number(role?.id || 0) || null;
+  editRoleForm.name = String(role?.name || "");
+  editRoleForm.application =
+    role?.application === "sales" ? "sales" : "procurement";
+  showEditRoleModal.value = true;
 }
 
 function openCreateRole() {
@@ -213,6 +274,28 @@ async function saveRole() {
     await loadRoles();
   } finally {
     savingRole.value = false;
+  }
+}
+
+async function saveEditedRole() {
+  const roleId = Number(editRoleForm.id || 0);
+  const name = editRoleForm.name.trim();
+  if (!roleId || !name) return;
+  savingEditRole.value = true;
+  try {
+    const { error } = await approvalUC.patchModelRole(roleId, {
+      name,
+      application: editRoleForm.application,
+    });
+    if (error) return;
+    showEditRoleModal.value = false;
+    await loadRoles();
+    const refreshed = roles.value.find((r) => Number(r.id) === roleId) || null;
+    if (refreshed) {
+      await selectRole(refreshed);
+    }
+  } finally {
+    savingEditRole.value = false;
   }
 }
 

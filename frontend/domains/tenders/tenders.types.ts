@@ -5,6 +5,9 @@ export interface TenderListItem {
   tour_number?: number
   name?: string
   stage?: string
+  task_kind?: 'author' | 'approver'
+  task_action?: string
+  task_created_at?: string
   created_by?: number | null
   created_by_display?: string
   stage_label?: string
@@ -82,4 +85,29 @@ export interface TenderActiveTasksResponse {
   count: number
   limit: number
   results: TenderListItem[]
+}
+
+export interface TenderApprovalRouteUser {
+  id?: number | null
+  full_name?: string
+  short_name?: string
+  status?: 'active' | 'approved' | 'waiting'
+}
+
+export interface TenderApprovalRouteNode {
+  kind?: 'author' | 'role'
+  label?: string
+  order?: number
+  approval_rule?: string
+  users?: TenderApprovalRouteUser[]
+}
+
+export interface TenderApprovalRoutePayload {
+  stage?: string
+  has_approvers?: boolean
+  status?: string
+  can_author_submit?: boolean
+  can_author_publish?: boolean
+  can_approver_action?: boolean
+  nodes?: TenderApprovalRouteNode[]
 }

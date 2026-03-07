@@ -47,21 +47,33 @@ function onToggle() {
     <template #header="{ collapsed }">
       <div
         :class="[
-          'h-14 flex-shrink-0 flex items-center',
-          collapsed ? 'px-2 justify-center' : 'px-3',
+          'h-14 flex-shrink-0 flex items-center gap-2',
+          collapsed ? 'px-2' : 'px-3',
         ]"
       >
         <h2
           v-if="!collapsed"
-          class="text-lg font-bold text-gray-900 whitespace-nowrap"
+          class="flex-1 text-lg font-bold text-gray-900 whitespace-nowrap"
         >
           {{ props.title }}
         </h2>
-        <div v-else class="w-full flex justify-center">
+        <div v-else class="flex-1 flex justify-center">
           <span class="text-sm font-bold text-gray-900">{{
             props.compactTitle
           }}</span>
         </div>
+        <UButton
+          :icon="
+            collapsed
+              ? 'i-heroicons-chevron-double-right'
+              : 'i-heroicons-chevron-double-left'
+          "
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          class="shrink-0"
+          @click="onToggle"
+        />
       </div>
     </template>
 
@@ -69,22 +81,6 @@ function onToggle() {
       <nav
         :class="['flex-1 min-h-0 overflow-y-auto', collapsed ? 'p-2' : 'p-4']"
       >
-        <div
-          :class="['mb-2 flex', collapsed ? 'justify-center' : 'justify-end']"
-        >
-          <UButton
-            :icon="
-              collapsed
-                ? 'i-heroicons-chevron-double-right'
-                : 'i-heroicons-chevron-double-left'
-            "
-            variant="ghost"
-            color="neutral"
-            size="sm"
-            class="shrink-0"
-            @click="onToggle"
-          />
-        </div>
         <UNavigationMenu
           orientation="vertical"
           :items="props.items"

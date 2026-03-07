@@ -137,9 +137,9 @@
       />
 
       <ContentSearch
-        label="Статті витрат"
-        placeholder="Оберіть статті витрат"
-        search-placeholder="Пошук статті витрат"
+        label="Статті бюджету"
+        placeholder="Оберіть статті бюджету"
+        search-placeholder="Пошук статті бюджету"
         :tree="expensesTree"
         :selected-ids="filters.expenseIds"
         :search-term="expenseSearch"
@@ -614,7 +614,7 @@ const filteredMemberships = computed(() => {
     list = list.filter((m) => categoryFilterUserIds.value.has(m.user.id));
   }
 
-  // Фільтр по статтях витрат (об'єднання - користувачі з будь-якої обраної статті)
+  // Фільтр по статтях бюджету (об'єднання - користувачі з будь-якої обраної статті)
   if (filters.expenseIds.length > 0) {
     if (expenseFilterUserIds.value.size === 0) {
       return [];

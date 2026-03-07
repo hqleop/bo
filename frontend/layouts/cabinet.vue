@@ -23,7 +23,7 @@
                 icon="i-heroicons-clipboard-document-list"
                 variant="ghost"
                 color="neutral"
-                :badge="activeTasksCount > 0 ? activeTasksCount : undefined"
+                :chip="hasUnseenActiveTasks ? { inset: true } : undefined"
                 title="Завдання користувача"
                 @click="openTasksPage"
               />
@@ -275,7 +275,7 @@ const menuLinks = computed(() => {
       icon: "i-heroicons-folder",
     },
     {
-      label: "Статті витрат",
+      label: "Статті бюджету",
       to: "/cabinet/reference/expenses",
       icon: "i-heroicons-currency-dollar",
     },
@@ -430,6 +430,7 @@ function logoutUser() {
 }
 
 function openTasksPage() {
+  markActiveTasksSeen();
   void navigateTo("/cabinet/tasks");
 }
 
@@ -447,7 +448,39 @@ const usersUC = useUsersUseCases();
 const tendersUC = useTendersUseCases();
 const notifications = ref<{ id: number; is_read?: boolean }[]>([]);
 const activeTasksCount = ref(0);
+const seenActiveTasksCount = ref(0);
 let activeTasksRefreshTimer: ReturnType<typeof setInterval> | null = null;
+const activeTasksSeenStorageKey = computed(
+  () => `cabinet.tasks.seen-count:${String(me.value?.user?.id ?? "0")}`,
+);
+const hasUnseenActiveTasks = computed(
+  () =>
+    activeTasksCount.value > 0 &&
+    activeTasksCount.value > seenActiveTasksCount.value,
+);
+
+function readSeenActiveTasksCountFromStorage() {
+  if (!import.meta.client) return;
+  try {
+    const raw = localStorage.getItem(activeTasksSeenStorageKey.value);
+    const parsed = Number(raw ?? 0);
+    seenActiveTasksCount.value =
+      Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  } catch {
+    seenActiveTasksCount.value = 0;
+  }
+}
+
+function markActiveTasksSeen() {
+  seenActiveTasksCount.value = activeTasksCount.value;
+  if (!import.meta.client) return;
+  try {
+    localStorage.setItem(
+      activeTasksSeenStorageKey.value,
+      String(seenActiveTasksCount.value),
+    );
+  } catch {}
+}
 
 async function loadActiveTasksCount() {
   if (!me.value?.user?.id) {
@@ -469,11 +502,15 @@ async function loadActiveTasksCount() {
 }
 
 onMounted(async () => {
+  readSeenActiveTasksCountFromStorage();
   const [{ data }] = await Promise.all([
     usersUC.getNotifications(),
     loadActiveTasksCount(),
   ]);
   notifications.value = data ?? [];
+  if (route.path === "/cabinet/tasks") {
+    markActiveTasksSeen();
+  }
 
   if (!activeTasksRefreshTimer) {
     activeTasksRefreshTimer = setInterval(() => {
@@ -488,6 +525,20 @@ onBeforeUnmount(() => {
     activeTasksRefreshTimer = null;
   }
 });
+watch(
+  () => me.value?.user?.id,
+  () => {
+    readSeenActiveTasksCountFromStorage();
+  },
+);
+watch(
+  () => route.path,
+  (path) => {
+    if (path === "/cabinet/tasks") {
+      markActiveTasksSeen();
+    }
+  },
+);
 const unreadNotificationsCount = computed(
   () => notifications.value?.filter((n) => !n.is_read).length || 0,
 );

@@ -278,6 +278,18 @@ export function useTendersUseCases() {
     return { data: Array.isArray(data) ? data : [], error }
   }
 
+  async function getTenderApprovalRoute(tenderId: number, isSales: boolean) {
+    return tendersApi.getTenderApprovalRoute(fetch, tenderId, isSales)
+  }
+
+  async function submitTenderApprovalSubmit(
+    tenderId: number,
+    isSales: boolean,
+    body?: { comment?: string }
+  ) {
+    return tendersApi.submitTenderApprovalSubmit(fetch, tenderId, isSales, body)
+  }
+
   async function submitTenderApprovalAction(
     tenderId: number,
     isSales: boolean,
@@ -337,6 +349,8 @@ export function useTendersUseCases() {
     submitProposal,
     withdrawProposal,
     getTenderApprovalJournal,
+    getTenderApprovalRoute,
+    submitTenderApprovalSubmit,
     submitTenderApprovalAction,
     getAvailableApprovalModels
   }

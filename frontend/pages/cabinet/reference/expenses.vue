@@ -1,9 +1,9 @@
 <template>
   <div class="h-full grid grid-cols-1 xl:grid-cols-2 gap-4">
-    <!-- Область 1: Статті витрат -->
+    <!-- Область 1: Статті бюджету -->
     <div class="min-h-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div class="flex justify-between items-center mb-4">
-        <h3 class="text-lg font-semibold">Статті витрат</h3>
+        <h3 class="text-lg font-semibold">Статті бюджету</h3>
         <UButton icon="i-heroicons-plus" size="sm" @click="openExpenseModal()">
           Додати
         </UButton>
@@ -23,7 +23,7 @@
           v-if="expenses.length === 0"
           class="text-center text-gray-400 py-8"
         >
-          Немає статей витрат
+          Немає статей бюджету
         </div>
       </div>
     </div>
@@ -54,7 +54,7 @@
         </div>
       </div>
       <div v-if="!selectedExpense" class="text-center text-gray-400 py-8">
-        Оберіть статтю витрат
+        Оберіть статтю бюджету
       </div>
       <div v-else class="space-y-2">
         <div
@@ -82,7 +82,7 @@
       </div>
     </div>
 
-    <!-- Модальне вікно для статті витрат -->
+    <!-- Модальне вікно для статті бюджету -->
     <UModal v-model:open="showExpenseModal">
       <template #content>
         <UCard>
@@ -90,8 +90,8 @@
             <h3>
               {{
                 editingExpense
-                  ? "Редагувати статтю витрат"
-                  : "Додати статтю витрат"
+                  ? "Редагувати статтю бюджету"
+                  : "Додати статтю бюджету"
               }}
             </h3>
           </template>
@@ -241,7 +241,7 @@ definePageMeta({
   layout: "cabinet",
   middleware: "auth",
   meta: {
-    title: "Статті витрат",
+    title: "Статті бюджету",
   },
 });
 
@@ -273,7 +273,7 @@ const expenseForm = reactive({
 const usersToAdd = ref<number[]>([]);
 const usersToRemove = ref<number[]>([]);
 
-// користувачі компанії, які ще не додані до поточної статті витрат
+// користувачі компанії, які ще не додані до поточної статті бюджету
 const availableCompanyUsers = computed(() => {
   const assignedIds = new Set<number>(
     currentUsers.value.map((u: any) => u.user.id),
@@ -330,7 +330,7 @@ const toggleUserSelection = (userId: number) => {
   }
 };
 
-// Статті витрат
+// Статті бюджету
 const openExpenseModal = (exp?: any) => {
   editingExpense.value = exp || null;
   if (exp) {
@@ -388,7 +388,7 @@ const saveExpense = async () => {
 };
 
 const deleteExpense = async (exp: any) => {
-  if (!confirm(`Видалити статтю витрат "${exp.name}"?`)) return;
+  if (!confirm(`Видалити статтю бюджету "${exp.name}"?`)) return;
 
   const { error } = await fetch(`/expenses/${exp.id}/`, {
     method: "DELETE",

@@ -149,13 +149,17 @@
                         size="sm"
                       />
                     </UFormField>
-                    <UFormField label="Модель погодження">
+                    <UFormField
+                      label="Модель погодження"
+                      :required="isApprovalModelRequired"
+                    >
                       <USelectMenu
                         v-model="form.approval_model_id"
                         :items="approvalModelOptions"
                         value-key="value"
                         placeholder="Оберіть модель"
                         size="sm"
+                        :disabled="!isApprovalModelLookupReady"
                       />
                     </UFormField>
                   </div>
@@ -358,6 +362,19 @@ const approvalModelOptions = computed(() =>
     label: m.name || `#${m.id}`,
   })),
 );
+const isApprovalModelLookupReady = computed(() => {
+  const categoryId = Number(form.category || 0);
+  const hasCategory = Number.isInteger(categoryId) && categoryId > 0;
+  const budgetRaw = form.estimated_budget;
+  const hasBudget =
+    budgetRaw != null && Number.isFinite(Number(budgetRaw));
+  return hasCategory && hasBudget;
+});
+const isApprovalModelRequired = computed(
+  () =>
+    isApprovalModelLookupReady.value &&
+    approvalModelOptions.value.length > 0,
+);
 
 // Ініціалізація типу проведення за режимом
 if (isRegistrationMode.value) {
@@ -442,8 +459,9 @@ async function loadOptions() {
 
 async function loadAvailableApprovalModels() {
   const companyId = Number((me.value as any)?.memberships?.[0]?.company?.id || 0);
-  if (!companyId) {
+  if (!companyId || !isApprovalModelLookupReady.value) {
     availableApprovalModels.value = [];
+    form.approval_model_id = null;
     return;
   }
   const { data } = await tendersUC.getAvailableApprovalModels({
@@ -498,6 +516,10 @@ async function saveTender() {
   const cpvIds = form.cpv_ids ?? [];
   if (cpvIds.length === 0) {
     error.value = "Оберіть хоча б одну категорію CPV.";
+    return;
+  }
+  if (isApprovalModelRequired.value && !form.approval_model_id) {
+    error.value = "Оберіть модель погодження.";
     return;
   }
 
