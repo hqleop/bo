@@ -545,6 +545,31 @@ def _create_tender_approval_journal_entry(
     )
 
 
+def _format_journal_datetime(value):
+    if not value:
+        return ""
+    dt_value = value
+    if timezone.is_naive(dt_value):
+        dt_value = timezone.make_aware(dt_value, timezone.get_current_timezone())
+    try:
+        dt_value = timezone.localtime(dt_value)
+    except Exception:
+        pass
+    return dt_value.strftime("%d.%m.%Y %H:%M")
+
+
+def _format_acceptance_period_comment(*, tender):
+    start_text = _format_journal_datetime(getattr(tender, "start_at", None))
+    end_text = _format_journal_datetime(getattr(tender, "end_at", None))
+    if start_text and end_text:
+        return f"{start_text} - {end_text}"
+    if start_text:
+        return start_text
+    if end_text:
+        return end_text
+    return ""
+
+
 def _log_tender_update_journal(
     *,
     before_stage: str,
@@ -573,6 +598,22 @@ def _log_tender_update_journal(
             actor=actor,
             stage=after_stage,
             comment="Погодження та публікація тендера",
+            **target,
+        )
+        return
+
+    acceptance_timing_changed = (
+        before_stage == "acceptance"
+        and after_stage == "acceptance"
+        and ("start_at" in request_keys or "end_at" in request_keys)
+    )
+    acceptance_resumed = before_stage == "decision" and after_stage == "acceptance"
+    if acceptance_timing_changed or acceptance_resumed:
+        _create_tender_approval_journal_entry(
+            action=TenderApprovalJournal.Action.SAVED,
+            actor=actor,
+            stage=after_stage,
+            comment=_format_acceptance_period_comment(tender=tender),
             **target,
         )
         return
