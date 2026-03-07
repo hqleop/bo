@@ -277,6 +277,109 @@ def _filter_participation_qs_by_tender_number(qs, tender_number, suffix):
     return qs.filter(id__in=matched_ids)
 
 
+def _filter_owner_tenders_qs_by_search(qs, search_value):
+    term = str(search_value or "").strip()
+    if not term:
+        return qs
+
+    filters = Q(name__icontains=term)
+    number_tokens = []
+    for raw in re.findall(r"\d+", term):
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            number_tokens.append(value)
+    if number_tokens:
+        filters |= Q(number__in=list(dict.fromkeys(number_tokens)))
+    return qs.filter(filters)
+
+
+def _build_owner_tender_journal_response(
+    request,
+    *,
+    qs,
+    serializer_cls,
+):
+    page = _parse_int_param(request.query_params.get("page"), default=1, min_value=1)
+    page_size = _parse_int_param(request.query_params.get("page_size"), default=20, min_value=1)
+    page_size = min(page_size, 100)
+
+    status_filter = (request.query_params.get("status") or "active").strip().lower()
+    if status_filter not in {"active", "completed", "all"}:
+        status_filter = "active"
+
+    active_stages = [
+        "preparation",
+        "acceptance",
+        "decision",
+        "approval",
+    ]
+    all_stage_values = [choice[0] for choice in ProcurementTender.Stage.choices]
+
+    if status_filter == "active":
+        qs = qs.filter(stage__in=active_stages)
+    elif status_filter == "completed":
+        qs = qs.filter(stage="completed")
+    else:
+        qs = qs.filter(stage__in=all_stage_values)
+
+    stage_filter = (request.query_params.get("stage") or "").strip().lower()
+    if status_filter in {"active", "all"} and stage_filter:
+        allowed_stages = set(active_stages if status_filter == "active" else all_stage_values)
+        if stage_filter in allowed_stages:
+            qs = qs.filter(stage=stage_filter)
+
+    search_value = (request.query_params.get("search") or "").strip()
+    if search_value:
+        qs = _filter_owner_tenders_qs_by_search(qs, search_value)
+
+    author_id = _parse_int_param(
+        request.query_params.get("author_id"),
+        default=0,
+        min_value=0,
+    )
+    if author_id:
+        qs = qs.filter(created_by_id=author_id)
+
+    branch_ids = [item for item in _parse_int_list_param(request.query_params.getlist("branch_ids")) if item > 0]
+    if branch_ids:
+        qs = qs.filter(branch_id__in=branch_ids)
+
+    department_ids = [item for item in _parse_int_list_param(request.query_params.getlist("department_ids")) if item > 0]
+    if department_ids:
+        qs = qs.filter(department_id__in=department_ids)
+
+    expense_ids = [item for item in _parse_int_list_param(request.query_params.getlist("expense_ids")) if item > 0]
+    if expense_ids:
+        qs = qs.filter(expense_article_id__in=expense_ids)
+
+    conduct_type = (request.query_params.get("conduct_type") or "").strip().lower()
+    if conduct_type in {"registration", "rfx", "online_auction"}:
+        qs = qs.filter(conduct_type=conduct_type)
+
+    qs = qs.order_by("-updated_at", "-id")
+
+    total = qs.count()
+    total_pages = (total + page_size - 1) // page_size
+    start = (page - 1) * page_size
+    end = start + page_size
+    rows = qs[start:end]
+
+    serializer = serializer_cls(rows, many=True, context={"request": request})
+    return Response(
+        {
+            "count": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "has_more": page < total_pages,
+            "results": serializer.data,
+        }
+    )
+
+
 def _parse_iso_datetime_param(raw_value):
     value = str(raw_value or "").strip()
     if not value:
@@ -3912,6 +4015,64 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         ).values_list("company_id", flat=True)
         return base_qs.filter(company_id__in=user_companies)
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="page", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="page_size", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY),
+            OpenApiParameter(
+                name="search",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Search by tender number or tender name.",
+            ),
+            OpenApiParameter(
+                name="status",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="active | completed | all",
+            ),
+            OpenApiParameter(name="author_id", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY),
+            OpenApiParameter(
+                name="branch_ids",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Comma-separated branch ids.",
+            ),
+            OpenApiParameter(
+                name="department_ids",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Comma-separated department ids.",
+            ),
+            OpenApiParameter(
+                name="expense_ids",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Comma-separated expense article ids.",
+            ),
+            OpenApiParameter(
+                name="conduct_type",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="registration | rfx | online_auction",
+            ),
+            OpenApiParameter(
+                name="stage",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="passport | preparation | acceptance | decision | approval | completed",
+            ),
+        ],
+        responses=OpenApiTypes.OBJECT,
+    )
+    def list(self, request, *args, **kwargs):
+        qs = self.filter_queryset(self.get_queryset())
+        return _build_owner_tender_journal_response(
+            request,
+            qs=qs,
+            serializer_cls=self.get_serializer_class(),
+        )
+
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
@@ -5015,6 +5176,64 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             user=user, status=CompanyUser.Status.APPROVED
         ).values_list("company_id", flat=True)
         return base_qs.filter(company_id__in=user_companies)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="page", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="page_size", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY),
+            OpenApiParameter(
+                name="search",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Search by tender number or tender name.",
+            ),
+            OpenApiParameter(
+                name="status",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="active | completed | all",
+            ),
+            OpenApiParameter(name="author_id", type=OpenApiTypes.INT, location=OpenApiParameter.QUERY),
+            OpenApiParameter(
+                name="branch_ids",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Comma-separated branch ids.",
+            ),
+            OpenApiParameter(
+                name="department_ids",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Comma-separated department ids.",
+            ),
+            OpenApiParameter(
+                name="expense_ids",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Comma-separated expense article ids.",
+            ),
+            OpenApiParameter(
+                name="conduct_type",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="registration | rfx | online_auction",
+            ),
+            OpenApiParameter(
+                name="stage",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="passport | preparation | acceptance | decision | approval | completed",
+            ),
+        ],
+        responses=OpenApiTypes.OBJECT,
+    )
+    def list(self, request, *args, **kwargs):
+        qs = self.filter_queryset(self.get_queryset())
+        return _build_owner_tender_journal_response(
+            request,
+            qs=qs,
+            serializer_cls=self.get_serializer_class(),
+        )
 
     def get_object(self):
         """Р”РѕР·РІРѕР»РёС‚Рё РґРѕСЃС‚СѓРї РґРѕ С‚РµРЅРґРµСЂР° РѕСЂРіР°РЅС–Р·Р°С‚РѕСЂР° Р°Р±Рѕ РґРѕ С‚РµРЅРґРµСЂР°, РґРµ РєРѕРјРїР°РЅС–СЏ РєРѕСЂРёСЃС‚СѓРІР°С‡Р° РјР°С” РїСЂРѕРїРѕР·РёС†С–СЋ (СѓС‡Р°СЃРЅРёРє)."""

@@ -7,6 +7,24 @@ export function useTendersUseCases() {
     return tendersApi.getTenderList(fetch, isSales)
   }
 
+  async function getTenderJournalList(
+    isSales: boolean,
+    filters?: {
+      page?: number
+      pageSize?: number
+      search?: string
+      status?: 'active' | 'completed' | 'all'
+      authorId?: number | null
+      branchIds?: number[]
+      departmentIds?: number[]
+      expenseIds?: number[]
+      conductType?: 'all' | 'registration' | 'rfx' | 'online_auction'
+      stage?: string
+    }
+  ) {
+    return tendersApi.getTenderJournalList(fetch, isSales, filters)
+  }
+
   async function getTenderActiveTasks(
     isSales: boolean,
     options?: { limit?: number; skipLoader?: boolean }
@@ -310,6 +328,7 @@ export function useTendersUseCases() {
 
   return {
     getTenderList,
+    getTenderJournalList,
     getTenderActiveTasks,
     getTenderActiveTasksCount,
     getTendersForParticipation,

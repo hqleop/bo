@@ -2,6 +2,7 @@ import type { RequestFn } from '~/shared/api/apiClient'
 import type {
   ParticipationListResponse,
   TenderDetail,
+  TenderJournalListResponse,
   TenderListItem,
   TenderProposal,
   TenderCriterion,
@@ -24,6 +25,63 @@ function detailEndpoint(isSales: boolean, id: number) {
 
 export async function getTenderList(request: RequestFn, isSales: boolean) {
   return request<TenderListItem[]>(listEndpoint(isSales))
+}
+
+export async function getTenderJournalList(
+  request: RequestFn,
+  isSales: boolean,
+  filters?: {
+    page?: number
+    pageSize?: number
+    search?: string
+    status?: 'active' | 'completed' | 'all'
+    authorId?: number | null
+    branchIds?: number[]
+    departmentIds?: number[]
+    expenseIds?: number[]
+    conductType?: 'all' | 'registration' | 'rfx' | 'online_auction'
+    stage?: string
+  }
+) {
+  const query: Record<string, string> = {
+    page: String(filters?.page ?? 1),
+    page_size: String(filters?.pageSize ?? 20),
+    status: String(filters?.status ?? 'active'),
+  }
+
+  const normalizedSearch = String(filters?.search || '').trim()
+  if (normalizedSearch) query.search = normalizedSearch
+  if (filters?.authorId && Number(filters.authorId) > 0) {
+    query.author_id = String(Math.trunc(Number(filters.authorId)))
+  }
+
+  const branchIds = Array.from(
+    new Set((filters?.branchIds ?? []).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))
+  )
+  if (branchIds.length > 0) query.branch_ids = branchIds.join(',')
+
+  const departmentIds = Array.from(
+    new Set((filters?.departmentIds ?? []).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))
+  )
+  if (departmentIds.length > 0) query.department_ids = departmentIds.join(',')
+
+  const expenseIds = Array.from(
+    new Set((filters?.expenseIds ?? []).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))
+  )
+  if (expenseIds.length > 0) query.expense_ids = expenseIds.join(',')
+
+  if (
+    filters?.conductType &&
+    filters.conductType !== 'all' &&
+    ['registration', 'rfx', 'online_auction'].includes(filters.conductType)
+  ) {
+    query.conduct_type = filters.conductType
+  }
+
+  const stage = String(filters?.stage || '').trim()
+  if (stage && stage !== 'all') query.stage = stage
+
+  return request<TenderJournalListResponse>(listEndpoint(isSales), { query })
 }
 
 export async function getTenderActiveTasks(

@@ -126,9 +126,9 @@ const tendersUC = useTendersUseCases();
 
 const mergedList = ref<any[]>([]);
 const tenderNumberFilter = ref("");
-const participationResultFilter = ref<"" | "participation" | "win">("");
+const participationResultFilter = ref<"all" | "participation" | "win">("all");
 const participationResultOptions = [
-  { value: "", label: "Усі" },
+  { value: "all", label: "Усі" },
   { value: "participation", label: "Участь" },
   { value: "win", label: "Перемога" },
 ];
@@ -185,7 +185,10 @@ async function loadAllByType(isSales: boolean, loadId: number) {
         page,
         submittedOnly: true,
         tenderNumber: tenderNumberFilter.value,
-        participationResult: participationResultFilter.value || undefined,
+        participationResult:
+          participationResultFilter.value === "all"
+            ? undefined
+            : participationResultFilter.value,
       },
     );
     const payload = (data as any) || {};
@@ -231,7 +234,7 @@ async function loadJournal() {
 
 function clearFilters() {
   tenderNumberFilter.value = "";
-  participationResultFilter.value = "";
+  participationResultFilter.value = "all";
   currentPage.value = 1;
 }
 
@@ -245,11 +248,35 @@ function openProposalPage(row: any) {
   navigateTo(`/cabinet/tenders/proposals/${tenderId}`);
 }
 
+function normalizeParticipationResultValue(
+  raw: unknown,
+): "all" | "participation" | "win" {
+  if (raw === "participation" || raw === "win" || raw === "all") {
+    return raw;
+  }
+  if (raw && typeof raw === "object") {
+    const nestedValue = (raw as { value?: unknown }).value;
+    if (
+      nestedValue === "participation" ||
+      nestedValue === "win" ||
+      nestedValue === "all"
+    ) {
+      return nestedValue;
+    }
+  }
+  return "all";
+}
+
 onMounted(() => {
   loadJournal();
 });
 
-watch(participationResultFilter, () => {
+watch(participationResultFilter as any, (nextValue: unknown) => {
+  const normalizedValue = normalizeParticipationResultValue(nextValue);
+  if (participationResultFilter.value !== normalizedValue) {
+    participationResultFilter.value = normalizedValue;
+    return;
+  }
   loadJournal();
 });
 

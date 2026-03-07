@@ -87,6 +87,17 @@ export interface TenderActiveTasksResponse {
   results: TenderListItem[]
 }
 
+export type TenderJournalStatus = 'active' | 'completed' | 'all'
+
+export interface TenderJournalListResponse {
+  count: number
+  page: number
+  page_size: number
+  total_pages: number
+  has_more?: boolean
+  results: TenderListItem[]
+}
+
 export interface TenderApprovalRouteUser {
   id?: number | null
   full_name?: string
