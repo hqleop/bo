@@ -23,7 +23,18 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.cache import cache
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from django.db.models import Q, Exists, OuterRef
+from django.db.models import (
+    Q,
+    Exists,
+    OuterRef,
+    Count,
+    DecimalField,
+    ExpressionWrapper,
+    F,
+    Sum,
+    Value,
+)
+from django.db.models.functions import Coalesce
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.utils import timezone
@@ -359,10 +370,38 @@ def _build_owner_tender_journal_response(
     if conduct_type in {"registration", "rfx", "online_auction"}:
         qs = qs.filter(conduct_type=conduct_type)
 
-    qs = qs.order_by("-updated_at", "-id")
-
     total = qs.count()
     total_pages = (total + page_size - 1) // page_size
+
+    # Journal metrics are computed in SQL to avoid per-row ORM queries in serializers.
+    line_total_expr = ExpressionWrapper(
+        Coalesce(F("positions__quantity"), Value(Decimal("0")))
+        * Coalesce(F("positions__proposal_values__price"), Value(Decimal("0"))),
+        output_field=DecimalField(max_digits=24, decimal_places=4),
+    )
+    qs = qs.annotate(
+        winners_count=Count(
+            "positions",
+            filter=Q(positions__winner_proposal__isnull=False),
+            distinct=True,
+        ),
+        total_amount=Coalesce(
+            Sum(
+                line_total_expr,
+                filter=Q(
+                    positions__winner_proposal_id=F(
+                        "positions__proposal_values__proposal_id"
+                    )
+                ),
+                output_field=DecimalField(max_digits=24, decimal_places=4),
+            ),
+            Value(Decimal("0")),
+            output_field=DecimalField(max_digits=24, decimal_places=4),
+        ),
+        has_next_tour=Exists(qs.model.objects.filter(parent_id=OuterRef("pk"))),
+    )
+    qs = qs.order_by("-updated_at", "-id")
+
     start = (page - 1) * page_size
     end = start + page_size
     rows = qs[start:end]
@@ -3998,7 +4037,14 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         user = self.request.user
         base_qs = ProcurementTender.objects.all()
         if self.action in ("list", "active_tasks"):
-            base_qs = base_qs.select_related("created_by")
+            base_qs = base_qs.select_related(
+                "created_by",
+                "category",
+                "cpv_category",
+                "expense_article",
+                "branch",
+                "department",
+            ).prefetch_related("cpv_categories")
         else:
             base_qs = base_qs.select_related(
                 "company", "category", "cpv_category", "expense_article",
@@ -5160,7 +5206,14 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
         user = self.request.user
         base_qs = SalesTender.objects.all()
         if self.action in ("list", "active_tasks"):
-            base_qs = base_qs.select_related("created_by")
+            base_qs = base_qs.select_related(
+                "created_by",
+                "category",
+                "cpv_category",
+                "expense_article",
+                "branch",
+                "department",
+            ).prefetch_related("cpv_categories")
         else:
             base_qs = base_qs.select_related(
                 "company", "category", "cpv_category", "expense_article",

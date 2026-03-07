@@ -61,6 +61,22 @@ def _format_tender_number(
     return f"{normalized_number}-{company_id}-{suffix}"
 
 
+def _to_decimal_or_none(value):
+    if value in (None, ""):
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+
+
+def _format_amount(value):
+    decimal_value = _to_decimal_or_none(value)
+    if decimal_value is None:
+        return None
+    return str(decimal_value.quantize(Decimal("0.01")))
+
+
 class UserSerializer(serializers.ModelSerializer):
     """User serializer for read operations."""
 
@@ -1773,6 +1789,16 @@ class ProcurementTenderListSerializer(serializers.ModelSerializer):
         source="get_conduct_type_display", read_only=True
     )
     created_by_display = serializers.SerializerMethodField()
+    branch_name = serializers.CharField(source="branch.name", read_only=True, default="")
+    department_name = serializers.CharField(source="department.name", read_only=True, default="")
+    expense_article_name = serializers.CharField(
+        source="expense_article.name", read_only=True, default=""
+    )
+    category_name = serializers.CharField(source="category.name", read_only=True, default="")
+    cpv_label = serializers.SerializerMethodField()
+    decision_label = serializers.SerializerMethodField()
+    total_amount = serializers.SerializerMethodField()
+    economy_amount = serializers.SerializerMethodField()
 
     class Meta:
         model = ProcurementTender
@@ -1787,6 +1813,14 @@ class ProcurementTenderListSerializer(serializers.ModelSerializer):
             "conduct_type_label",
             "created_by",
             "created_by_display",
+            "branch_name",
+            "department_name",
+            "expense_article_name",
+            "category_name",
+            "cpv_label",
+            "decision_label",
+            "total_amount",
+            "economy_amount",
             "created_at",
             "updated_at",
         )
@@ -1805,6 +1839,41 @@ class ProcurementTenderListSerializer(serializers.ModelSerializer):
             return ""
         full_name = f"{getattr(user, 'last_name', '')} {getattr(user, 'first_name', '')}".strip()
         return full_name or getattr(user, "email", "")
+
+    def get_cpv_label(self, obj):
+        cpv_items = list(obj.cpv_categories.all())
+        if cpv_items:
+            cpv = cpv_items[0]
+            return f"{cpv.cpv_code} - {cpv.name_ua}"
+        cpv = getattr(obj, "cpv_category", None)
+        if not cpv:
+            return ""
+        return f"{cpv.cpv_code} - {cpv.name_ua}"
+
+    def get_decision_label(self, obj):
+        stage = str(getattr(obj, "stage", "") or "")
+        if stage != ProcurementTender.Stage.COMPLETED:
+            return ""
+        if bool(getattr(obj, "has_next_tour", False)):
+            return "Наступний тур"
+        winners_count = int(getattr(obj, "winners_count", 0) or 0)
+        return "З переможцем" if winners_count > 0 else "Без переможця"
+
+    def get_total_amount(self, obj):
+        winners_count = int(getattr(obj, "winners_count", 0) or 0)
+        if winners_count <= 0:
+            return None
+        return _format_amount(getattr(obj, "total_amount", None))
+
+    def get_economy_amount(self, obj):
+        winners_count = int(getattr(obj, "winners_count", 0) or 0)
+        if winners_count <= 0:
+            return None
+        estimated = _to_decimal_or_none(getattr(obj, "estimated_budget", None))
+        total_amount = _to_decimal_or_none(getattr(obj, "total_amount", None))
+        if estimated is None or total_amount is None:
+            return None
+        return _format_amount(estimated - total_amount)
 
 
 class ProcurementParticipationTenderListSerializer(serializers.ModelSerializer):
@@ -2526,6 +2595,16 @@ class SalesTenderListSerializer(serializers.ModelSerializer):
         source="get_conduct_type_display", read_only=True
     )
     created_by_display = serializers.SerializerMethodField()
+    branch_name = serializers.CharField(source="branch.name", read_only=True, default="")
+    department_name = serializers.CharField(source="department.name", read_only=True, default="")
+    expense_article_name = serializers.CharField(
+        source="expense_article.name", read_only=True, default=""
+    )
+    category_name = serializers.CharField(source="category.name", read_only=True, default="")
+    cpv_label = serializers.SerializerMethodField()
+    decision_label = serializers.SerializerMethodField()
+    total_amount = serializers.SerializerMethodField()
+    profit_amount = serializers.SerializerMethodField()
 
     class Meta:
         model = SalesTender
@@ -2540,6 +2619,14 @@ class SalesTenderListSerializer(serializers.ModelSerializer):
             "conduct_type_label",
             "created_by",
             "created_by_display",
+            "branch_name",
+            "department_name",
+            "expense_article_name",
+            "category_name",
+            "cpv_label",
+            "decision_label",
+            "total_amount",
+            "profit_amount",
             "created_at",
             "updated_at",
         )
@@ -2558,6 +2645,41 @@ class SalesTenderListSerializer(serializers.ModelSerializer):
             return ""
         full_name = f"{getattr(user, 'last_name', '')} {getattr(user, 'first_name', '')}".strip()
         return full_name or getattr(user, "email", "")
+
+    def get_cpv_label(self, obj):
+        cpv_items = list(obj.cpv_categories.all())
+        if cpv_items:
+            cpv = cpv_items[0]
+            return f"{cpv.cpv_code} - {cpv.name_ua}"
+        cpv = getattr(obj, "cpv_category", None)
+        if not cpv:
+            return ""
+        return f"{cpv.cpv_code} - {cpv.name_ua}"
+
+    def get_decision_label(self, obj):
+        stage = str(getattr(obj, "stage", "") or "")
+        if stage != SalesTender.Stage.COMPLETED:
+            return ""
+        if bool(getattr(obj, "has_next_tour", False)):
+            return "Наступний тур"
+        winners_count = int(getattr(obj, "winners_count", 0) or 0)
+        return "З переможцем" if winners_count > 0 else "Без переможця"
+
+    def get_total_amount(self, obj):
+        winners_count = int(getattr(obj, "winners_count", 0) or 0)
+        if winners_count <= 0:
+            return None
+        return _format_amount(getattr(obj, "total_amount", None))
+
+    def get_profit_amount(self, obj):
+        winners_count = int(getattr(obj, "winners_count", 0) or 0)
+        if winners_count <= 0:
+            return None
+        estimated = _to_decimal_or_none(getattr(obj, "estimated_budget", None))
+        total_amount = _to_decimal_or_none(getattr(obj, "total_amount", None))
+        if estimated is None or total_amount is None:
+            return None
+        return _format_amount(total_amount - estimated)
 
 
 class SalesParticipationTenderListSerializer(serializers.ModelSerializer):

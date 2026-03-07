@@ -41,6 +41,22 @@
             <template #created_at-cell="{ row }">
               {{ formatDateTime(row.original.created_at) }}
             </template>
+
+            <template #decision_label-cell="{ row }">
+              {{ row.original.decision_label || "-" }}
+            </template>
+
+            <template #total_amount-cell="{ row }">
+              {{ formatAmount(row.original.total_amount) }}
+            </template>
+
+            <template #economy_amount-cell="{ row }">
+              {{ formatAmount(row.original.economy_amount) }}
+            </template>
+
+            <template #profit_amount-cell="{ row }">
+              {{ formatAmount(row.original.profit_amount) }}
+            </template>
           </UTable>
 
           <div v-else class="text-center text-gray-400 py-12">
@@ -274,14 +290,28 @@ function normalizeSelectStringValue(raw: unknown, fallback = "all") {
   return fallback;
 }
 
-const tableColumns = [
-  { accessorKey: "number", header: "Номер" },
-  { accessorKey: "name", header: "Назва" },
-  { accessorKey: "created_by_display", header: "Автор" },
-  { accessorKey: "stage_label", header: "Етап" },
-  { accessorKey: "conduct_type_label", header: "Тип процедури" },
-  { accessorKey: "created_at", header: "Створено" },
-];
+const tableColumns = computed(() => {
+  const metricColumn =
+    viewType.value === "purchase"
+      ? { accessorKey: "economy_amount", header: "Економія" }
+      : { accessorKey: "profit_amount", header: "Прибуток" };
+
+  return [
+    { accessorKey: "number", header: "Номер тендера" },
+    { accessorKey: "name", header: "Назва" },
+    { accessorKey: "created_by_display", header: "Автор" },
+    { accessorKey: "stage_label", header: "Етап" },
+    { accessorKey: "conduct_type_label", header: "Тип процедури" },
+    { accessorKey: "branch_name", header: "Філіал" },
+    { accessorKey: "department_name", header: "Підрозділ" },
+    { accessorKey: "expense_article_name", header: "Стаття бюджету" },
+    { accessorKey: "category_name", header: "Категорія" },
+    { accessorKey: "cpv_label", header: "Категорія CPV" },
+    { accessorKey: "decision_label", header: "Прийняте рішення" },
+    { accessorKey: "total_amount", header: "Сума закупівлі" },
+    metricColumn,
+  ];
+});
 
 const tableData = computed(() => tenders.value);
 
@@ -310,6 +340,16 @@ function formatDateTime(value?: string) {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+  });
+}
+
+function formatAmount(value: unknown) {
+  if (value === null || value === undefined || value === "") return "-";
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return String(value);
+  return numericValue.toLocaleString("uk-UA", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 }
 

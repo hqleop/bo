@@ -1786,23 +1786,57 @@
         <UCard>
           <template #header><h3>Змінити час проведення</h3></template>
           <div class="space-y-4">
-            <UFormField
-              label="Початок"
-              :help="
-                canEditStart
-                  ? ''
-                  : 'Після старту час початку змінювати не можна'
-              "
-            >
-              <UInput
-                v-model="timingForm.start_at"
-                type="datetime-local"
-                :disabled="!canEditStart"
-              />
-            </UFormField>
-            <UFormField label="Завершення">
-              <UInput v-model="timingForm.end_at" type="datetime-local" />
-            </UFormField>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <UFormField
+                label="Дата початку"
+                required
+                :help="
+                  canEditStart
+                    ? ''
+                    : 'Після старту час початку змінювати не можна'
+                "
+              >
+                <DateValuePicker
+                  :model-value="timingStartDate"
+                  class="w-full"
+                  :disabled="!canEditStart"
+                  @update:model-value="timingStartDate = $event || ''"
+                />
+              </UFormField>
+              <UFormField label="Дата завершення" required>
+                <DateValuePicker
+                  :model-value="timingEndDate"
+                  class="w-full"
+                  @update:model-value="timingEndDate = $event || ''"
+                />
+              </UFormField>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <UFormField label="Час початку" required>
+                <UInput
+                  v-model="timingStartTime"
+                  type="text"
+                  inputmode="numeric"
+                  placeholder="ГГ:ХХ"
+                  maxlength="5"
+                  class="w-full"
+                  :disabled="!canEditStart"
+                />
+              </UFormField>
+              <UFormField label="Час завершення" required>
+                <UInput
+                  v-model="timingEndTime"
+                  type="text"
+                  inputmode="numeric"
+                  placeholder="ГГ:ХХ"
+                  maxlength="5"
+                  class="w-full"
+                />
+              </UFormField>
+            </div>
+            <p class="text-xs text-gray-500">
+              Введіть час вручну у форматі ГГ:ХХ (наприклад 9:30 або 09:30).
+            </p>
             <div class="flex gap-2">
               <UButton
                 class="flex-1"
@@ -2836,6 +2870,10 @@ const publishStartDate = ref("");
 const publishEndDate = ref("");
 const publishStartTime = ref("");
 const publishEndTime = ref("");
+const timingStartDate = ref("");
+const timingEndDate = ref("");
+const timingStartTime = ref("");
+const timingEndTime = ref("");
 const showApprovalJournalModal = ref(false);
 const showApprovalActionModal = ref(false);
 const approvalActionSaving = ref(false);
@@ -4985,6 +5023,28 @@ function applyPublishScheduleToTimingForm() {
   return true;
 }
 
+function syncTimingScheduleFromForm() {
+  const fallbackTimes = getDefaultPublishTimes();
+  const nowDate = formatDateForInput(new Date());
+  timingStartDate.value =
+    normalizeDateValue(dateFromInput(timingForm.start_at)) || nowDate;
+  timingEndDate.value =
+    normalizeDateValue(dateFromInput(timingForm.end_at)) || timingStartDate.value;
+  timingStartTime.value =
+    normalizeTimeValue(timeFromInput(timingForm.start_at)) || fallbackTimes.start;
+  timingEndTime.value =
+    normalizeTimeValue(timeFromInput(timingForm.end_at)) || fallbackTimes.end;
+}
+
+function applyTimingScheduleToForm() {
+  const startAt = buildDateTimeInput(timingStartDate.value, timingStartTime.value);
+  const endAt = buildDateTimeInput(timingEndDate.value, timingEndTime.value);
+  if (!startAt || !endAt) return false;
+  timingForm.start_at = startAt;
+  timingForm.end_at = endAt;
+  return true;
+}
+
 function syncResumeAcceptanceScheduleFromForm() {
   const fallbackTimes = getDefaultPublishTimes();
   const nowDate = formatDateForInput(new Date());
@@ -5541,6 +5601,7 @@ function openPublishModal() {
 function openTimingModal() {
   timingForm.start_at = isoToInput(tender.value?.start_at);
   timingForm.end_at = isoToInput(tender.value?.end_at);
+  syncTimingScheduleFromForm();
   showTimingModal.value = true;
 }
 
@@ -5592,6 +5653,13 @@ async function publishTender() {
 }
 
 async function saveTiming() {
+  if (!applyTimingScheduleToForm()) {
+    useToast().add({
+      title: "Заповніть дати та час початку і завершення",
+      color: "error",
+    });
+    return;
+  }
   const payload: Record<string, unknown> = {
     end_at: inputToIso(timingForm.end_at),
   };

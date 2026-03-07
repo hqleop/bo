@@ -12,6 +12,15 @@ export interface TenderListItem {
   created_by_display?: string
   stage_label?: string
   conduct_type_label?: string
+  branch_name?: string
+  department_name?: string
+  expense_article_name?: string
+  category_name?: string
+  cpv_label?: string
+  decision_label?: string
+  total_amount?: string | null
+  economy_amount?: string | null
+  profit_amount?: string | null
   created_at?: string
   [key: string]: unknown
 }
