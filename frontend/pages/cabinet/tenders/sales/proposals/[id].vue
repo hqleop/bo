@@ -818,6 +818,17 @@ const deliveryLabels: Record<string, string> = {
   without_delivery: "без урахування доставки",
 };
 
+function parseVatPercentValue(value: unknown): number | null {
+  const raw = String(value ?? "")
+    .trim()
+    .replace(",", ".");
+  if (!raw) return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return null;
+  if (parsed <= 0 || parsed > 100) return null;
+  return Math.round(parsed * 100) / 100;
+}
+
 const tenderCriteria = computed(() => tender.value?.criteria ?? []);
 const tenderCriteriaIndividual = computed(() =>
   tenderCriteria.value.filter(
@@ -966,9 +977,13 @@ const stepperItems = computed(() => {
 const priceColumnHeader = computed(() => {
   const v = tender.value?.price_criterion_vat;
   const d = tender.value?.price_criterion_delivery;
+  const vPercent = parseVatPercentValue(tender.value?.price_criterion_vat_percent);
   const vLabel = v && vatLabels[v] ? vatLabels[v] : v || "";
+  const vPercentLabel =
+    v === "with_vat" && vPercent != null ? `${vPercent}%` : "";
   const dLabel = d && deliveryLabels[d] ? deliveryLabels[d] : d || "";
   const parts = ["Ціна", vLabel, dLabel].filter(Boolean);
+  if (vPercentLabel) parts.splice(Math.max(parts.length - 1, 1), 0, vPercentLabel);
   return parts.join(" ");
 });
 

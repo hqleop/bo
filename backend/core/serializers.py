@@ -70,6 +70,39 @@ def _to_decimal_or_none(value):
         return None
 
 
+def _validate_price_criterion_vat_percent(attrs, instance=None):
+    from rest_framework import serializers as drf
+
+    vat_mode_raw = attrs.get(
+        "price_criterion_vat",
+        getattr(instance, "price_criterion_vat", "") if instance else "",
+    )
+    vat_mode = str(vat_mode_raw or "").strip()
+    vat_percent = attrs.get(
+        "price_criterion_vat_percent",
+        getattr(instance, "price_criterion_vat_percent", None) if instance else None,
+    )
+
+    if vat_mode == "with_vat":
+        vat_percent_dec = _to_decimal_or_none(vat_percent)
+        if vat_percent_dec is None:
+            raise drf.ValidationError(
+                {
+                    "price_criterion_vat_percent": (
+                        "Вкажіть % ПДВ для режиму ціни «з ПДВ»."
+                    )
+                }
+            )
+        if vat_percent_dec <= 0 or vat_percent_dec > 100:
+            raise drf.ValidationError(
+                {"price_criterion_vat_percent": "% ПДВ має бути в межах (0, 100]."}
+            )
+        return
+
+    if "price_criterion_vat" in attrs and vat_mode != "with_vat":
+        attrs["price_criterion_vat_percent"] = None
+
+
 def _format_amount(value):
     decimal_value = _to_decimal_or_none(value)
     if decimal_value is None:
@@ -1286,6 +1319,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         """Категорія CPV обовʼязкова: хоча б одна CPV має бути обрана."""
+        _validate_price_criterion_vat_percent(attrs, instance=self.instance)
         cpv_categories = attrs.get("cpv_categories")
         if cpv_categories is not None and len(cpv_categories) == 0:
             from rest_framework import serializers as drf
@@ -1491,6 +1525,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "price_criterion_vat",
+            "price_criterion_vat_percent",
             "price_criterion_delivery",
             "tender_criteria",
             "criterion_ids",
@@ -1963,6 +1998,7 @@ class TenderProposalPositionSerializer(serializers.ModelSerializer):
             "position_quantity",
             "position_unit",
             "price",
+            "price_without_vat",
             "criterion_values",
         )
 
@@ -2238,6 +2274,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         """Категорія CPV обовʼязкова: хоча б одна CPV має бути обрана."""
+        _validate_price_criterion_vat_percent(attrs, instance=self.instance)
         cpv_categories = attrs.get("cpv_categories")
         if cpv_categories is not None and len(cpv_categories) == 0:
             from rest_framework import serializers as drf
@@ -2355,6 +2392,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "price_criterion_vat",
+            "price_criterion_vat_percent",
             "price_criterion_delivery",
             "tender_criteria",
             "criterion_ids",
@@ -2769,6 +2807,7 @@ class SalesTenderProposalPositionSerializer(serializers.ModelSerializer):
             "position_quantity",
             "position_unit",
             "price",
+            "price_without_vat",
             "criterion_values",
         )
 

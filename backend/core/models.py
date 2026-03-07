@@ -939,6 +939,13 @@ class ProcurementTender(models.Model):
         max_length=32, blank=True, default="",
         help_text="Наприклад: with_vat, without_vat",
     )
+    price_criterion_vat_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Відсоток ПДВ для режиму with_vat, наприклад 20.00",
+    )
     price_criterion_delivery = models.CharField(
         max_length=32, blank=True, default="",
         help_text="Наприклад: with_delivery, without_delivery",
@@ -1132,6 +1139,9 @@ class TenderProposalPosition(models.Model):
     price = models.DecimalField(
         max_digits=18, decimal_places=4, null=True, blank=True,
     )
+    price_without_vat = models.DecimalField(
+        max_digits=18, decimal_places=4, null=True, blank=True,
+    )
     # Значення інших критеріїв: { "criterion_id": value (str/number/bool) }
     criterion_values = models.JSONField(default=dict, blank=True)
 
@@ -1301,6 +1311,13 @@ class SalesTender(models.Model):
     price_criterion_vat = models.CharField(
         max_length=32, blank=True, default="",
         help_text="Наприклад: with_vat, without_vat",
+    )
+    price_criterion_vat_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Відсоток ПДВ для режиму with_vat, наприклад 20.00",
     )
     price_criterion_delivery = models.CharField(
         max_length=32, blank=True, default="",
@@ -1511,6 +1528,9 @@ class SalesTenderProposalPosition(models.Model):
         related_name="proposal_values",
     )
     price = models.DecimalField(
+        max_digits=18, decimal_places=4, null=True, blank=True,
+    )
+    price_without_vat = models.DecimalField(
         max_digits=18, decimal_places=4, null=True, blank=True,
     )
     criterion_values = models.JSONField(default=dict, blank=True)

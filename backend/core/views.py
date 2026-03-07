@@ -1214,10 +1214,18 @@ def _ensure_user_can_edit_tender(*, user, tender, is_sales):
 
 def _validate_preparation_readiness_before_publish(*, tender):
     has_positions = tender.positions.exists()
-    has_price_params = bool(
-        str(getattr(tender, "price_criterion_vat", "") or "").strip()
-        and str(getattr(tender, "price_criterion_delivery", "") or "").strip()
-    )
+    vat_mode = str(getattr(tender, "price_criterion_vat", "") or "").strip()
+    delivery_mode = str(getattr(tender, "price_criterion_delivery", "") or "").strip()
+    vat_percent_raw = getattr(tender, "price_criterion_vat_percent", None)
+    has_price_params = bool(vat_mode and delivery_mode)
+    if has_price_params and vat_mode == "with_vat":
+        try:
+            vat_percent = Decimal(str(vat_percent_raw))
+        except (InvalidOperation, TypeError, ValueError):
+            vat_percent = None
+        has_price_params = bool(
+            vat_percent is not None and vat_percent > 0 and vat_percent <= 100
+        )
     if not has_positions:
         raise DRFValidationError(
             {"detail": "Додайте хоча б одну позицію тендера перед погодженням."}
@@ -1227,9 +1235,67 @@ def _validate_preparation_readiness_before_publish(*, tender):
             {
                 "detail": (
                     "Налаштуйте параметри цінового критерію "
-                    "(ПДВ та Доставка) перед погодженням."
+                    "(ПДВ, % ПДВ та Доставка) перед погодженням."
                 )
             }
+        )
+
+
+def _to_decimal_or_none(value):
+    if value in (None, ""):
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+
+
+def _calculate_price_without_vat(*, price, vat_mode, vat_percent):
+    price_dec = _to_decimal_or_none(price)
+    if price_dec is None:
+        return None
+    if vat_mode != "with_vat":
+        return price_dec
+
+    vat_percent_dec = _to_decimal_or_none(vat_percent)
+    if vat_percent_dec is None or vat_percent_dec <= 0 or vat_percent_dec > 100:
+        return None
+
+    vat_rate = vat_percent_dec / Decimal("100")
+    denominator = Decimal("1") + vat_rate
+    if denominator <= 0:
+        return None
+
+    vat_part = (price_dec * vat_rate) / denominator
+    return (price_dec - vat_part).quantize(Decimal("0.0001"))
+
+
+def _recalculate_tender_position_values_without_vat(*, tender, is_sales):
+    vat_mode = str(getattr(tender, "price_criterion_vat", "") or "").strip()
+    vat_percent = getattr(tender, "price_criterion_vat_percent", None)
+
+    proposal_position_model = (
+        SalesTenderProposalPosition if is_sales else TenderProposalPosition
+    )
+    updates = []
+    qs = proposal_position_model.objects.filter(proposal__tender=tender).only(
+        "id", "price", "price_without_vat"
+    )
+    for row in qs.iterator(chunk_size=1000):
+        computed = _calculate_price_without_vat(
+            price=row.price,
+            vat_mode=vat_mode,
+            vat_percent=vat_percent,
+        )
+        if row.price_without_vat != computed:
+            row.price_without_vat = computed
+            updates.append(row)
+
+    if updates:
+        proposal_position_model.objects.bulk_update(
+            updates,
+            ["price_without_vat"],
+            batch_size=1000,
         )
 
 
@@ -1321,6 +1387,10 @@ def _apply_tender_approval_action(*, tender, is_sales, actor, action_type, comme
             if stage == TenderApprovalStageState.Stage.APPROVAL and tender.stage != "decision":
                 tender.stage = "decision"
                 tender.save(update_fields=["stage"])
+                _recalculate_tender_position_values_without_vat(
+                    tender=tender,
+                    is_sales=is_sales,
+                )
 
         _create_tender_approval_journal_entry(
             action=action_type,
@@ -1351,6 +1421,11 @@ def _apply_tender_approval_action(*, tender, is_sales, actor, action_type, comme
     else:
         tender.stage = "decision"
     tender.save(update_fields=["stage"])
+    if action_type != "approved":
+        _recalculate_tender_position_values_without_vat(
+            tender=tender,
+            is_sales=is_sales,
+        )
 
 
 def _start_approval_stage_cycle_if_needed(*, tender, is_sales):
@@ -4147,6 +4222,15 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
 
         approval_model_changed = "approval_model" in serializer.validated_data
         serializer.save()
+        after_stage = getattr(serializer.instance, "stage", "") or ""
+        if (
+            before_stage != ProcurementTender.Stage.DECISION
+            and after_stage == ProcurementTender.Stage.DECISION
+        ):
+            _recalculate_tender_position_values_without_vat(
+                tender=serializer.instance,
+                is_sales=False,
+            )
         if approval_model_changed:
             _ensure_stage_state_snapshot(
                 tender=serializer.instance,
@@ -4847,6 +4931,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             currency=parent.currency,
             general_terms=parent.general_terms or "",
             price_criterion_vat=parent.price_criterion_vat or "",
+            price_criterion_vat_percent=parent.price_criterion_vat_percent,
             price_criterion_delivery=parent.price_criterion_delivery or "",
             approval_model=parent.approval_model,
             created_by=request.user,
@@ -5377,6 +5462,15 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
 
         approval_model_changed = "approval_model" in serializer.validated_data
         serializer.save()
+        after_stage = getattr(serializer.instance, "stage", "") or ""
+        if (
+            before_stage != SalesTender.Stage.DECISION
+            and after_stage == SalesTender.Stage.DECISION
+        ):
+            _recalculate_tender_position_values_without_vat(
+                tender=serializer.instance,
+                is_sales=True,
+            )
         if approval_model_changed:
             _ensure_stage_state_snapshot(
                 tender=serializer.instance,
@@ -6015,6 +6109,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             currency=parent.currency,
             general_terms=parent.general_terms or "",
             price_criterion_vat=parent.price_criterion_vat or "",
+            price_criterion_vat_percent=parent.price_criterion_vat_percent,
             price_criterion_delivery=parent.price_criterion_delivery or "",
             approval_model=parent.approval_model,
             created_by=request.user,

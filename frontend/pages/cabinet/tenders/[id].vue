@@ -703,6 +703,26 @@
                           @update:model-value="onPriceCriterionVatChange"
                         />
                       </UFormField>
+                      <UFormField
+                        label="% ПДВ"
+                        class="min-w-[180px]"
+                        :required="isVatPercentRequired"
+                      >
+                        <UInput
+                          v-model="priceCriterionVatPercent"
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          placeholder="Напр. 20"
+                          :disabled="
+                            isViewingPreviousTour ||
+                            isParticipant ||
+                            !isVatPercentRequired
+                          "
+                          @blur="onPriceCriterionVatPercentBlur"
+                        />
+                      </UFormField>
                       <UFormField label="Доставка" class="min-w-[260px]">
                         <USelectMenu
                           v-model="priceCriterionDelivery"
@@ -870,9 +890,6 @@
                               size="sm"
                               :disabled="isViewingPreviousTour || isParticipant"
                             />
-                          </template>
-                          <template #vat-cell>
-                            <UInput value="" disabled size="sm" />
                           </template>
                           <template
                             v-for="attribute in tenderAttributes"
@@ -2041,7 +2058,7 @@
                     :key="proposal.id"
                   >
                     <th
-                      :colspan="2 + (tender.value?.criteria?.length ?? 0)"
+                      :colspan="3 + (tender.value?.criteria?.length ?? 0)"
                       class="text-left p-2 font-medium bg-gray-200 border-l border-gray-300"
                     >
                       {{
@@ -2068,6 +2085,11 @@
                       class="text-left p-2 font-medium border-l border-gray-200 whitespace-nowrap"
                     >
                       {{ proposalComparisonPriceHeader }}
+                    </th>
+                    <th
+                      class="text-left p-2 font-medium border-l border-gray-200 whitespace-nowrap"
+                    >
+                      Ціна без ПДВ
                     </th>
                     <th
                       class="text-left p-2 font-medium border-l border-gray-200 whitespace-nowrap"
@@ -2113,6 +2135,12 @@
                     >
                       {{
                         getProposalPositionValue(proposal, pos.id)?.price ?? "—"
+                      }}
+                    </td>
+                    <td class="p-2 border-l border-gray-200">
+                      {{
+                        getProposalPositionValue(proposal, pos.id)
+                          ?.price_without_vat ?? "—"
                       }}
                     </td>
                     <td
@@ -2176,6 +2204,7 @@
                   <th class="text-left p-2 font-medium">
                     {{ proposalComparisonPriceHeader }}
                   </th>
+                  <th class="text-left p-2 font-medium">Ціна без ПДВ</th>
                   <th
                     v-for="c in tender.value?.criteria ?? []"
                     :key="c.id"
@@ -2201,6 +2230,14 @@
                         selectedParticipantProposal,
                         pos.id,
                       )?.price ?? "—"
+                    }}
+                  </td>
+                  <td class="p-2">
+                    {{
+                      getProposalPositionValue(
+                        selectedParticipantProposal,
+                        pos.id,
+                      )?.price_without_vat ?? "—"
                     }}
                   </td>
                   <td
@@ -2808,6 +2845,7 @@ const generalTermsEditorToolbarItems = [
 
 // Параметри цінового критерія (значення value з опцій)
 const priceCriterionVat = ref<string | undefined>(undefined);
+const priceCriterionVatPercent = ref("");
 const priceCriterionDelivery = ref<string | undefined>(undefined);
 const vatOptions = [
   { value: "with_vat", label: "з ПДВ" },
@@ -2858,6 +2896,14 @@ const displayTenderPositions = computed(() => {
       attribute_values:
         p.attribute_values && typeof p.attribute_values === "object"
           ? { ...p.attribute_values }
+          : {},
+      winner_proposal_id: p.winner_proposal_id ?? null,
+      winner_supplier_name: p.winner_supplier_name ?? null,
+      winner_price: p.winner_price ?? null,
+      winner_criterion_values:
+        p.winner_criterion_values &&
+        typeof p.winner_criterion_values === "object"
+          ? { ...p.winner_criterion_values }
           : {},
     }));
   }
@@ -3695,7 +3741,6 @@ const positionsColumns = computed(() => {
   }
   base.push(
     { accessorKey: "description", header: "Опис" },
-    { accessorKey: "vat", header: "ПДВ" },
   );
   for (const attribute of tenderAttributes.value || []) {
     base.push({
@@ -3960,9 +4005,16 @@ const canSubmitProposal = computed(() => {
     return false;
   const hasPositions = tenderPositions.value.length >= 1;
   const hasPriceParams =
-    !!priceCriterionVat.value && !!priceCriterionDelivery.value;
+    !!priceCriterionVat.value &&
+    !!priceCriterionDelivery.value &&
+    (!isVatPercentRequired.value ||
+      parseVatPercentValue(priceCriterionVatPercent.value) != null);
   return hasPositions && hasPriceParams;
 });
+
+const isVatPercentRequired = computed(
+  () => priceCriterionVat.value === "with_vat",
+);
 
 function toValidCriterionId(value: unknown): number | null {
   const num = Number(value);
@@ -4068,9 +4120,21 @@ async function savePriceCriteriaImmediately(payload: Record<string, unknown>) {
 
 function onPriceCriterionVatChange(value: string | undefined) {
   priceCriterionVat.value = value;
-  void savePriceCriteriaImmediately({
-    price_criterion_vat: value ?? "",
-  });
+  if (value !== "with_vat") {
+    priceCriterionVatPercent.value = "";
+    void savePriceCriteriaImmediately({
+      price_criterion_vat: value ?? "",
+      price_criterion_vat_percent: null,
+    });
+    return;
+  }
+  const vatPercent = parseVatPercentValue(priceCriterionVatPercent.value);
+  if (vatPercent != null) {
+    void savePriceCriteriaImmediately({
+      price_criterion_vat: value ?? "",
+      price_criterion_vat_percent: vatPercent,
+    });
+  }
 }
 
 function onPriceCriterionDeliveryChange(value: string | undefined) {
@@ -4079,8 +4143,30 @@ function onPriceCriterionDeliveryChange(value: string | undefined) {
     price_criterion_delivery: value ?? "",
   });
 }
+
+function onPriceCriterionVatPercentBlur() {
+  priceCriterionVatPercent.value = normalizeVatPercentInput(
+    priceCriterionVatPercent.value,
+  );
+  if (!isVatPercentRequired.value) return;
+  const vatPercent = parseVatPercentValue(priceCriterionVatPercent.value);
+  if (vatPercent == null) return;
+  void savePriceCriteriaImmediately({
+    price_criterion_vat: priceCriterionVat.value ?? "",
+    price_criterion_vat_percent: vatPercent,
+  });
+}
 async function savePreparation() {
   if (!tender.value?.id) return false;
+  const vatPercent = parseVatPercentValue(priceCriterionVatPercent.value);
+  if (isVatPercentRequired.value && vatPercent == null) {
+    useToast().add({
+      title: "Заповніть % ПДВ",
+      description: "Для параметра ціни «з ПДВ» вкажіть значення від 0 до 100.",
+      color: "error",
+    });
+    return false;
+  }
   if (isClassicAuctionMode.value) {
     const hasInvalidClassicParams = tenderPositions.value.some((p) => {
       const start = Number(p.start_price);
@@ -4131,6 +4217,8 @@ async function savePreparation() {
       (tenderCriteria.value || []).map((c: any) => criterionRefId(c)),
     ),
     price_criterion_vat: priceCriterionVat.value ?? "",
+    price_criterion_vat_percent:
+      isVatPercentRequired.value && vatPercent != null ? vatPercent : null,
     price_criterion_delivery: priceCriterionDelivery.value ?? "",
     attribute_ids: normalizedAttributeIds(
       (tenderAttributes.value || []).map((a: any) => a?.id),
@@ -4147,8 +4235,11 @@ async function openSubmitProposal() {
       const msg =
         tenderPositions.value.length < 1
           ? "Додайте хоча б одну позицію номенклатури в тендер."
-          : !priceCriterionVat.value || !priceCriterionDelivery.value
-            ? "Налаштуйте параметри цінового критерія (ПДВ та Доставка)."
+          : !priceCriterionVat.value ||
+              !priceCriterionDelivery.value ||
+              (isVatPercentRequired.value &&
+                parseVatPercentValue(priceCriterionVatPercent.value) == null)
+            ? "Налаштуйте параметри цінового критерію (ПДВ, % ПДВ та Доставка)."
             : "";
       alert(msg || "Неможливо відкрити подачу пропозицій.");
       return;
@@ -4313,7 +4404,6 @@ async function submitCreateNomenclature() {
         min_bid_step: null,
         max_bid_step: null,
         attribute_values: {},
-        vat: "",
       });
     }
     if (!availableNomenclatures.value.some((n: any) => n.id === created.id)) {
@@ -4969,6 +5059,23 @@ function normalizeTimeValue(value?: string | null): string {
   return `${pad(hours)}:${pad(minutes)}`;
 }
 
+function parseVatPercentValue(value: unknown): number | null {
+  const raw = String(value ?? "")
+    .trim()
+    .replace(",", ".");
+  if (!raw) return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return null;
+  if (parsed <= 0 || parsed > 100) return null;
+  return Math.round(parsed * 100) / 100;
+}
+
+function normalizeVatPercentInput(value: unknown): string {
+  const parsed = parseVatPercentValue(value);
+  if (parsed == null) return "";
+  return Number.isInteger(parsed) ? String(parsed) : String(parsed);
+}
+
 function formatDateForInput(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -5139,6 +5246,9 @@ async function loadTender() {
       tenderPositions.value = [];
     }
     priceCriterionVat.value = tenderData.price_criterion_vat ?? undefined;
+    priceCriterionVatPercent.value = normalizeVatPercentInput(
+      tenderData.price_criterion_vat_percent,
+    );
     priceCriterionDelivery.value =
       tenderData.price_criterion_delivery ?? undefined;
     if (Array.isArray(tenderData.criteria)) {
@@ -5282,7 +5392,6 @@ function addPositionFromNomenclature(
     min_bid_step: null,
     max_bid_step: null,
     attribute_values: {},
-    vat: "",
   });
   if (options.notifyAdded) {
     useToast().add({
@@ -5425,12 +5534,15 @@ function openApprovalSubmitModal() {
 
 function validatePreparationReadinessBeforePublication() {
   const hasPositions = tenderPositions.value.length >= 1;
+  const vatPercent = parseVatPercentValue(priceCriterionVatPercent.value);
   const hasPriceParams =
-    !!priceCriterionVat.value && !!priceCriterionDelivery.value;
+    !!priceCriterionVat.value &&
+    !!priceCriterionDelivery.value &&
+    (!isVatPercentRequired.value || vatPercent != null);
   if (hasPositions && hasPriceParams) return true;
   const msg = !hasPositions
     ? "Додайте хоча б одну позицію тендера."
-    : "Налаштуйте параметри цінового критерію (ПДВ та Доставка).";
+    : "Налаштуйте параметри цінового критерію (ПДВ, % ПДВ та Доставка).";
   useToast().add({
     title: "Збереження неможливе",
     description: msg,
@@ -6039,6 +6151,9 @@ const proposalComparisonPositions = computed(
 const proposalComparisonPriceHeader = computed(() => {
   const v = tender.value?.price_criterion_vat;
   const d = tender.value?.price_criterion_delivery;
+  const vPercent = parseVatPercentValue(
+    tender.value?.price_criterion_vat_percent,
+  );
   const vatLabels: Record<string, string> = {
     with_vat: "з ПДВ",
     without_vat: "без ПДВ",
@@ -6048,8 +6163,10 @@ const proposalComparisonPriceHeader = computed(() => {
     without_delivery: "без урахування доставки",
   };
   const vLabel = v && vatLabels[v] ? vatLabels[v] : v || "";
+  const vPercentLabel =
+    v === "with_vat" && vPercent != null ? `${vPercent}%` : "";
   const dLabel = d && deliveryLabels[d] ? deliveryLabels[d] : d || "";
-  return ["Ціна", vLabel, dLabel].filter(Boolean).join(" ");
+  return ["Ціна", vLabel, vPercentLabel, dLabel].filter(Boolean).join(" ");
 });
 
 function getProposalPositionSum(
