@@ -2,6 +2,7 @@ import type { RequestFn } from '~/shared/api/apiClient'
 import type {
   ParticipationListResponse,
   TenderDetail,
+  DecisionMarketReferencePayload,
   TenderJournalListResponse,
   TenderListItem,
   TenderProposal,
@@ -186,6 +187,22 @@ export async function createTender(
 export async function getTenderTours(request: RequestFn, id: number, isSales: boolean) {
   const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
   return request<unknown[]>(`${prefix}/${id}/tours/`)
+}
+
+export async function getDecisionMarketReference(
+  request: RequestFn,
+  id: number,
+  isSales: boolean,
+  options?: { skipLoader?: boolean }
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<DecisionMarketReferencePayload>(
+    `${prefix}/${id}/decision-market-reference/`,
+    {
+      skipLoader: options?.skipLoader,
+      cacheTtlMs: 15_000,
+    }
+  )
 }
 
 export async function getTenderProposals(

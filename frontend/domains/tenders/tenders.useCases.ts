@@ -101,6 +101,14 @@ export function useTendersUseCases() {
     return tendersApi.getTenderTours(fetch, id, isSales)
   }
 
+  async function getDecisionMarketReference(
+    id: number,
+    isSales: boolean,
+    options?: { skipLoader?: boolean }
+  ) {
+    return tendersApi.getDecisionMarketReference(fetch, id, isSales, options)
+  }
+
   async function getTenderProposals(
     id: number,
     isSales: boolean,
@@ -337,6 +345,7 @@ export function useTendersUseCases() {
     patchTender,
     createTender,
     getTenderTours,
+    getDecisionMarketReference,
     getTenderProposals,
     getTenderProposalDetail,
     getTenderFiles,

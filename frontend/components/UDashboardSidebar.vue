@@ -39,6 +39,7 @@ function onToggle() {
     class="h-full"
     :ui="{
       root: 'h-full bg-white border-r border-gray-200 shadow-sm',
+      header: 'px-0 h-14',
       body: 'p-0',
       content: 'w-[92vw] max-w-sm',
     }"
@@ -47,8 +48,8 @@ function onToggle() {
     <template #header="{ collapsed }">
       <div
         :class="[
-          'h-14 flex-shrink-0 flex items-center gap-2',
-          collapsed ? 'px-2' : 'px-3',
+          'h-full w-full flex-shrink-0 flex items-center',
+          collapsed ? 'px-1.5 gap-1' : 'px-3 gap-2',
         ]"
       >
         <h2
@@ -57,8 +58,8 @@ function onToggle() {
         >
           {{ props.title }}
         </h2>
-        <div v-else class="flex-1 flex justify-center">
-          <span class="text-sm font-bold text-gray-900">{{
+        <div v-else class="min-w-0 flex-1 flex justify-center">
+          <span class="text-xs font-bold text-gray-900 truncate">{{
             props.compactTitle
           }}</span>
         </div>
@@ -70,7 +71,7 @@ function onToggle() {
           "
           variant="ghost"
           color="neutral"
-          size="sm"
+          size="xs"
           class="shrink-0"
           @click="onToggle"
         />

@@ -131,3 +131,16 @@ export interface TenderApprovalRoutePayload {
   can_approver_action?: boolean
   nodes?: TenderApprovalRouteNode[]
 }
+
+export interface DecisionMarketReferenceItem {
+  position_id: number
+  nomenclature_id: number
+  market_price?: string | number | null
+  source_tour_id?: number | null
+  source_tour_number?: number | null
+}
+
+export interface DecisionMarketReferencePayload {
+  mode_default?: 'first_tour' | 'current_tour'
+  position_market?: DecisionMarketReferenceItem[]
+}

@@ -1898,6 +1898,8 @@ class ProcurementTenderListSerializer(serializers.ModelSerializer):
         stage = str(getattr(obj, "stage", "") or "")
         if stage != ProcurementTender.Stage.COMPLETED:
             return None
+        if not bool(getattr(obj, "has_submitted_position_prices", False)):
+            return None
         total_amount = _to_decimal_or_none(getattr(obj, "total_amount", None))
         if total_amount is None:
             total_amount = Decimal("0")
@@ -1906,6 +1908,8 @@ class ProcurementTenderListSerializer(serializers.ModelSerializer):
     def get_economy_amount(self, obj):
         stage = str(getattr(obj, "stage", "") or "")
         if stage != ProcurementTender.Stage.COMPLETED:
+            return None
+        if not bool(getattr(obj, "has_submitted_position_prices", False)):
             return None
         estimated = _to_decimal_or_none(getattr(obj, "market_total_amount", None))
         if estimated is None:
@@ -2714,6 +2718,8 @@ class SalesTenderListSerializer(serializers.ModelSerializer):
         stage = str(getattr(obj, "stage", "") or "")
         if stage != SalesTender.Stage.COMPLETED:
             return None
+        if not bool(getattr(obj, "has_submitted_position_prices", False)):
+            return None
         total_amount = _to_decimal_or_none(getattr(obj, "total_amount", None))
         if total_amount is None:
             total_amount = Decimal("0")
@@ -2722,6 +2728,8 @@ class SalesTenderListSerializer(serializers.ModelSerializer):
     def get_profit_amount(self, obj):
         stage = str(getattr(obj, "stage", "") or "")
         if stage != SalesTender.Stage.COMPLETED:
+            return None
+        if not bool(getattr(obj, "has_submitted_position_prices", False)):
             return None
         estimated = _to_decimal_or_none(getattr(obj, "market_total_amount", None))
         if estimated is None:

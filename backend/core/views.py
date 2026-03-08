@@ -387,8 +387,17 @@ def _build_owner_tender_journal_response(
     proposal_position_model = (
         SalesTenderProposalPosition if is_sales_journal else TenderProposalPosition
     )
+    submitted_position_prices_exists = proposal_position_model.objects.filter(
+        tender_position__tender_id=OuterRef("pk"),
+        proposal__submitted_at__isnull=False,
+        price__isnull=False,
+    )
     avg_price_subquery = (
-        proposal_position_model.objects.filter(tender_position_id=OuterRef("pk"))
+        proposal_position_model.objects.filter(
+            tender_position_id=OuterRef("pk"),
+            proposal__submitted_at__isnull=False,
+            price__isnull=False,
+        )
         .values("tender_position_id")
         .annotate(avg_price=Avg("price"))
         .values("avg_price")[:1]
@@ -437,6 +446,7 @@ def _build_owner_tender_journal_response(
             Value(Decimal("0")),
             output_field=amount_output_field,
         ),
+        has_submitted_position_prices=Exists(submitted_position_prices_exists),
         has_next_tour=Exists(qs.model.objects.filter(parent_id=OuterRef("pk"))),
     )
     qs = qs.order_by("-updated_at", "-id")
@@ -468,6 +478,103 @@ def _parse_iso_datetime_param(raw_value):
     if timezone.is_naive(parsed):
         parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
     return parsed
+
+
+def _collect_tour_chain_until_current(tender):
+    """Collect procedure tours from first to current (inclusive)."""
+    tender_model = tender.__class__
+    company_id = getattr(tender, "company_id", None)
+    number = getattr(tender, "number", None)
+    current_tour_number = int(getattr(tender, "tour_number", 1) or 1)
+    if not company_id or number is None:
+        return [tender]
+    qs = (
+        tender_model.objects.filter(
+            company_id=company_id,
+            number=number,
+            tour_number__lte=current_tour_number,
+        )
+        .only("id", "tour_number")
+        .order_by("tour_number", "id")
+    )
+    tours = list(qs)
+    return tours or [tender]
+
+
+def _build_decision_market_reference_payload(*, tender, is_sales):
+    """Return market references for current positions using first available tour prices."""
+    position_model = SalesTenderPosition if is_sales else ProcurementTenderPosition
+    proposal_position_model = (
+        SalesTenderProposalPosition if is_sales else TenderProposalPosition
+    )
+
+    positions = list(
+        position_model.objects.filter(tender=tender).values("id", "nomenclature_id")
+    )
+    if not positions:
+        return {"mode_default": "first_tour", "position_market": []}
+
+    nomenclature_ids = {
+        int(row["nomenclature_id"])
+        for row in positions
+        if row.get("nomenclature_id") is not None
+    }
+    if not nomenclature_ids:
+        return {"mode_default": "first_tour", "position_market": []}
+
+    tours = _collect_tour_chain_until_current(tender)
+    tour_ids = [int(t.id) for t in tours]
+    tour_number_by_id = {int(t.id): int(getattr(t, "tour_number", 1) or 1) for t in tours}
+
+    market_rows = list(
+        proposal_position_model.objects.filter(
+            proposal__tender_id__in=tour_ids,
+            proposal__submitted_at__isnull=False,
+            price__isnull=False,
+            tender_position__nomenclature_id__in=nomenclature_ids,
+        )
+        .values("proposal__tender_id", "tender_position__nomenclature_id")
+        .annotate(avg_price=Avg("price"))
+    )
+    market_rows.sort(
+        key=lambda row: (
+            tour_number_by_id.get(int(row["proposal__tender_id"]), 10**9),
+            int(row["proposal__tender_id"]),
+        )
+    )
+
+    first_market_by_nomenclature = {}
+    first_market_source_by_nomenclature = {}
+    for row in market_rows:
+        nomenclature_id = int(row["tender_position__nomenclature_id"])
+        if nomenclature_id in first_market_by_nomenclature:
+            continue
+        avg_price = row.get("avg_price")
+        if avg_price is None:
+            continue
+        source_tour_id = int(row["proposal__tender_id"])
+        first_market_by_nomenclature[nomenclature_id] = avg_price
+        first_market_source_by_nomenclature[nomenclature_id] = {
+            "source_tour_id": source_tour_id,
+            "source_tour_number": tour_number_by_id.get(source_tour_id),
+        }
+
+    position_market = []
+    for row in positions:
+        position_id = int(row["id"])
+        nomenclature_id = int(row["nomenclature_id"])
+        source = first_market_source_by_nomenclature.get(nomenclature_id) or {}
+        position_market.append(
+            {
+                "position_id": position_id,
+                "nomenclature_id": nomenclature_id,
+                "market_price": first_market_by_nomenclature.get(nomenclature_id),
+                "source_tour_id": source.get("source_tour_id"),
+                "source_tour_number": source.get("source_tour_number"),
+            }
+        )
+
+    return {"mode_default": "first_tour", "position_market": position_market}
 
 
 def _author_task_action_label(stage):
@@ -4825,6 +4932,15 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         collected.sort(key=lambda t: t.tour_number)
         return Response([{"id": t.id, "tour_number": t.tour_number} for t in collected])
 
+    @action(detail=True, methods=["get"], url_path="decision-market-reference")
+    def decision_market_reference(self, request, pk=None):
+        tender = self.get_object()
+        payload = _build_decision_market_reference_payload(
+            tender=tender,
+            is_sales=False,
+        )
+        return Response(payload)
+
     @action(detail=True, methods=["get"], url_path="approval-journal")
     def approval_journal(self, request, pk=None):
         tender = self.get_object()
@@ -6003,6 +6119,15 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             stack.extend(t.next_tours.all())
         collected.sort(key=lambda t: t.tour_number)
         return Response([{"id": t.id, "tour_number": t.tour_number} for t in collected])
+
+    @action(detail=True, methods=["get"], url_path="decision-market-reference")
+    def decision_market_reference(self, request, pk=None):
+        tender = self.get_object()
+        payload = _build_decision_market_reference_payload(
+            tender=tender,
+            is_sales=True,
+        )
+        return Response(payload)
 
     @action(detail=True, methods=["get"], url_path="approval-journal")
     def approval_journal(self, request, pk=None):

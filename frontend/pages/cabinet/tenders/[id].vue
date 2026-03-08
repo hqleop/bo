@@ -1197,8 +1197,13 @@
                     placeholder="Оберіть"
                   />
                 </UFormField>
-                <UFormField label="Рішення" class="min-w-[200px]">
-                  <UInput placeholder="—" disabled />
+                <UFormField label="Економія по ринковій" class="min-w-[260px]">
+                  <USelectMenu
+                    v-model="decisionMarketMode"
+                    :items="decisionMarketModeOptions"
+                    value-key="value"
+                    placeholder="Оберіть"
+                  />
                 </UFormField>
               </div>
               <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
@@ -1258,6 +1263,17 @@
                     <span
                       class="inline-block w-full py-1 -my-1 px-2 -mx-2 rounded bg-amber-50 text-gray-700"
                       >{{ row.original.selected_price }}</span
+                    >
+                  </template>
+                  <template #economy_market-cell="{ row }">
+                    <span
+                      :class="[
+                        'inline-block w-full py-1 -my-1 px-2 -mx-2 rounded',
+                        Number(row.original.economy_market_num) < 0
+                          ? 'bg-red-100 text-red-700'
+                          : 'text-gray-700',
+                      ]"
+                      >{{ row.original.economy_market }}</span
                     >
                   </template>
                 </UTable>
@@ -3411,6 +3427,15 @@ const decisionProposals = ref<any[]>([]);
 const decisionProposalsFullLoaded = ref(false);
 const decisionProposalsDeltaCursor = ref<string | null>(null);
 const decisionProposalsIdleStreak = ref(0);
+const submittedDecisionProposals = computed(() =>
+  decisionProposals.value.filter((proposal) => Boolean(proposal?.submitted_at)),
+);
+const decisionMarketModeOptions = [
+  { value: "first_tour", label: "Першого туру" },
+  { value: "current_tour", label: "Поточного туру" },
+];
+const decisionMarketMode = ref<"first_tour" | "current_tour">("first_tour");
+const firstTourMarketByPositionId = ref<Record<number, number | null>>({});
 const realtimeTuning = useTenderRealtimeTuning({
   proposalCount: computed(() => decisionProposals.value.length),
   idleStreak: decisionProposalsIdleStreak,
@@ -3806,7 +3831,7 @@ function getProposalPositionValue(proposal: any, positionId: number) {
 
 function getBestProposalIdForPosition(positionId: number, isPurchase: boolean) {
   const withPrice: { id: number; price: number }[] = [];
-  for (const p of decisionProposals.value) {
+  for (const p of submittedDecisionProposals.value) {
     const pv = getProposalPositionValue(p, positionId);
     const num = Number(pv?.price);
     if (!Number.isNaN(num)) withPrice.push({ id: p.id, price: num });
@@ -3821,7 +3846,7 @@ function getBestProposalIdForPosition(positionId: number, isPurchase: boolean) {
 function hasDecisionPriceForProposal(positionId: number, proposalId: unknown) {
   const normalizedId = Number(proposalId);
   if (!Number.isInteger(normalizedId) || normalizedId <= 0) return false;
-  const proposal = decisionProposals.value.find(
+  const proposal = submittedDecisionProposals.value.find(
     (p) => Number(p?.id) === normalizedId,
   );
   if (!proposal) return false;
@@ -3859,7 +3884,7 @@ function resolveWinnerSelectionForPosition(
 }
 
 function decisionWinnerOptionsForPosition(positionId: number) {
-  return decisionProposals.value
+  return submittedDecisionProposals.value
     .filter((p) => {
       const pv = getProposalPositionValue(p, positionId);
       return pv != null && pv.price != null && !Number.isNaN(Number(pv.price));
@@ -3884,7 +3909,13 @@ function setDecisionWinner(positionId: number, proposalId: number | null) {
   selectedWinnerByPosition.value = next;
 }
 
-const decisionTableColumns = [
+const decisionMarketMetricHeader = computed(() =>
+  decisionMarketMode.value === "current_tour"
+    ? "Економія по орієнтовній ринковій поточного туру"
+    : "Економія по орієнтовній ринковій першого туру",
+);
+
+const decisionTableColumns = computed(() => [
   { accessorKey: "name", header: "Позиція" },
   { accessorKey: "quantity_unit", header: "Кількість" },
   {
@@ -3907,12 +3938,12 @@ const decisionTableColumns = [
   { accessorKey: "price_diff", header: "Розбіжність у ціні" },
   {
     accessorKey: "economy_market",
-    header: "Економія по орієнтовній ринковій",
+    header: decisionMarketMetricHeader.value,
   },
-];
+]);
 
 const decisionTableRows = computed(() => {
-  const proposals = decisionProposals.value;
+  const proposals = submittedDecisionProposals.value;
   const selected = selectedWinnerByPosition.value;
   const isPurchase = true;
   return displayTenderPositions.value.map((pos) => {
@@ -3925,15 +3956,27 @@ const decisionTableRows = computed(() => {
           !Number.isNaN(Number(x.pv.price)),
       );
     const prices = pvList.map((x) => Number(x.pv!.price));
-    const avgPrice =
+    const currentTourMarketPrice =
       prices.length > 0
         ? prices.reduce((a, b) => a + b, 0) / prices.length
         : null;
+    const firstTourMarketPriceRaw = firstTourMarketByPositionId.value[
+      Number(pos.id)
+    ];
+    const firstTourMarketPrice =
+      firstTourMarketPriceRaw != null &&
+      Number.isFinite(Number(firstTourMarketPriceRaw))
+        ? Number(firstTourMarketPriceRaw)
+        : null;
+    const marketPrice =
+      decisionMarketMode.value === "first_tour"
+        ? firstTourMarketPrice
+        : currentTourMarketPrice;
     const marketValue =
-      estimatedMarketMethod.value === "arithmetic_mean" && avgPrice != null
-        ? avgPrice.toFixed(2)
-        : avgPrice != null
-          ? avgPrice.toFixed(2)
+      estimatedMarketMethod.value === "arithmetic_mean" && marketPrice != null
+        ? marketPrice.toFixed(2)
+        : marketPrice != null
+          ? marketPrice.toFixed(2)
           : "—";
 
     let bestProposal: any = null;
@@ -3976,7 +4019,7 @@ const decisionTableRows = computed(() => {
       selectedProposal?.supplier_company?.name ??
       "—";
     const selectedPriceStr =
-      selectedPrice != null ? selectedPrice.toFixed(2) : "0.00";
+      selectedPrice != null ? selectedPrice.toFixed(2) : "—";
 
     const priceDiff =
       bestPrice != null && selectedPrice != null
@@ -3985,8 +4028,8 @@ const decisionTableRows = computed(() => {
     const priceDiffStr = priceDiff != null ? priceDiff.toFixed(2) : "—";
 
     const economyMarket =
-      avgPrice != null && selectedPrice != null
-        ? avgPrice - selectedPrice
+      marketPrice != null && selectedPrice != null
+        ? marketPrice - selectedPrice
         : null;
     const economyMarketStr =
       economyMarket != null ? economyMarket.toFixed(2) : "—";
@@ -3999,7 +4042,7 @@ const decisionTableRows = computed(() => {
         ? `${pos.quantity} ${pos.unit_name}`
         : String(pos.quantity),
       market_value: marketValue,
-      market_value_num: avgPrice,
+      market_value_num: marketPrice,
       best_counterparty: bestCounterparty,
       best_price: bestPriceStr,
       best_price_num: bestPrice,
@@ -4008,6 +4051,7 @@ const decisionTableRows = computed(() => {
       selected_price_num: selectedPrice,
       price_diff: priceDiffStr,
       economy_market: economyMarketStr,
+      economy_market_num: economyMarket,
     };
   });
 });
@@ -5438,6 +5482,12 @@ async function loadTender() {
     timingForm.start_at = isoToInput(tenderData.start_at);
     timingForm.end_at = isoToInput(tenderData.end_at);
     await loadTours();
+    if (displayStage.value === "decision") {
+      await loadDecisionMarketReference({ skipLoader: true });
+    } else {
+      firstTourMarketByPositionId.value = {};
+      decisionMarketMode.value = "first_tour";
+    }
     await autoAdvanceAcceptance();
     await loadApprovalRoute();
   } finally {
@@ -5455,6 +5505,40 @@ async function loadTours() {
         label: `Тур ${t.tour_number ?? 1}`,
       }))
     : [];
+}
+
+function normalizeDecisionMarketMode(
+  value: unknown,
+): "first_tour" | "current_tour" {
+  return value === "current_tour" ? "current_tour" : "first_tour";
+}
+
+async function loadDecisionMarketReference(options: { skipLoader?: boolean } = {}) {
+  if (!tenderId.value) return;
+  const { data, error } = await tendersUC.getDecisionMarketReference(
+    tenderId.value,
+    isSales,
+    { skipLoader: options.skipLoader ?? true },
+  );
+  if (error || !data) {
+    firstTourMarketByPositionId.value = {};
+    decisionMarketMode.value = "first_tour";
+    return;
+  }
+  const rows = Array.isArray((data as any).position_market)
+    ? (data as any).position_market
+    : [];
+  const next: Record<number, number | null> = {};
+  for (const row of rows) {
+    const positionId = Number((row as any)?.position_id);
+    if (!Number.isInteger(positionId) || positionId <= 0) continue;
+    const numericMarket = Number((row as any)?.market_price);
+    next[positionId] = Number.isFinite(numericMarket) ? numericMarket : null;
+  }
+  firstTourMarketByPositionId.value = next;
+  decisionMarketMode.value = normalizeDecisionMarketMode(
+    (data as any)?.mode_default,
+  );
 }
 
 function onTourSelect(value: number | null) {
@@ -6413,6 +6497,9 @@ watch(displayStage, async (stage) => {
   }
   if (stage === "acceptance" || stage === "decision" || stage === "approval") {
     await loadDecisionProposals();
+  }
+  if (stage === "decision") {
+    await loadDecisionMarketReference({ skipLoader: true });
   }
   if (stage === "preparation" || stage === "approval") {
     await loadApprovalRoute();
