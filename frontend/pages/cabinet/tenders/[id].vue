@@ -1201,6 +1201,28 @@
                   <UInput placeholder="—" disabled />
                 </UFormField>
               </div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+                <div class="rounded border border-gray-200 bg-white p-3">
+                  <div class="text-xs text-gray-500">Вартість по кращій ціні</div>
+                  <div class="text-base font-semibold text-gray-900">
+                    {{ formatDecisionSummaryAmount(decisionSummary.bestTotal) }}
+                  </div>
+                </div>
+                <div class="rounded border border-gray-200 bg-white p-3">
+                  <div class="text-xs text-gray-500">
+                    Вартість за ціною що обирається
+                  </div>
+                  <div class="text-base font-semibold text-gray-900">
+                    {{ formatDecisionSummaryAmount(decisionSummary.selectedTotal) }}
+                  </div>
+                </div>
+                <div class="rounded border border-gray-200 bg-white p-3">
+                  <div class="text-xs text-gray-500">Економія в сумі</div>
+                  <div class="text-base font-semibold text-gray-900">
+                    {{ formatDecisionSummaryAmount(decisionSummary.aggregateTotal) }}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <!-- Таблиця позицій (стиль як на підготовці) -->
@@ -1262,6 +1284,7 @@
                       <th class="text-left p-2 font-medium">Кількість</th>
                       <th class="text-left p-2 font-medium">Переможець</th>
                       <th class="text-left p-2 font-medium">Ціна</th>
+                      <th class="text-left p-2 font-medium">Вартість</th>
                       <th
                         v-for="c in tenderCriteria"
                         :key="c.id"
@@ -1285,6 +1308,11 @@
                         {{ pos.winner_supplier_name ?? "—" }}
                       </td>
                       <td class="p-2">{{ pos.winner_price ?? "—" }}</td>
+                      <td class="p-2">
+                        {{
+                          getApprovalPositionTotal(pos.quantity, pos.winner_price)
+                        }}
+                      </td>
                       <td v-for="c in tenderCriteria" :key="c.id" class="p-2">
                         {{
                           (pos.winner_criterion_values &&
@@ -1966,12 +1994,22 @@
               }}</span>
               <USelectMenu
                 :model-value="selectedWinnerByPosition[pos.id] ?? null"
-                :items="decisionWinnerOptionsForPosition(pos.id)"
+                :items="decisionWinnerOptionsWithEmpty(pos.id)"
                 value-key="value"
                 placeholder="Оберіть контрагента"
                 class="flex-1 min-w-[200px]"
                 @update:model-value="(v) => setDecisionWinner(pos.id, v)"
               />
+              <UButton
+                type="button"
+                size="xs"
+                variant="outline"
+                color="error"
+                :disabled="selectedWinnerByPosition[pos.id] == null"
+                @click="setDecisionWinner(pos.id, null)"
+              >
+                Видалити
+              </UButton>
             </div>
           </div>
           <template #footer>
@@ -3389,7 +3427,7 @@ const estimatedMarketMethod = ref("arithmetic_mean");
 const estimatedMarketOptions = [
   { value: "arithmetic_mean", label: "Середня арифметична" },
 ];
-const selectedWinnerByPosition = ref<Record<number, number>>({});
+const selectedWinnerByPosition = ref<Record<number, number | null>>({});
 
 const stageItems = TENDER_STAGE_ITEMS;
 
@@ -3519,7 +3557,10 @@ const isViewingPreviousTour = computed(() => {
     !authorHasActivePreparationTask.value;
   return isEditLocked.value || authorLockedByRoute;
 });
-const currentUserId = computed(() => Number((me.value as any)?.id || 0) || null);
+const currentUserId = computed(
+  () =>
+    Number((me.value as any)?.user?.id || (me.value as any)?.id || 0) || null,
+);
 const isTenderAuthor = computed(
   () =>
     !!tender.value &&
@@ -3777,6 +3818,46 @@ function getBestProposalIdForPosition(positionId: number, isPurchase: boolean) {
   return best.id;
 }
 
+function hasDecisionPriceForProposal(positionId: number, proposalId: unknown) {
+  const normalizedId = Number(proposalId);
+  if (!Number.isInteger(normalizedId) || normalizedId <= 0) return false;
+  const proposal = decisionProposals.value.find(
+    (p) => Number(p?.id) === normalizedId,
+  );
+  if (!proposal) return false;
+  const pv = getProposalPositionValue(proposal, positionId);
+  const price = Number(pv?.price);
+  return pv != null && !Number.isNaN(price);
+}
+
+function resolveWinnerSelectionForPosition(
+  positionId: number,
+  isPurchase: boolean,
+  persistedProposalId?: unknown,
+  hasAnyPersistedWinners = false,
+) {
+  const hasCurrentSelection = Object.prototype.hasOwnProperty.call(
+    selectedWinnerByPosition.value,
+    positionId,
+  );
+  const currentSelection = selectedWinnerByPosition.value[positionId];
+  if (hasCurrentSelection && currentSelection == null) {
+    return null;
+  }
+  if (hasDecisionPriceForProposal(positionId, currentSelection)) {
+    return Number(currentSelection);
+  }
+  if (persistedProposalId == null) {
+    return hasAnyPersistedWinners
+      ? null
+      : getBestProposalIdForPosition(positionId, isPurchase);
+  }
+  if (hasDecisionPriceForProposal(positionId, persistedProposalId)) {
+    return Number(persistedProposalId);
+  }
+  return getBestProposalIdForPosition(positionId, isPurchase);
+}
+
 function decisionWinnerOptionsForPosition(positionId: number) {
   return decisionProposals.value
     .filter((p) => {
@@ -3790,10 +3871,16 @@ function decisionWinnerOptionsForPosition(positionId: number) {
     }));
 }
 
+function decisionWinnerOptionsWithEmpty(positionId: number) {
+  return [
+    { value: null, label: "Без переможця" },
+    ...decisionWinnerOptionsForPosition(positionId),
+  ];
+}
+
 function setDecisionWinner(positionId: number, proposalId: number | null) {
   const next = { ...selectedWinnerByPosition.value };
-  if (proposalId != null) next[positionId] = proposalId;
-  else delete next[positionId];
+  next[positionId] = proposalId != null ? Number(proposalId) : null;
   selectedWinnerByPosition.value = next;
 }
 
@@ -3866,10 +3953,17 @@ const decisionTableRows = computed(() => {
       "—";
     const bestPriceStr = bestPrice != null ? bestPrice.toFixed(2) : "—";
 
-    const selectedProposalId = selected[pos.id] ?? bestProposal?.id ?? null;
-    const selectedProposal = selectedProposalId
-      ? proposals.find((p) => p.id === selectedProposalId)
-      : bestProposal;
+    const hasManualSelection = Object.prototype.hasOwnProperty.call(
+      selected,
+      pos.id,
+    );
+    const selectedProposalId = hasManualSelection
+      ? selected[pos.id]
+      : (bestProposal?.id ?? null);
+    const selectedProposal =
+      selectedProposalId != null
+        ? proposals.find((p) => p.id === selectedProposalId)
+        : null;
     const selectedPv = selectedProposal
       ? getProposalPositionValue(selectedProposal, pos.id)
       : null;
@@ -3882,7 +3976,7 @@ const decisionTableRows = computed(() => {
       selectedProposal?.supplier_company?.name ??
       "—";
     const selectedPriceStr =
-      selectedPrice != null ? selectedPrice.toFixed(2) : "—";
+      selectedPrice != null ? selectedPrice.toFixed(2) : "0.00";
 
     const priceDiff =
       bestPrice != null && selectedPrice != null
@@ -3900,19 +3994,73 @@ const decisionTableRows = computed(() => {
     return {
       id: pos.id,
       name: pos.name,
+      quantity_value: Number(pos.quantity),
       quantity_unit: pos.unit_name
         ? `${pos.quantity} ${pos.unit_name}`
         : String(pos.quantity),
       market_value: marketValue,
+      market_value_num: avgPrice,
       best_counterparty: bestCounterparty,
       best_price: bestPriceStr,
+      best_price_num: bestPrice,
       selected_counterparty: selectedCounterparty,
       selected_price: selectedPriceStr,
+      selected_price_num: selectedPrice,
       price_diff: priceDiffStr,
       economy_market: economyMarketStr,
     };
   });
 });
+
+const decisionSummary = computed(() => {
+  let bestTotal = 0;
+  let selectedTotal = 0;
+  let marketTotal = 0;
+
+  for (const row of decisionTableRows.value as any[]) {
+    const qty = Number(row?.quantity_value);
+    if (!Number.isFinite(qty)) continue;
+
+    const bestPrice = Number(row?.best_price_num);
+    if (Number.isFinite(bestPrice)) {
+      bestTotal += qty * bestPrice;
+    }
+
+    const selectedPrice = Number(row?.selected_price_num);
+    if (Number.isFinite(selectedPrice)) {
+      selectedTotal += qty * selectedPrice;
+    }
+
+    const marketPrice = Number(row?.market_value_num);
+    if (Number.isFinite(marketPrice)) {
+      marketTotal += qty * marketPrice;
+    }
+  }
+
+  return {
+    bestTotal,
+    selectedTotal,
+    aggregateTotal: marketTotal - selectedTotal,
+  };
+});
+
+function formatDecisionSummaryAmount(value: number | null) {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return value.toLocaleString("uk-UA", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function getApprovalPositionTotal(quantityRaw: unknown, priceRaw: unknown) {
+  const quantity = Number(quantityRaw);
+  const price = Number(String(priceRaw ?? "").replace(",", "."));
+  if (!Number.isFinite(quantity) || !Number.isFinite(price)) return "—";
+  return (quantity * price).toLocaleString("uk-UA", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
 
 /** Дерево для UTree: категорії (батьки) → номенклатури (діти), формат Nuxt UI TreeItem */
 const nomenclatureTreeItems = computed(() => {
@@ -5486,11 +5634,13 @@ async function loadAvailableApprovalModels() {
 async function loadApprovalRoute() {
   if (!tender.value?.id) {
     approvalRoutePayload.value = null;
+    isReadOnlyApprover.value = false;
     return;
   }
   const stage = displayStage.value;
   if (stage !== "preparation" && stage !== "approval") {
     approvalRoutePayload.value = null;
+    isReadOnlyApprover.value = false;
     return;
   }
   const { data, error } = await tendersUC.getTenderApprovalRoute(
@@ -5499,6 +5649,7 @@ async function loadApprovalRoute() {
   );
   if (error) return;
   approvalRoutePayload.value = data || null;
+  isReadOnlyApprover.value = false;
   if (
     !isTenderAuthor.value &&
     currentUserId.value != null &&
@@ -5511,9 +5662,7 @@ async function loadApprovalRoute() {
           Number(userNode?.id || 0) === Number(currentUserId.value),
       );
     });
-    if (inApproverRoute) {
-      isReadOnlyApprover.value = true;
-    }
+    isReadOnlyApprover.value = inApproverRoute;
   }
 }
 
@@ -5891,10 +6040,12 @@ async function fixDecision(mode: DecisionMode) {
     if (mode === "winner") {
       body.position_winners = Object.entries(
         selectedWinnerByPosition.value,
-      ).map(([position_id, proposal_id]) => ({
-        position_id: Number(position_id),
-        proposal_id,
-      }));
+      )
+        .filter(([, proposal_id]) => proposal_id != null)
+        .map(([position_id, proposal_id]) => ({
+          position_id: Number(position_id),
+          proposal_id: Number(proposal_id),
+        }));
     }
     const normalizedJustification = decisionJustification.value.trim();
     if (
@@ -5926,10 +6077,17 @@ async function approveTender() {
 }
 
 function refreshSelectedWinnersByPosition() {
-  const next: Record<number, number> = {};
+  const hasAnyPersistedWinners = displayTenderPositions.value.some(
+    (pos: any) => Number(pos?.winner_proposal_id) > 0,
+  );
+  const next: Record<number, number | null> = {};
   for (const pos of displayTenderPositions.value) {
-    const bestId = getBestProposalIdForPosition(pos.id, true);
-    if (bestId != null) next[pos.id] = bestId;
+    next[pos.id] = resolveWinnerSelectionForPosition(
+      pos.id,
+      true,
+      pos?.winner_proposal_id,
+      hasAnyPersistedWinners,
+    );
   }
   selectedWinnerByPosition.value = next;
 }
@@ -6235,6 +6393,20 @@ onMounted(async () => {
 });
 
 watch(tenderId, () => loadTender());
+watch(
+  () => currentUserId.value,
+  (next, prev) => {
+    if (
+      next == null ||
+      next === prev ||
+      !tender.value?.id ||
+      (displayStage.value !== "preparation" && displayStage.value !== "approval")
+    ) {
+      return;
+    }
+    void loadApprovalRoute();
+  },
+);
 watch(displayStage, async (stage) => {
   if (stage === "preparation" && !isParticipant.value) {
     await loadNomenclaturesForPreparation();

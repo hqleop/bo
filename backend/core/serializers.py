@@ -1895,19 +1895,26 @@ class ProcurementTenderListSerializer(serializers.ModelSerializer):
         return "З переможцем" if winners_count > 0 else "Без переможця"
 
     def get_total_amount(self, obj):
-        winners_count = int(getattr(obj, "winners_count", 0) or 0)
-        if winners_count <= 0:
+        stage = str(getattr(obj, "stage", "") or "")
+        if stage != ProcurementTender.Stage.COMPLETED:
             return None
-        return _format_amount(getattr(obj, "total_amount", None))
+        total_amount = _to_decimal_or_none(getattr(obj, "total_amount", None))
+        if total_amount is None:
+            total_amount = Decimal("0")
+        return _format_amount(total_amount)
 
     def get_economy_amount(self, obj):
-        winners_count = int(getattr(obj, "winners_count", 0) or 0)
-        if winners_count <= 0:
+        stage = str(getattr(obj, "stage", "") or "")
+        if stage != ProcurementTender.Stage.COMPLETED:
             return None
-        estimated = _to_decimal_or_none(getattr(obj, "estimated_budget", None))
+        estimated = _to_decimal_or_none(getattr(obj, "market_total_amount", None))
+        if estimated is None:
+            estimated = _to_decimal_or_none(getattr(obj, "estimated_budget", None))
+        if estimated is None:
+            return None
         total_amount = _to_decimal_or_none(getattr(obj, "total_amount", None))
-        if estimated is None or total_amount is None:
-            return None
+        if total_amount is None:
+            total_amount = Decimal("0")
         return _format_amount(estimated - total_amount)
 
 
@@ -2704,19 +2711,26 @@ class SalesTenderListSerializer(serializers.ModelSerializer):
         return "З переможцем" if winners_count > 0 else "Без переможця"
 
     def get_total_amount(self, obj):
-        winners_count = int(getattr(obj, "winners_count", 0) or 0)
-        if winners_count <= 0:
+        stage = str(getattr(obj, "stage", "") or "")
+        if stage != SalesTender.Stage.COMPLETED:
             return None
-        return _format_amount(getattr(obj, "total_amount", None))
+        total_amount = _to_decimal_or_none(getattr(obj, "total_amount", None))
+        if total_amount is None:
+            total_amount = Decimal("0")
+        return _format_amount(total_amount)
 
     def get_profit_amount(self, obj):
-        winners_count = int(getattr(obj, "winners_count", 0) or 0)
-        if winners_count <= 0:
+        stage = str(getattr(obj, "stage", "") or "")
+        if stage != SalesTender.Stage.COMPLETED:
             return None
-        estimated = _to_decimal_or_none(getattr(obj, "estimated_budget", None))
+        estimated = _to_decimal_or_none(getattr(obj, "market_total_amount", None))
+        if estimated is None:
+            estimated = _to_decimal_or_none(getattr(obj, "estimated_budget", None))
+        if estimated is None:
+            return None
         total_amount = _to_decimal_or_none(getattr(obj, "total_amount", None))
-        if estimated is None or total_amount is None:
-            return None
+        if total_amount is None:
+            total_amount = Decimal("0")
         return _format_amount(total_amount - estimated)
 
 

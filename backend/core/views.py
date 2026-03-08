@@ -28,6 +28,8 @@ from django.db.models import (
     Exists,
     OuterRef,
     Count,
+    Avg,
+    Subquery,
     DecimalField,
     ExpressionWrapper,
     F,
@@ -374,10 +376,42 @@ def _build_owner_tender_journal_response(
     total_pages = (total + page_size - 1) // page_size
 
     # Journal metrics are computed in SQL to avoid per-row ORM queries in serializers.
+    amount_output_field = DecimalField(max_digits=24, decimal_places=4)
     line_total_expr = ExpressionWrapper(
         Coalesce(F("positions__quantity"), Value(Decimal("0")))
         * Coalesce(F("positions__proposal_values__price"), Value(Decimal("0"))),
-        output_field=DecimalField(max_digits=24, decimal_places=4),
+        output_field=amount_output_field,
+    )
+    is_sales_journal = qs.model is SalesTender
+    position_model = SalesTenderPosition if is_sales_journal else ProcurementTenderPosition
+    proposal_position_model = (
+        SalesTenderProposalPosition if is_sales_journal else TenderProposalPosition
+    )
+    avg_price_subquery = (
+        proposal_position_model.objects.filter(tender_position_id=OuterRef("pk"))
+        .values("tender_position_id")
+        .annotate(avg_price=Avg("price"))
+        .values("avg_price")[:1]
+    )
+    market_total_subquery = (
+        position_model.objects.filter(tender_id=OuterRef("pk"))
+        .annotate(
+            avg_price=Subquery(avg_price_subquery, output_field=amount_output_field),
+            line_total=ExpressionWrapper(
+                Coalesce(F("quantity"), Value(Decimal("0")))
+                * Coalesce(F("avg_price"), Value(Decimal("0"))),
+                output_field=amount_output_field,
+            )
+        )
+        .values("tender_id")
+        .annotate(
+            total=Coalesce(
+                Sum("line_total", output_field=amount_output_field),
+                Value(Decimal("0")),
+                output_field=amount_output_field,
+            )
+        )
+        .values("total")[:1]
     )
     qs = qs.annotate(
         winners_count=Count(
@@ -393,10 +427,15 @@ def _build_owner_tender_journal_response(
                         "positions__proposal_values__proposal_id"
                     )
                 ),
-                output_field=DecimalField(max_digits=24, decimal_places=4),
+                output_field=amount_output_field,
             ),
             Value(Decimal("0")),
-            output_field=DecimalField(max_digits=24, decimal_places=4),
+            output_field=amount_output_field,
+        ),
+        market_total_amount=Coalesce(
+            Subquery(market_total_subquery, output_field=amount_output_field),
+            Value(Decimal("0")),
+            output_field=amount_output_field,
         ),
         has_next_tour=Exists(qs.model.objects.filter(parent_id=OuterRef("pk"))),
     )
@@ -982,9 +1021,20 @@ def _user_is_tender_approver(*, user, tender, is_sales):
     if not user or not getattr(user, "is_authenticated", False):
         return False
     target = _stage_state_target_kwargs(tender=tender, is_sales=is_sales)
-    return TenderApprovalStageStepUser.objects.filter(
+    if TenderApprovalStageStepUser.objects.filter(
         user=user,
         step__stage_state__in=TenderApprovalStageState.objects.filter(**target),
+    ).exists():
+        return True
+
+    # Fallback: detect approver by current approval model roles even if
+    # stage-state snapshot is not materialized yet.
+    approval_model_id = getattr(tender, "approval_model_id", None)
+    if not approval_model_id:
+        return False
+    return ApprovalModelStep.objects.filter(
+        model_id=approval_model_id,
+        role__role_users__user_id=user.id,
     ).exists()
 
 

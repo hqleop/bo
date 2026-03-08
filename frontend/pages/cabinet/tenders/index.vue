@@ -295,6 +295,10 @@ const tableColumns = computed(() => {
     viewType.value === "purchase"
       ? { accessorKey: "economy_amount", header: "Економія" }
       : { accessorKey: "profit_amount", header: "Прибуток" };
+  const totalAmountColumn =
+    viewType.value === "purchase"
+      ? { accessorKey: "total_amount", header: "Сума закупівлі" }
+      : { accessorKey: "total_amount", header: "Сума продажу" };
 
   return [
     { accessorKey: "number", header: "Номер тендера" },
@@ -308,7 +312,7 @@ const tableColumns = computed(() => {
     { accessorKey: "category_name", header: "Категорія" },
     { accessorKey: "cpv_label", header: "Категорія CPV" },
     { accessorKey: "decision_label", header: "Прийняте рішення" },
-    { accessorKey: "total_amount", header: "Сума закупівлі" },
+    totalAmountColumn,
     metricColumn,
   ];
 });
@@ -590,5 +594,9 @@ onBeforeUnmount(() => {
   top: 0;
   z-index: 5;
   background: white;
+}
+
+.tenders-journal-table :deep(table) {
+  min-width: max-content;
 }
 </style>
