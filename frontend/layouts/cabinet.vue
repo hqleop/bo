@@ -255,10 +255,17 @@ const menuLinks = computed(() => {
   });
 
   // Контрагенти
+  const suppliersChildren: any[] = [
+    {
+      label: "Журнал контрагентів",
+      to: "/cabinet/suppliers",
+      icon: "i-heroicons-document-text",
+    },
+  ];
   links.push({
     label: "Контрагенти",
-    to: "/cabinet/suppliers",
     icon: "i-heroicons-building-office",
+    children: suppliersChildren,
   });
 
   // Довідники

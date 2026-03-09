@@ -14,14 +14,16 @@ function numEnv(name: string, fallback: number) {
 }
 
 function boolEnv(name: string, fallback: boolean) {
-  const raw = String(process.env[name] ?? "").trim().toLowerCase();
+  const raw = String(process.env[name] ?? "")
+    .trim()
+    .toLowerCase();
   if (!raw) return fallback;
   return ["1", "true", "yes", "on"].includes(raw);
 }
 
 export default defineNuxtConfig({
   compatibilityDate: "2024-04-03",
-  devtools: { enabled: true },
+  devtools: { enabled: false },
   modules: ["@nuxt/ui"],
   runtimeConfig: {
     public: {
