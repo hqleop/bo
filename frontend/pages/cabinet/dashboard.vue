@@ -1,16 +1,24 @@
 <template>
-  <div>
-    <h2 class="text-2xl font-bold mb-4">Загальна аналітика</h2>
-    <p class="text-gray-600">Тут буде аналітика (MVP)</p>
+  <div class="h-full min-h-0 flex items-center justify-center text-sm text-gray-500">
+    Перенаправлення...
   </div>
 </template>
 
 <script setup lang="ts">
 definePageMeta({
-  layout: 'cabinet',
-  middleware: 'auth',
+  layout: "cabinet",
+  middleware: "auth",
   meta: {
-    title: 'Загальна аналітика'
-  }
-})
+    title: "Аналітика",
+  },
+});
+
+const route = useRoute();
+const target = computed(() =>
+  route.query.view === "summary"
+    ? "/cabinet/analytics/summary/participation"
+    : "/cabinet/analytics/personal/participant",
+);
+
+await navigateTo(target.value, { replace: true });
 </script>

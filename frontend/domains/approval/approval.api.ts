@@ -38,6 +38,12 @@ export async function patchModelRole(
   });
 }
 
+export async function deleteModelRole(request: RequestFn, roleId: number) {
+  return request(`/approval-model-roles/${roleId}/`, {
+    method: "DELETE",
+  });
+}
+
 export async function getModelRoleUsers(
   request: RequestFn,
   roleId: number
@@ -76,6 +82,26 @@ export async function createRangeMatrix(
     method: "POST",
     body: body as unknown as Record<string, unknown>,
   });
+}
+
+export async function patchRangeMatrix(
+  request: RequestFn,
+  id: number,
+  body: Partial<{
+    budget_from: number;
+    budget_to: number;
+    currency: number;
+    is_active: boolean;
+  }>
+) {
+  return request<any>(`/approval-range-matrix/${id}/`, {
+    method: "PATCH",
+    body: body as unknown as Record<string, unknown>,
+  });
+}
+
+export async function deleteRangeMatrix(request: RequestFn, id: number) {
+  return request(`/approval-range-matrix/${id}/`, { method: "DELETE" });
 }
 
 export async function getApprovalModels(

@@ -10,8 +10,8 @@
       />
     </div>
     <div class="flex flex-1 min-h-0 gap-6">
-      <div class="flex-1 min-w-0 overflow-y-auto">
-        <UCard class="overflow-hidden">
+      <div class="flex-1 min-w-0 min-h-0 overflow-y-auto flex">
+        <UCard class="overflow-hidden flex-1 min-h-full">
           <template #header>
             <h3 class="text-lg font-semibold text-gray-900">{{ passportTitle }}</h3>
           </template>
@@ -208,7 +208,7 @@
         </UCard>
       </div>
 
-      <aside class="w-56 flex-shrink-0 space-y-3">
+      <aside class="w-56 flex-shrink-0 space-y-3 rounded-xl border border-gray-200 bg-white shadow-sm p-3">
         <UButton class="w-full" :loading="saving" @click="saveTender"
           >Зберегти</UButton
         >

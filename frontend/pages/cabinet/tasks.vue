@@ -31,7 +31,7 @@
             :to="row.original.tender_link"
             class="text-primary hover:underline font-medium"
           >
-            {{ row.original.tender_number }}
+            Тендер {{ row.original.tender_number }}
             <template v-if="row.original.tour_number > 1">
               (тур {{ row.original.tour_number }})
             </template>
@@ -99,9 +99,9 @@ const tasks = ref<UserTaskRow[]>([]);
 
 const columns = [
   { accessorKey: "task_label", header: "Завдання" },
+  { accessorKey: "tender", header: "Документ" },
   { accessorKey: "stage_label", header: "Етап" },
   { accessorKey: "tender_type", header: "Тип тендера" },
-  { accessorKey: "tender", header: "Тендер" },
   { accessorKey: "tender_name", header: "Назва" },
 ];
 

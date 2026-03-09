@@ -70,6 +70,18 @@ def _to_decimal_or_none(value):
         return None
 
 
+HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _normalize_hex_color(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return raw
+    if not HEX_COLOR_RE.match(raw):
+        raise serializers.ValidationError("Колір має бути у форматі #RRGGBB.")
+    return raw.lower()
+
+
 def _validate_price_criterion_vat_percent(attrs, instance=None):
     from rest_framework import serializers as drf
 
@@ -223,11 +235,15 @@ class CompanySerializer(serializers.ModelSerializer):
             "agree_trade_rules",
             "agree_privacy_policy",
             "agree_participation_visibility",
+            "primary_color",
             "status",
             "created_at",
             "updated_at",
         )
         read_only_fields = ("id", "created_at", "updated_at")
+
+    def validate_primary_color(self, value):
+        return _normalize_hex_color(value)
 
 
 class RegistrationCompanyLookupCompanySerializer(serializers.ModelSerializer):
@@ -282,7 +298,7 @@ class CompanyCpvSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Company
-        fields = ("id", "edrpou", "name", "cpv_categories", "cpv_ids")
+        fields = ("id", "edrpou", "name", "primary_color", "cpv_categories", "cpv_ids")
         read_only_fields = ("id", "edrpou", "name", "cpv_categories")
 
     def get_cpv_categories(self, obj):
@@ -297,13 +313,16 @@ class CompanyCpvSerializer(serializers.ModelSerializer):
             for cpv in qs
         ]
 
+    def validate_primary_color(self, value):
+        return _normalize_hex_color(value)
+
 
 class CompanyListSerializer(serializers.ModelSerializer):
     """Lightweight company serializer for listings."""
 
     class Meta:
         model = Company
-        fields = ("id", "edrpou", "name", "status")
+        fields = ("id", "edrpou", "name", "status", "primary_color")
 
 
 class CompanyWithCpvsSerializer(serializers.ModelSerializer):
@@ -1069,6 +1088,7 @@ class ApprovalRangeMatrixSerializer(serializers.ModelSerializer):
             "budget_to",
             "currency",
             "currency_code",
+            "is_active",
             "created_at",
             "updated_at",
         )

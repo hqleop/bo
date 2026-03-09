@@ -150,11 +150,13 @@
             <div
               v-for="user in availableCompanyUsers"
               :key="user.id"
-              class="flex items-center p-2 rounded hover:bg-gray-50"
+              class="flex cursor-pointer items-center p-2 rounded hover:bg-gray-50"
+              @click="toggleUserToAdd(user.id)"
             >
               <UCheckbox
                 :model-value="usersToAdd.includes(user.id)"
                 @update:model-value="toggleUserToAdd(user.id)"
+                @click.stop
               />
               <div class="ml-3 flex-1">
                 <div class="font-medium">
@@ -195,11 +197,13 @@
                 selectedUsers.includes(u.user.id),
               )"
               :key="user.id"
-              class="flex items-center p-2 rounded hover:bg-gray-50"
+              class="flex cursor-pointer items-center p-2 rounded hover:bg-gray-50"
+              @click="toggleUserToRemove(user.user.id)"
             >
               <UCheckbox
                 :model-value="usersToRemove.includes(user.user.id)"
                 @update:model-value="toggleUserToRemove(user.user.id)"
+                @click.stop
               />
               <div class="ml-3 flex-1">
                 <div class="font-medium">

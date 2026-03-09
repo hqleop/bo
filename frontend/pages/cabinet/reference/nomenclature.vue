@@ -1,5 +1,5 @@
 <template>
-  <div class="h-full grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_224px] gap-4">
+  <div class="h-full grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_254px] gap-4">
     <!-- Ліва область: список номенклатури -->
     <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm flex flex-col min-h-0">
       <div class="flex justify-between items-center mb-4">
@@ -53,13 +53,14 @@
 
       <!-- Область таблиці зі скролом -->
       <div class="flex-1 min-h-0 overflow-auto">
-        <UTable
-          :data="tableData"
-          :columns="tableColumns"
-          :meta="tableMeta"
-          class="w-full"
-          @on-select="(_e, row) => toggleSelectRow(row.original.id)"
-        >
+        <div class="min-w-max">
+          <UTable
+            :data="tableData"
+            :columns="tableColumns"
+            :meta="tableMeta"
+            class="w-full nomenclature-table"
+            @on-select="(_e, row) => toggleSelectRow(row.original.id)"
+          >
           <template #select-header>
             <UCheckbox
               :model-value="isAllOnPageSelected"
@@ -85,7 +86,8 @@
               {{ row.original.name }}
             </button>
           </template>
-        </UTable>
+          </UTable>
+        </div>
         <div
           v-if="filteredNomenclatures.length === 0"
           class="text-center text-gray-400 py-8"
@@ -114,18 +116,16 @@
 
     <!-- Права область: фільтри -->
     <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm space-y-4">
-      <div class="flex items-center justify-between">
-        <h3 class="text-lg font-semibold">Фільтри</h3>
-        <UButton
-          size="xs"
-          variant="ghost"
-          color="gray"
-          icon="i-heroicons-x-mark"
-          @click="clearFilters"
-        >
-          Очистити
-        </UButton>
-      </div>
+      <UButton
+        type="button"
+        size="sm"
+        variant="outline"
+        color="error"
+        class="w-full"
+        @click="clearFilters"
+      >
+        Очистити
+      </UButton>
 
       <UFormField label="Назва номенклатури">
         <UInput
@@ -292,6 +292,9 @@ const filters = reactive({
 
 const NOMENCLATURE_PAGE_SIZE = 50;
 const currentPage = ref(1);
+const filtersInitialized = ref(false);
+let loadNomenclaturesCounter = 0;
+let nameFilterTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Стан форм / модалок
 const showNomenclatureModal = ref(false);
@@ -325,15 +328,70 @@ const getCurrentCompany = async () => {
   return null;
 };
 
-const loadNomenclatures = async () => {
-  const { data } = await fetch("/nomenclatures/", {
+const requestNomenclatures = async (params: {
+  name?: string;
+  categoryId?: number | null;
+  cpvId?: number | null;
+  cpvIds?: number[];
+}) => {
+  const query = new URLSearchParams();
+  const normalizedName = params.name?.trim() || "";
+  if (normalizedName) query.set("name", normalizedName);
+  if (params.categoryId) query.set("category_id", String(params.categoryId));
+  if (params.cpvId) query.set("cpv_id", String(params.cpvId));
+  for (const cpvId of params.cpvIds || []) {
+    query.append("cpv_ids", String(cpvId));
+  }
+
+  const url = query.size
+    ? `/nomenclatures/?${query.toString()}`
+    : "/nomenclatures/";
+  const { data } = await fetch(url, {
     headers: getAuthHeaders(),
   });
-  if (data) {
-    nomenclatures.value = data;
+  return Array.isArray(data) ? data : [];
+};
+
+const loadNomenclatures = async () => {
+  const loadId = ++loadNomenclaturesCounter;
+  const name = filters.name.trim();
+  let nextList: any[] = [];
+
+  if (filters.categoryId) {
+    const cpvIds = categoryCpvIdsMap.value.get(filters.categoryId) || [];
+    const [byCategory, byCpvs] = await Promise.all([
+      requestNomenclatures({
+        name,
+        categoryId: filters.categoryId,
+      }),
+      cpvIds.length
+        ? requestNomenclatures({
+            name,
+            cpvIds,
+          })
+        : Promise.resolve([]),
+    ]);
+    const merged = new Map<number, any>();
+    for (const item of [...byCategory, ...byCpvs]) {
+      merged.set(Number(item.id), item);
+    }
+    nextList = Array.from(merged.values());
+  } else if (filters.cpvId) {
+    nextList = await requestNomenclatures({
+      name,
+      cpvId: filters.cpvId,
+    });
   } else {
-    nomenclatures.value = [];
+    nextList = await requestNomenclatures({ name });
   }
+
+  if (loadId !== loadNomenclaturesCounter) return;
+
+  nomenclatures.value = nextList;
+  const loadedIds = new Set(nextList.map((item: any) => Number(item.id)));
+  selectedNomenclatureIds.value = selectedNomenclatureIds.value.filter((id) =>
+    loadedIds.has(Number(id)),
+  );
 };
 
 const loadUnits = async () => {
@@ -355,6 +413,11 @@ const loadCategories = async () => {
     categories.value = data;
   } else {
     categories.value = [];
+  }
+
+  if (!filters.categoryId && !filters.cpvId) {
+    const firstCategory = flattenCategoriesWithCpvs(categories.value)[0];
+    filters.categoryId = firstCategory?.id || null;
   }
 };
 
@@ -429,13 +492,14 @@ const categoryCpvIdsMap = computed(() => {
 
 // Опції фільтра "Категорія" — усі категорії з дерева
 const categoryFilterOptions = computed(() => {
-  const arr = flattenedCategoriesWithCpvs.value.map((c) => ({
+  return flattenedCategoriesWithCpvs.value.map((c) => ({
     value: c.id,
     label: (c.level ? "  ".repeat(c.level) : "") + c.name,
   }));
-  arr.sort((a, b) => a.label.localeCompare(b.label, "uk"));
-  return arr;
 });
+
+const getDefaultCategoryId = () =>
+  Number(categoryFilterOptions.value[0]?.value || 0) || null;
 
 const cpvFilterOptions = computed(() => {
   const map = new Map<number, string>();
@@ -470,7 +534,7 @@ const onCpvFilterChange = (value: number | null) => {
 
 const clearFilters = () => {
   filters.name = "";
-  filters.categoryId = null;
+  filters.categoryId = getDefaultCategoryId();
   filters.cpvId = null;
 };
 
@@ -482,18 +546,6 @@ const filteredNomenclatures = computed(() => {
   const term = filters.name.trim().toLowerCase();
   if (term) {
     list = list.filter((n: any) => (n.name || "").toLowerCase().includes(term));
-  }
-
-  if (filters.categoryId) {
-    const cpvIds = categoryCpvIdsMap.value.get(filters.categoryId);
-    list = list.filter((n: any) => {
-      if (n.category === filters.categoryId) return true;
-      if (n.cpv_category && cpvIds?.length && cpvIds.includes(n.cpv_category))
-        return true;
-      return false;
-    });
-  } else if (filters.cpvId) {
-    list = list.filter((n: any) => n.cpv_category === filters.cpvId);
   }
 
   return list;
@@ -573,9 +625,24 @@ const totalFilteredCount = computed(() => filteredNomenclatures.value.length);
 
 // Скидання на першу сторінку при зміні фільтрів
 watch(
-  [() => filters.name, () => filters.categoryId, () => filters.cpvId],
+  [() => filters.categoryId, () => filters.cpvId],
   () => {
+    if (!filtersInitialized.value) return;
     currentPage.value = 1;
+    selectedNomenclatureIds.value = [];
+    loadNomenclatures();
+  },
+);
+
+watch(
+  () => filters.name,
+  () => {
+    if (!filtersInitialized.value) return;
+    currentPage.value = 1;
+    if (nameFilterTimer) clearTimeout(nameFilterTimer);
+    nameFilterTimer = setTimeout(() => {
+      loadNomenclatures();
+    }, 300);
   },
 );
 
@@ -790,6 +857,26 @@ const deleteSelected = async () => {
 };
 
 onMounted(async () => {
-  await Promise.all([loadNomenclatures(), loadUnits(), loadCategories()]);
+  await Promise.all([loadUnits(), loadCategories()]);
+  filtersInitialized.value = true;
+  await loadNomenclatures();
+});
+
+onBeforeUnmount(() => {
+  if (nameFilterTimer) {
+    clearTimeout(nameFilterTimer);
+  }
 });
 </script>
+
+<style scoped>
+.nomenclature-table :deep(table) {
+  min-width: max-content;
+}
+
+.nomenclature-table :deep(th),
+.nomenclature-table :deep(td) {
+  white-space: nowrap;
+}
+</style>
+

@@ -472,12 +472,22 @@
         </div>
 
         <aside class="w-72 flex-shrink-0 flex flex-col gap-4">
+          <div
+            v-if="showAcceptanceTimingInfo"
+            class="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800"
+          >
+            <p class="font-semibold text-gray-900">Прийом пропозицій</p>
+            <p class="mt-2 text-xs text-gray-600">
+              Початок: {{ formatDateTime(tender?.start_at) }}
+            </p>
+            <p class="text-xs text-gray-600">
+              Завершення: {{ formatDateTime(tender?.end_at) }}
+            </p>
+            <p class="mt-2 font-medium text-gray-900">
+              Таймер: {{ timerText }}
+            </p>
+          </div>
           <template v-if="isParticipant">
-            <div
-              class="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm font-medium text-gray-800"
-            >
-              {{ timerText }}
-            </div>
             <UButton
               v-if="!isProposalSubmitted && !isOnlineAuction"
               class="w-full"
@@ -895,35 +905,41 @@ const currentStage = computed(() => tender.value?.stage ?? "passport");
 const isViewingPreviousTour = computed(
   () => tender.value && tender.value.is_latest_tour === false,
 );
+const showAcceptanceTimingInfo = computed(() => currentStage.value === "acceptance");
 
 const acceptanceStartAt = computed(() => {
   const t = tender.value?.start_at;
-  return t ? new Date(t).getTime() : null;
+  if (!t) return null;
+  const timestamp = new Date(t).getTime();
+  return Number.isNaN(timestamp) ? null : timestamp;
 });
 const acceptanceEndAt = computed(() => {
   const t = tender.value?.end_at;
-  return t ? new Date(t).getTime() : null;
+  if (!t) return null;
+  const timestamp = new Date(t).getTime();
+  return Number.isNaN(timestamp) ? null : timestamp;
 });
+
+function formatTimerDuration(ms: number) {
+  const totalMinutes = Math.max(0, Math.floor(ms / 60000));
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+  return `${days} дн / ${hours} год / ${minutes} хв`;
+}
+
 const timerText = computed(() => {
   const n = now.value.getTime();
   const start = acceptanceStartAt.value;
   const end = acceptanceEndAt.value;
   if (start != null && n < start) {
-    const d = Math.max(0, Math.floor((start - n) / 1000));
-    const h = Math.floor(d / 3600);
-    const m = Math.floor((d % 3600) / 60);
-    const s = d % 60;
-    return `До початку прийому: ${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    return `До початку: ${formatTimerDuration(start - n)}`;
   }
-  if (end != null && n > end) return "Прийом пропозицій завершено.";
+  if (end != null && n > end) return "Прийом пропозицій завершено";
   if (end != null && n <= end) {
-    const d = Math.max(0, Math.floor((end - n) / 1000));
-    const h = Math.floor(d / 3600);
-    const m = Math.floor((d % 3600) / 60);
-    const s = d % 60;
-    return `До завершення прийому: ${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    return `До завершення: ${formatTimerDuration(end - n)}`;
   }
-  return "Прийом пропозицій";
+  return "Час прийому не задано";
 });
 const participantCanManageProposal = computed(() => {
   if (!tender.value || tender.value.stage !== "acceptance") return false;
@@ -1355,6 +1371,12 @@ function formatFileDate(value?: string) {
   return dt.toLocaleString("uk-UA");
 }
 
+function formatDateTime(value?: string | null) {
+  if (!value) return "—";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return "—";
+  return dt.toLocaleString("uk-UA");
+}
 async function onSupplierSelect(id: number | null) {
   if (!id) {
     currentProposal.value = null;
@@ -1573,11 +1595,9 @@ onMounted(async () => {
     } else if (proposals.value.length > 0 && !selectedSupplierId.value) {
       await initSelectedSupplierFromProposals(proposals.value);
     }
-    if (part) {
-      nowInterval = setInterval(() => {
-        now.value = new Date();
-      }, 1000);
-    }
+    nowInterval = setInterval(() => {
+      now.value = new Date();
+    }, 1000);
     startProposalsRefresh();
   } finally {
     loading.value = false;

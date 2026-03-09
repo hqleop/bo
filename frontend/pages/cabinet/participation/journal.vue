@@ -5,12 +5,12 @@
     <div class="flex-1 min-h-0 overflow-hidden flex gap-4 max-lg:flex-col">
       <div class="flex-1 min-h-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm flex flex-col">
         <div class="flex-1 min-h-0 overflow-auto p-3">
-          <UTable
-            v-if="pagedData.length > 0"
-            :data="pagedData"
-            :columns="tableColumns"
-            class="w-full participation-journal-table"
-          >
+          <div v-if="pagedData.length > 0" class="min-w-max">
+            <UTable
+              :data="pagedData"
+              :columns="tableColumns"
+              class="w-full participation-journal-table"
+            >
             <template #number-cell="{ row }">
               <button
                 type="button"
@@ -51,7 +51,8 @@
             <template #end_at-cell="{ row }">
               {{ formatDateTime(row.original.end_at) }}
             </template>
-          </UTable>
+            </UTable>
+          </div>
 
           <div v-else class="text-center text-gray-400 py-12">
             Немає тендерів у журналі участей.
@@ -303,5 +304,14 @@ onBeforeUnmount(() => {
   top: 0;
   z-index: 5;
   background: white;
+}
+
+.participation-journal-table :deep(table) {
+  min-width: max-content;
+}
+
+.participation-journal-table :deep(th),
+.participation-journal-table :deep(td) {
+  white-space: nowrap;
 }
 </style>

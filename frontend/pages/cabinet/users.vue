@@ -1,7 +1,9 @@
 <template>
-  <div class="h-full flex gap-4 max-lg:flex-col">
+  <div class="h-full min-h-0 flex gap-4 overflow-hidden max-lg:flex-col">
     <!-- Ліва область: список користувачів -->
-    <div class="flex-1 border-r border-gray-200 p-4 flex flex-col">
+    <div
+      class="flex-1 min-h-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm p-4 flex flex-col"
+    >
       <div class="flex justify-between items-center mb-4">
         <h2 class="text-2xl font-bold">Користувачі</h2>
         <div class="flex gap-2">
@@ -37,13 +39,13 @@
         </div>
       </div>
 
-      <div class="flex-1 overflow-y-auto space-y-1">
+      <div class="flex-1 min-h-0 overflow-y-auto space-y-1 rounded-xl border border-gray-200 p-2">
         <div
           v-for="m in filteredMemberships"
           :key="m.id"
-          class="flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-gray-50"
+          class="flex items-center justify-between p-2 rounded-md border border-transparent cursor-pointer hover:bg-gray-50"
           :class="{
-            'bg-blue-50 border border-blue-200':
+            'bg-primary-50 border-primary-200':
               selectedMembership && selectedMembership.id === m.id,
           }"
           @click="selectedMembership = m"
@@ -80,20 +82,17 @@
     </div>
 
     <!-- Права область: фільтри -->
-    <div class="w-[224px] min-w-[224px] max-w-[224px] p-4 space-y-4 max-lg:w-full max-lg:min-w-0 max-lg:max-w-none">
-      <div class="flex items-center justify-between">
-        <h3 class="text-lg font-semibold">Фільтри</h3>
-
-        <UButton
-          size="xs"
-          variant="ghost"
-          color="gray"
-          icon="i-heroicons-x-mark"
-          @click="clearAllFilters"
-        >
-          Очистити
-        </UButton>
-      </div>
+    <div class="w-[254px] min-w-[254px] max-w-[254px] rounded-xl border border-gray-200 bg-white shadow-sm p-4 space-y-4 max-lg:w-full max-lg:min-w-0 max-lg:max-w-none">
+      <UButton
+        type="button"
+        size="sm"
+        variant="outline"
+        color="error"
+        class="w-full"
+        @click="clearAllFilters"
+      >
+        Очистити
+      </UButton>
 
       <UFormField label="Користувач" help="Пошук по імені та прізвищу">
         <UInput
@@ -821,3 +820,4 @@ const clearAllFilters = () => {
   expenseFilterUserIds.value = new Set();
 };
 </script>
+

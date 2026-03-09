@@ -28,6 +28,10 @@ export function useApprovalUseCases() {
     return approvalApi.patchModelRole(fetch, roleId, body);
   }
 
+  async function deleteModelRole(roleId: number) {
+    return approvalApi.deleteModelRole(fetch, roleId);
+  }
+
   async function getModelRoleUsers(roleId: number) {
     const { data, error } = await approvalApi.getModelRoleUsers(fetch, roleId);
     return { data: Array.isArray(data) ? data : [], error };
@@ -55,6 +59,22 @@ export function useApprovalUseCases() {
     return approvalApi.createRangeMatrix(fetch, body);
   }
 
+  async function patchRangeMatrix(
+    id: number,
+    body: Partial<{
+      budget_from: number;
+      budget_to: number;
+      currency: number;
+      is_active: boolean;
+    }>
+  ) {
+    return approvalApi.patchRangeMatrix(fetch, id, body);
+  }
+
+  async function deleteRangeMatrix(id: number) {
+    return approvalApi.deleteRangeMatrix(fetch, id);
+  }
+
   async function getApprovalModels(params?: {
     application?: "procurement" | "sales";
     categoryIds?: number[];
@@ -80,11 +100,14 @@ export function useApprovalUseCases() {
     getModelRoles,
     createModelRole,
     patchModelRole,
+    deleteModelRole,
     getModelRoleUsers,
     createModelRoleUser,
     deleteModelRoleUser,
     getRangeMatrix,
     createRangeMatrix,
+    patchRangeMatrix,
+    deleteRangeMatrix,
     getApprovalModels,
     createApprovalModel,
     patchApprovalModel,

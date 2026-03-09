@@ -14,12 +14,12 @@
         class="flex-1 min-h-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm flex flex-col"
       >
         <div class="flex-1 min-h-0 overflow-auto p-3">
-          <UTable
-            v-if="tableData.length > 0"
-            :data="tableData"
-            :columns="tableColumns"
-            class="w-full tenders-journal-table"
-          >
+          <div v-if="tableData.length > 0" class="min-w-max">
+            <UTable
+              :data="tableData"
+              :columns="tableColumns"
+              class="w-full tenders-journal-table"
+            >
             <template #number-cell="{ row }">
               <NuxtLink
                 :to="viewType === 'purchase' ? `/cabinet/tenders/${row.original.id}` : `/cabinet/tenders/sales/${row.original.id}`"
@@ -57,7 +57,8 @@
             <template #profit_amount-cell="{ row }">
               {{ formatAmount(row.original.profit_amount) }}
             </template>
-          </UTable>
+            </UTable>
+          </div>
 
           <div v-else class="text-center text-gray-400 py-12">
             {{
@@ -598,5 +599,10 @@ onBeforeUnmount(() => {
 
 .tenders-journal-table :deep(table) {
   min-width: max-content;
+}
+
+.tenders-journal-table :deep(th),
+.tenders-journal-table :deep(td) {
+  white-space: nowrap;
 }
 </style>

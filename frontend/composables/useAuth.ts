@@ -1,4 +1,5 @@
 import { createApiClient } from '~/shared/api/apiClient'
+import { useUsersStore } from '~/domains/users/users.store'
 
 // Один активний refresh на весь застосунок — уникнути паралельних викликів і подвійного запису cookie
 let refreshPromise: Promise<boolean> | null = null
@@ -76,6 +77,9 @@ export const useAuth = () => {
     accessToken.value = null
     refreshToken.value = null
     refreshPromise = null
+    const { me } = useUsersStore()
+    me.value = null
+    resetCompanyPrimaryColor()
     navigateTo('/')
   }
 

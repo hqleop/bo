@@ -167,12 +167,12 @@ const menuLinks = computed(() => {
   const analyticsChildren: any[] = [
     {
       label: "Персональна аналітика",
-      to: "/cabinet/dashboard?view=personal",
+      to: "/cabinet/analytics/personal/participant",
       icon: "i-heroicons-user-circle",
     },
     {
       label: "Зведена аналітика",
-      to: "/cabinet/dashboard?view=summary",
+      to: "/cabinet/analytics/summary/participation",
       icon: "i-heroicons-chart-bar",
     },
   ];

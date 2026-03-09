@@ -1,25 +1,33 @@
-<template>
+﻿<template>
   <div class="h-full min-h-0 flex flex-col gap-4">
-    <div class="flex items-center justify-between">
-      <h2 class="text-2xl font-bold">Довідник моделей</h2>
-      <div class="flex items-center gap-2">
-        <UButton
-          icon="i-heroicons-trash"
-          color="error"
-          variant="outline"
-          :disabled="selectedModelIds.length === 0"
-          @click="deleteSelectedModels"
-        >
-          Видалити модель
-        </UButton>
-        <UButton icon="i-heroicons-plus" @click="openCreateModal">Додати модель</UButton>
-      </div>
-    </div>
-
     <div class="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-4 min-h-0 flex-1">
-      <UCard class="min-h-0 border border-gray-200 shadow-sm">
-        <div class="max-h-[70vh] overflow-auto">
-          <UTable :data="filteredModels" :columns="columns" class="w-full">
+      <UCard class="min-h-0 flex flex-col border border-gray-200 shadow-sm">
+        <template #header>
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-2xl font-bold">Довідник моделей</h2>
+            <div class="flex items-center gap-2">
+              <UButton
+                icon="i-heroicons-trash"
+                color="error"
+                variant="outline"
+                :disabled="selectedModelIds.length === 0"
+                @click="deleteSelectedModels"
+              >
+                Видалити модель
+              </UButton>
+              <UButton icon="i-heroicons-plus" @click="openCreateModal">Додати модель</UButton>
+            </div>
+          </div>
+        </template>
+
+        <div class="flex-1 min-h-0 overflow-auto">
+          <UTable
+            :data="filteredModels"
+            :columns="columns"
+            :meta="tableMeta"
+            class="w-full approval-models-table"
+            @on-select="(_e, row) => toggleSelectModel(Number(row.original.id))"
+          >
             <template #select-header>
               <UCheckbox
                 :model-value="isAllFilteredSelected"
@@ -37,11 +45,17 @@
               />
             </template>
             <template #name-cell="{ row }">
-              <button class="text-left hover:underline" @click="openEditModal(row.original)">
+              <button
+                class="text-primary font-medium text-left hover:underline"
+                @click="openEditModal(row.original)"
+              >
                 {{ row.original.name }}
               </button>
             </template>
           </UTable>
+          <div v-if="filteredModels.length === 0" class="py-8 text-center text-gray-400">
+            Немає моделей за обраними фільтрами.
+          </div>
         </div>
       </UCard>
 
@@ -221,7 +235,12 @@ const columns = [
   { id: "select", header: "" },
   { accessorKey: "name", header: "Назва" },
   { accessorKey: "application_label", header: "Застосування" },
-  { accessorKey: "is_active", header: "Активна" },
+  {
+    accessorKey: "is_active",
+    header: "Активна",
+    cell: ({ getValue }: { getValue: () => unknown }) =>
+      getValue() ? "Так" : "Ні",
+  },
 ];
 
 const applicationOptions = [
@@ -267,6 +286,15 @@ const isAllFilteredSelected = computed(() =>
 const isSomeFilteredSelected = computed(() =>
   filteredModelIds.value.some((id) => selectedModelIds.value.includes(id))
 );
+
+const tableMeta = computed(() => ({
+  class: {
+    tr: (row: any) =>
+      selectedModelIds.value.includes(Number(row.original?.id))
+        ? "bg-primary-50 cursor-pointer"
+        : "cursor-pointer",
+  },
+}));
 
 async function ensureCompanyId() {
   if (!me.value?.memberships?.length) await refreshMe();
@@ -386,3 +414,15 @@ async function deleteSelectedModels() {
 
 onMounted(loadData);
 </script>
+
+<style scoped>
+.approval-models-table :deep(table) {
+  min-width: max-content;
+}
+
+.approval-models-table :deep(th),
+.approval-models-table :deep(td) {
+  white-space: nowrap;
+}
+</style>
+

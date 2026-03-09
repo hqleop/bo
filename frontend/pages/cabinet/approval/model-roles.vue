@@ -1,34 +1,54 @@
 <template>
   <div class="h-full min-h-0 flex flex-col gap-4">
-    <div class="flex items-center">
-      <h2 class="text-2xl font-bold">Ролі для моделей</h2>
-    </div>
-
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-0 flex-1">
       <UCard class="min-h-0 flex flex-col border border-gray-200 shadow-sm">
         <template #header>
           <div class="flex items-center justify-between gap-3">
-            <h3 class="font-semibold">Ролі</h3>
+            <h2 class="text-2xl font-bold">Ролі для моделей</h2>
             <UButton icon="i-heroicons-plus" size="sm" @click="openCreateRole">Додати роль</UButton>
           </div>
         </template>
+
         <div class="space-y-3">
           <UInput v-model="roleSearch" placeholder="Пошук ролі" />
-          <div class="max-h-[55vh] overflow-auto border border-gray-200 rounded-lg">
-            <UTable
-              :data="filteredRoles"
-              :columns="rolesColumns"
-              class="w-full"
+          <div class="max-h-[60vh] overflow-auto rounded-xl border border-gray-200 p-2 space-y-1">
+            <button
+              v-for="role in filteredRoles"
+              :key="role.id"
+              type="button"
+              class="group w-full flex items-center justify-between rounded-md border border-transparent px-2.5 py-2 text-left transition-colors hover:bg-gray-50"
+              :class="{
+                'bg-primary-50 border-primary-200': selectedRole && Number(selectedRole.id) === Number(role.id),
+              }"
+              @click="selectRole(role)"
             >
-              <template #name-cell="{ row }">
-                <button
-                  class="text-left hover:underline"
-                  @click="openEditRole(row.original)"
-                >
-                  {{ row.original.name }}
-                </button>
-              </template>
-            </UTable>
+              <div class="min-w-0">
+                <div class="truncate font-medium text-gray-900">
+                  {{ role.name }}
+                </div>
+                <div class="truncate text-xs text-gray-500">
+                  {{ role.application_label || "-" }}
+                </div>
+              </div>
+              <div class="flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                <UButton
+                  icon="i-heroicons-pencil-square"
+                  size="xs"
+                  variant="ghost"
+                  @click.stop="openEditRole(role)"
+                />
+                <UButton
+                  icon="i-heroicons-trash"
+                  size="xs"
+                  color="error"
+                  variant="ghost"
+                  @click.stop="deleteRole(role)"
+                />
+              </div>
+            </button>
+            <div v-if="filteredRoles.length === 0" class="py-6 text-center text-sm text-gray-400">
+              Немає ролей.
+            </div>
           </div>
         </div>
       </UCard>
@@ -50,10 +70,12 @@
             </UButton>
           </div>
         </template>
+
         <div v-if="!selectedRole" class="text-sm text-gray-500">
           Оберіть роль у лівій області.
         </div>
-        <div v-else class="max-h-[55vh] overflow-auto border border-gray-200 rounded-lg">
+
+        <div v-else class="max-h-[60vh] overflow-auto rounded-xl border border-gray-200">
           <UTable :data="selectedRoleUsers" :columns="usersColumns" class="w-full">
             <template #actions-cell="{ row }">
               <UButton
@@ -163,6 +185,7 @@ const createRoleForm = reactive({
   name: "",
   application: "procurement" as "procurement" | "sales",
 });
+
 const showEditRoleModal = ref(false);
 const savingEditRole = ref(false);
 const editRoleForm = reactive({
@@ -175,10 +198,6 @@ const showAddUserModal = ref(false);
 const selectedUserIdToAdd = ref<number | null>(null);
 const savingRoleUser = ref(false);
 
-const rolesColumns = [
-  { accessorKey: "name", header: "Роль" },
-  { accessorKey: "application_label", header: "Призначення" },
-];
 const usersColumns = [
   { accessorKey: "full_name", header: "ПІБ" },
   { accessorKey: "actions", header: "" },
@@ -192,7 +211,9 @@ const applicationOptions = [
 const filteredRoles = computed(() => {
   const q = roleSearch.value.trim().toLowerCase();
   if (!q) return roles.value;
-  return roles.value.filter((r) => `${r.name} ${r.application_label || ""}`.toLowerCase().includes(q));
+  return roles.value.filter((item) =>
+    `${item.name || ""} ${item.application_label || ""}`.toLowerCase().includes(q),
+  );
 });
 
 const selectedRoleUserIds = computed(
@@ -207,9 +228,10 @@ const selectedRoleUserIds = computed(
 const memberOptions = computed(() => {
   const seen = new Set<number>();
   return members.value
-    .map((m) => ({
-      value: Number(m?.user?.id),
-      label: `${m?.user?.full_name || `${m?.user?.last_name || ""} ${m?.user?.first_name || ""}`.trim() || m?.user?.email || m?.user?.id}`,
+    .map((item) => ({
+      value: Number(item?.user?.id),
+      label:
+        `${item?.user?.full_name || `${item?.user?.last_name || ""} ${item?.user?.first_name || ""}`.trim() || item?.user?.email || item?.user?.id}`,
     }))
     .filter((option) => {
       const id = Number(option.value || 0);
@@ -228,7 +250,7 @@ async function ensureCompanyId() {
 
 async function loadRoles() {
   const { data } = await approvalUC.getModelRoles();
-  roles.value = data;
+  roles.value = Array.isArray(data) ? data : [];
 }
 
 async function loadMembers() {
@@ -240,15 +262,14 @@ async function selectRole(role: any) {
   selectedRole.value = role;
   selectedUserIdToAdd.value = null;
   const { data } = await approvalUC.getModelRoleUsers(Number(role.id));
-  selectedRoleUsers.value = data;
+  selectedRoleUsers.value = Array.isArray(data) ? data : [];
 }
 
 async function openEditRole(role: any) {
   await selectRole(role);
   editRoleForm.id = Number(role?.id || 0) || null;
   editRoleForm.name = String(role?.name || "");
-  editRoleForm.application =
-    role?.application === "sales" ? "sales" : "procurement";
+  editRoleForm.application = role?.application === "sales" ? "sales" : "procurement";
   showEditRoleModal.value = true;
 }
 
@@ -262,6 +283,7 @@ async function saveRole() {
   const companyId = await ensureCompanyId();
   const name = createRoleForm.name.trim();
   if (!companyId || !name) return;
+
   savingRole.value = true;
   try {
     const { error } = await approvalUC.createModelRole({
@@ -281,6 +303,7 @@ async function saveEditedRole() {
   const roleId = Number(editRoleForm.id || 0);
   const name = editRoleForm.name.trim();
   if (!roleId || !name) return;
+
   savingEditRole.value = true;
   try {
     const { error } = await approvalUC.patchModelRole(roleId, {
@@ -290,13 +313,26 @@ async function saveEditedRole() {
     if (error) return;
     showEditRoleModal.value = false;
     await loadRoles();
-    const refreshed = roles.value.find((r) => Number(r.id) === roleId) || null;
-    if (refreshed) {
-      await selectRole(refreshed);
-    }
+    const refreshed = roles.value.find((item) => Number(item.id) === roleId);
+    if (refreshed) await selectRole(refreshed);
   } finally {
     savingEditRole.value = false;
   }
+}
+
+async function deleteRole(role: any) {
+  const roleId = Number(role?.id || 0);
+  if (!roleId) return;
+  if (!confirm(`Видалити роль "${role?.name || roleId}"?`)) return;
+
+  const { error } = await approvalUC.deleteModelRole(roleId);
+  if (error) return;
+
+  if (selectedRole.value && Number(selectedRole.value.id) === roleId) {
+    selectedRole.value = null;
+    selectedRoleUsers.value = [];
+  }
+  await loadRoles();
 }
 
 async function addUserToRole() {

@@ -96,7 +96,7 @@ export async function getCurrentCompanyCpvs(request: RequestFn) {
 
 export async function updateCurrentCompanyCpvs(
   request: RequestFn,
-  body: { cpv_ids: number[] }
+  body: { cpv_ids?: number[]; primary_color?: string }
 ) {
   return request<unknown>('/companies/current-cpvs/', { method: 'PUT', body })
 }

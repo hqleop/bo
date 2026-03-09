@@ -90,6 +90,11 @@ class Company(models.Model):
     agree_trade_rules = models.BooleanField(default=False)
     agree_privacy_policy = models.BooleanField(default=False)
     agree_participation_visibility = models.BooleanField(default=False)
+    primary_color = models.CharField(
+        max_length=7,
+        default="#3b82f6",
+        help_text="Primary UI color in HEX format (#RRGGBB).",
+    )
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE)
 
     # CPV-категорії, закріплені за компанією
@@ -712,6 +717,7 @@ class ApprovalRangeMatrix(models.Model):
     currency = models.ForeignKey(
         Currency, on_delete=models.PROTECT, related_name="approval_range_matrix_items"
     )
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -8,7 +8,7 @@
   <div v-else-if="!tender" class="text-center py-12 text-gray-500">
     Тендер не знайдено.
   </div>
-  <div v-else class="h-full flex flex-col border-0 ring-0 outline-none">
+  <div v-else class="h-full min-h-0 flex flex-col border-0 ring-0 outline-none">
     <div class="mb-4 flex items-center justify-between gap-4">
       <h1
         v-if="tender.number"
@@ -52,11 +52,11 @@
 
     <div class="flex flex-1 min-h-0 gap-6">
       <div
-        class="flex-1 min-w-0 min-h-0"
+        class="flex-1 min-w-0 min-h-0 flex flex-col"
         :class="displayStage === 'preparation' ? '' : 'overflow-y-auto'"
       >
         <template v-if="displayStage === 'passport'">
-          <UCard class="overflow-hidden">
+          <UCard class="overflow-hidden min-h-full">
             <template #header>
               <h3 class="text-lg font-semibold text-gray-900">
                 Паспорт тендера
@@ -997,7 +997,7 @@
                   <!-- Інші критерії тендера: ліва панель (пошук + дерево) + список обраних -->
                   <div class="flex gap-4 min-h-0 flex-1">
                     <aside
-                      class="w-72 flex-shrink-0 flex flex-col min-h-0 border border-gray-200 rounded-lg bg-gray-50/50 overflow-hidden"
+                      class="w-72 flex-shrink-0 flex flex-col min-h-0 border border-gray-200 rounded-lg bg-white shadow-sm overflow-hidden"
                     >
                       <div class="p-2 border-b border-gray-200">
                         <UInput
@@ -1354,7 +1354,7 @@
         </template>
       </div>
 
-      <aside class="w-56 flex-shrink-0 flex min-h-0 flex-col gap-3">
+      <aside class="w-56 flex-shrink-0 flex min-h-0 flex-col gap-3 rounded-xl border border-gray-200 bg-white shadow-sm p-3">
         <template v-if="displayStage === 'passport'">
           <UButton
             class="w-full"
@@ -1431,6 +1431,20 @@
         </template>
 
         <template v-else-if="displayStage === 'acceptance'">
+          <div
+            class="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800"
+          >
+            <p class="font-semibold text-gray-900">Прийом пропозицій</p>
+            <p class="mt-2 text-xs text-gray-600">
+              Початок: {{ formatDateTime(tender?.start_at) }}
+            </p>
+            <p class="text-xs text-gray-600">
+              Завершення: {{ formatDateTime(tender?.end_at) }}
+            </p>
+            <p class="mt-2 font-medium text-gray-900">
+              Таймер: {{ acceptanceTimerText }}
+            </p>
+          </div>
           <UButton
             class="w-full"
             :disabled="isViewingPreviousTour"
@@ -2828,6 +2842,8 @@ const isParticipant = computed(
 const tender = ref<any | null>(null);
 const loading = ref(true);
 const saving = ref(false);
+const acceptanceTimerNowMs = ref(Date.now());
+let acceptanceTimerInterval: ReturnType<typeof setInterval> | null = null;
 const ACCEPTANCE_REFRESH_MS = 300000;
 let acceptanceRefreshInterval: ReturnType<typeof setInterval> | null = null;
 const tourOptions = ref<{ value: number; label: string }[]>([]);
@@ -5334,6 +5350,40 @@ async function loadTender() {
   }
 }
 
+function formatTimerDuration(ms: number) {
+  const totalMinutes = Math.max(0, Math.floor(ms / 60000));
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+  return `${days} дн / ${hours} год / ${minutes} хв`;
+}
+
+const acceptanceStartAtMs = computed(() => {
+  const value = tender.value?.start_at;
+  if (!value) return null;
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? null : timestamp;
+});
+const acceptanceEndAtMs = computed(() => {
+  const value = tender.value?.end_at;
+  if (!value) return null;
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? null : timestamp;
+});
+const acceptanceTimerText = computed(() => {
+  const now = acceptanceTimerNowMs.value;
+  const start = acceptanceStartAtMs.value;
+  const end = acceptanceEndAtMs.value;
+  if (start != null && now < start) {
+    return `До початку: ${formatTimerDuration(start - now)}`;
+  }
+  if (end != null && now <= end) {
+    return `До завершення: ${formatTimerDuration(end - now)}`;
+  }
+  if (end != null && now > end) return "Прийом пропозицій завершено";
+  return "Час прийому не задано";
+});
+
 async function loadTours() {
   if (!tenderId.value) return;
   const { data } = await tendersUC.getTenderTours(tenderId.value, isSales);
@@ -6115,6 +6165,10 @@ onMounted(async () => {
   if (["acceptance", "decision", "approval"].includes(displayStage.value)) {
     await loadDecisionProposals();
   }
+  acceptanceTimerNowMs.value = Date.now();
+  acceptanceTimerInterval = setInterval(() => {
+    acceptanceTimerNowMs.value = Date.now();
+  }, 30000);
   startAcceptanceRefresh();
 });
 
@@ -6177,6 +6231,10 @@ watch(prepTab, (tab) => {
 });
 
 onUnmounted(() => {
+  if (acceptanceTimerInterval) {
+    clearInterval(acceptanceTimerInterval);
+    acceptanceTimerInterval = null;
+  }
   stopAcceptanceRefresh();
 });
 </script>

@@ -39,6 +39,7 @@ export function useUsersUseCases() {
     await checkAuth()
     if (!getAuthHeaders().Authorization) {
       me.value = null
+      resetCompanyPrimaryColor()
       return null
     }
     meRefreshPromise = (async () => {
@@ -46,10 +47,12 @@ export function useUsersUseCases() {
         const { data, error } = await usersApi.getMe(fetch)
         if (error || !data) {
           me.value = null
+          resetCompanyPrimaryColor()
           return null
         }
         const payload = normalizeMeResponse(data)
         me.value = payload
+        applyCompanyPrimaryColor(resolveCompanyPrimaryColorFromMe(payload))
         return payload
       } finally {
         meRefreshPromise = null
@@ -225,7 +228,13 @@ export function useUsersUseCases() {
   }
 
   async function getCurrentCompanyCpvs(): Promise<{
-    data: { id: number; edrpou: string; name: string; cpv_categories: { id: number; label: string }[] } | null
+    data: {
+      id: number
+      edrpou: string
+      name: string
+      primary_color?: string | null
+      cpv_categories: { id: number; label: string }[]
+    } | null
     error: string | null
   }> {
     const { data, error } = await usersApi.getCurrentCompanyCpvs(fetch)
@@ -233,8 +242,16 @@ export function useUsersUseCases() {
     return { data: data as any, error: null }
   }
 
-  async function updateCurrentCompanyCpvs(cpvIds: number[]): Promise<{ error: string | null }> {
-    const { error } = await usersApi.updateCurrentCompanyCpvs(fetch, { cpv_ids: cpvIds })
+  async function updateCurrentCompanyCpvs(params: {
+    cpvIds?: number[]
+    primaryColor?: string
+  }): Promise<{ error: string | null }> {
+    const body: { cpv_ids?: number[]; primary_color?: string } = {}
+    if (Array.isArray(params.cpvIds)) body.cpv_ids = params.cpvIds
+    if (typeof params.primaryColor === 'string' && params.primaryColor.trim()) {
+      body.primary_color = params.primaryColor.trim()
+    }
+    const { error } = await usersApi.updateCurrentCompanyCpvs(fetch, body)
     return { error: error ?? null }
   }
 
