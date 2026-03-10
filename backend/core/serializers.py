@@ -1,4 +1,4 @@
-from rest_framework import serializers
+﻿from rest_framework import serializers
 import re
 from decimal import Decimal, InvalidOperation
 from django.contrib.auth.password_validation import validate_password
@@ -23,6 +23,7 @@ from .models import (
     Currency,
     TenderCriterion,
     TenderAttribute,
+    TenderConditionTemplate,
     ApprovalModelRole,
     ApprovalModelRoleUser,
     ApprovalRangeMatrix,
@@ -78,7 +79,7 @@ def _normalize_hex_color(value):
     if not raw:
         return raw
     if not HEX_COLOR_RE.match(raw):
-        raise serializers.ValidationError("Колір має бути у форматі #RRGGBB.")
+        raise serializers.ValidationError("РљРѕР»С–СЂ РјР°С” Р±СѓС‚Рё Сѓ С„РѕСЂРјР°С‚С– #RRGGBB.")
     return raw.lower()
 
 
@@ -101,13 +102,13 @@ def _validate_price_criterion_vat_percent(attrs, instance=None):
             raise drf.ValidationError(
                 {
                     "price_criterion_vat_percent": (
-                        "Вкажіть % ПДВ для режиму ціни «з ПДВ»."
+                        "Р’РєР°Р¶С–С‚СЊ % РџР”Р’ РґР»СЏ СЂРµР¶РёРјСѓ С†С–РЅРё В«Р· РџР”Р’В»."
                     )
                 }
             )
         if vat_percent_dec <= 0 or vat_percent_dec > 100:
             raise drf.ValidationError(
-                {"price_criterion_vat_percent": "% ПДВ має бути в межах (0, 100]."}
+                {"price_criterion_vat_percent": "% РџР”Р’ РјР°С” Р±СѓС‚Рё РІ РјРµР¶Р°С… (0, 100]."}
             )
         return
 
@@ -120,6 +121,36 @@ def _format_amount(value):
     if decimal_value is None:
         return None
     return str(decimal_value.quantize(Decimal("0.01")))
+
+
+def _validate_required_org_fields_for_user(*, attrs, instance, request):
+    if not request or not getattr(request, "user", None):
+        return
+    user = request.user
+    if not getattr(user, "is_authenticated", False):
+        return
+
+    company = attrs.get("company") or (instance.company if instance else None)
+    company_id = getattr(company, "id", None)
+    if not company_id:
+        return
+
+    expense_article = attrs.get("expense_article", getattr(instance, "expense_article", None))
+    branch = attrs.get("branch", getattr(instance, "branch", None))
+    department = attrs.get("department", getattr(instance, "department", None))
+
+    errors = {}
+    if ExpenseArticleUser.objects.filter(user=user, expense__company_id=company_id).exists() and not expense_article:
+        errors["expense_article"] = "РџРѕР»Рµ С” РѕР±РѕРІ'СЏР·РєРѕРІРёРј."
+    if BranchUser.objects.filter(user=user, branch__company_id=company_id).exists() and not branch:
+        errors["branch"] = "РџРѕР»Рµ С” РѕР±РѕРІ'СЏР·РєРѕРІРёРј."
+    if DepartmentUser.objects.filter(
+        user=user, department__branch__company_id=company_id
+    ).exists() and not department:
+        errors["department"] = "РџРѕР»Рµ С” РѕР±РѕРІ'СЏР·РєРѕРІРёРј."
+
+    if errors:
+        raise serializers.ValidationError(errors)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -156,20 +187,20 @@ class UserRegistrationStep1Serializer(serializers.Serializer):
         return value
 
     def validate_phone(self, value):
-        """Очікуваний формат телефону: +380XXXXXXXXX (12 цифр, включно з кодом країни)."""
+        """РћС‡С–РєСѓРІР°РЅРёР№ С„РѕСЂРјР°С‚ С‚РµР»РµС„РѕРЅСѓ: +380XXXXXXXXX (12 С†РёС„СЂ, РІРєР»СЋС‡РЅРѕ Р· РєРѕРґРѕРј РєСЂР°С—РЅРё)."""
         if not value:
-            raise serializers.ValidationError("Телефон обов'язковий.")
+            raise serializers.ValidationError("РўРµР»РµС„РѕРЅ РѕР±РѕРІ'СЏР·РєРѕРІРёР№.")
         raw = (value or "").strip()
-        # Дозволяємо формати з пробілами/дефісами, але приводимо до цифр.
+        # Р”РѕР·РІРѕР»СЏС”РјРѕ С„РѕСЂРјР°С‚Рё Р· РїСЂРѕР±С–Р»Р°РјРё/РґРµС„С–СЃР°РјРё, Р°Р»Рµ РїСЂРёРІРѕРґРёРјРѕ РґРѕ С†РёС„СЂ.
         digits = re.sub(r"\D", "", raw)
         if not digits.startswith("380") or len(digits) != 12:
-            raise serializers.ValidationError("Телефон має бути у форматі +380XXXXXXXXX.")
+            raise serializers.ValidationError("РўРµР»РµС„РѕРЅ РјР°С” Р±СѓС‚Рё Сѓ С„РѕСЂРјР°С‚С– +380XXXXXXXXX.")
         return f"+{digits}"
 
     def validate_email(self, value):
         email = (value or "").strip().lower()
         if User.objects.filter(email__iexact=email).exists():
-            raise serializers.ValidationError("Користувач з таким email вже існує.")
+            raise serializers.ValidationError("РљРѕСЂРёСЃС‚СѓРІР°С‡ Р· С‚Р°РєРёРј email РІР¶Рµ С–СЃРЅСѓС”.")
         return email
 
     def create(self, validated_data):
@@ -200,13 +231,13 @@ class CompanyUserCreateSerializer(serializers.Serializer):
         if len(digits) == 10 and digits.startswith("0"):
             digits = f"38{digits}"
         if not digits.startswith("380") or len(digits) != 12:
-            raise serializers.ValidationError("Телефон має бути у форматі +380XXXXXXXXX.")
+            raise serializers.ValidationError("РўРµР»РµС„РѕРЅ РјР°С” Р±СѓС‚Рё Сѓ С„РѕСЂРјР°С‚С– +380XXXXXXXXX.")
         return f"+{digits}"
 
     def validate_email(self, value):
         email = (value or "").strip().lower()
         if User.objects.filter(email__iexact=email).exists():
-            raise serializers.ValidationError("Користувач з таким email вже існує.")
+            raise serializers.ValidationError("РљРѕСЂРёСЃС‚СѓРІР°С‡ Р· С‚Р°РєРёРј email РІР¶Рµ С–СЃРЅСѓС”.")
         return email
 
     def create(self, validated_data):
@@ -283,7 +314,7 @@ class RegistrationCompanyLookupSerializer(serializers.Serializer):
 
 class CompanyCpvSerializer(serializers.ModelSerializer):
     """
-    Серіалізатор для зв'язку компанії з CPV-категоріями (налаштування компанії).
+    РЎРµСЂС–Р°Р»С–Р·Р°С‚РѕСЂ РґР»СЏ Р·РІ'СЏР·РєСѓ РєРѕРјРїР°РЅС–С— Р· CPV-РєР°С‚РµРіРѕСЂС–СЏРјРё (РЅР°Р»Р°С€С‚СѓРІР°РЅРЅСЏ РєРѕРјРїР°РЅС–С—).
     """
 
     cpv_categories = serializers.SerializerMethodField()
@@ -293,7 +324,7 @@ class CompanyCpvSerializer(serializers.ModelSerializer):
         required=False,
         source="cpv_categories",
         queryset=CpvDictionary.objects.all(),
-        help_text="Масив ID CPV-кодів, закріплених за компанією",
+        help_text="РњР°СЃРёРІ ID CPV-РєРѕРґС–РІ, Р·Р°РєСЂС–РїР»РµРЅРёС… Р·Р° РєРѕРјРїР°РЅС–С”СЋ",
     )
 
     class Meta:
@@ -355,19 +386,19 @@ class CompanyCreateSerializer(serializers.ModelSerializer):
 
     def validate_edrpou(self, value):
         if not value or not value.strip():
-            raise serializers.ValidationError("Код компанії обов'язковий.")
+            raise serializers.ValidationError("РљРѕРґ РєРѕРјРїР°РЅС–С— РѕР±РѕРІ'СЏР·РєРѕРІРёР№.")
         if Company.objects.filter(edrpou=value.strip()).exists():
-            raise serializers.ValidationError("Компанія з таким кодом вже існує.")
+            raise serializers.ValidationError("РљРѕРјРїР°РЅС–СЏ Р· С‚Р°РєРёРј РєРѕРґРѕРј РІР¶Рµ С–СЃРЅСѓС”.")
         return value.strip()
 
     def validate_name(self, value):
         if not value or not value.strip():
-            raise serializers.ValidationError("Назва компанії обов'язкова.")
+            raise serializers.ValidationError("РќР°Р·РІР° РєРѕРјРїР°РЅС–С— РѕР±РѕРІ'СЏР·РєРѕРІР°.")
         return value.strip()
 
 
 class CompanySupplierSerializer(serializers.ModelSerializer):
-    """Зв'язок компанія в†’ контрагент. Для списку контрагентів."""
+    """Р—РІ'СЏР·РѕРє РєРѕРјРїР°РЅС–СЏ РІвЂ вЂ™ РєРѕРЅС‚СЂР°РіРµРЅС‚. Р”Р»СЏ СЃРїРёСЃРєСѓ РєРѕРЅС‚СЂР°РіРµРЅС‚С–РІ."""
 
     supplier_company = CompanyListSerializer(read_only=True)
     supplier_company_id = serializers.IntegerField(write_only=True, required=False)
@@ -379,7 +410,7 @@ class CompanySupplierSerializer(serializers.ModelSerializer):
 
 
 class CompanySupplierListSerializer(serializers.ModelSerializer):
-    """Список контрагентів з CPV категоріями для фільтрації."""
+    """РЎРїРёСЃРѕРє РєРѕРЅС‚СЂР°РіРµРЅС‚С–РІ Р· CPV РєР°С‚РµРіРѕСЂС–СЏРјРё РґР»СЏ С„С–Р»СЊС‚СЂР°С†С–С—."""
 
     supplier_company = CompanyWithCpvsSerializer(read_only=True)
     supplier_company_id = serializers.IntegerField(write_only=True, required=False)
@@ -391,7 +422,7 @@ class CompanySupplierListSerializer(serializers.ModelSerializer):
 
 
 class AddCompanySupplierSerializer(serializers.Serializer):
-    """Додати контрагента: або supplier_company_id, або edrpou (+ name якщо компанії ще немає)."""
+    """Р”РѕРґР°С‚Рё РєРѕРЅС‚СЂР°РіРµРЅС‚Р°: Р°Р±Рѕ supplier_company_id, Р°Р±Рѕ edrpou (+ name СЏРєС‰Рѕ РєРѕРјРїР°РЅС–С— С‰Рµ РЅРµРјР°С”)."""
 
     supplier_company_id = serializers.IntegerField(required=False)
     edrpou = serializers.CharField(max_length=20, required=False, allow_blank=True)
@@ -403,10 +434,10 @@ class AddCompanySupplierSerializer(serializers.Serializer):
         name = (attrs.get("name") or "").strip()
         if sid is not None:
             if edrpou:
-                raise serializers.ValidationError({"edrpou": "Укажіть або ID компанії, або код (ЄДРПОУ), але не обидва."})
+                raise serializers.ValidationError({"edrpou": "РЈРєР°Р¶С–С‚СЊ Р°Р±Рѕ ID РєРѕРјРїР°РЅС–С—, Р°Р±Рѕ РєРѕРґ (Р„Р”Р РџРћРЈ), Р°Р»Рµ РЅРµ РѕР±РёРґРІР°."})
             return attrs
         if not edrpou:
-            raise serializers.ValidationError({"edrpou": "Вкажіть код компанії (ЄДРПОУ) або ID існуючої компанії."})
+            raise serializers.ValidationError({"edrpou": "Р’РєР°Р¶С–С‚СЊ РєРѕРґ РєРѕРјРїР°РЅС–С— (Р„Р”Р РџРћРЈ) Р°Р±Рѕ ID С–СЃРЅСѓСЋС‡РѕС— РєРѕРјРїР°РЅС–С—."})
         attrs["edrpou"] = edrpou
         attrs["name"] = name
         return attrs
@@ -435,9 +466,9 @@ class CompanyRegistrationStep2Serializer(serializers.Serializer):
     def validate_edrpou(self, value):
         code = (value or "").strip()
         if not code:
-            raise serializers.ValidationError("Код компанії обов'язковий.")
+            raise serializers.ValidationError("РљРѕРґ РєРѕРјРїР°РЅС–С— РѕР±РѕРІ'СЏР·РєРѕРІРёР№.")
         if Company.objects.filter(edrpou=code).exists():
-            raise serializers.ValidationError("Компанія з таким кодом вже існує.")
+            raise serializers.ValidationError("РљРѕРјРїР°РЅС–СЏ Р· С‚Р°РєРёРј РєРѕРґРѕРј РІР¶Рµ С–СЃРЅСѓС”.")
         return code
 
     def validate(self, attrs):
@@ -449,30 +480,30 @@ class CompanyRegistrationStep2Serializer(serializers.Serializer):
         identity_document = attrs.get("identity_document")
 
         if not attrs.get("agree_trade_rules"):
-            raise serializers.ValidationError({"agree_trade_rules": "Потрібно погодитися з регламентом торгів."})
+            raise serializers.ValidationError({"agree_trade_rules": "РџРѕС‚СЂС–Р±РЅРѕ РїРѕРіРѕРґРёС‚РёСЃСЏ Р· СЂРµРіР»Р°РјРµРЅС‚РѕРј С‚РѕСЂРіС–РІ."})
         if not attrs.get("agree_privacy_policy"):
-            raise serializers.ValidationError({"agree_privacy_policy": "Потрібно погодитися з політикою конфіденційності."})
+            raise serializers.ValidationError({"agree_privacy_policy": "РџРѕС‚СЂС–Р±РЅРѕ РїРѕРіРѕРґРёС‚РёСЃСЏ Р· РїРѕР»С–С‚РёРєРѕСЋ РєРѕРЅС„С–РґРµРЅС†С–Р№РЅРѕСЃС‚С–."})
         if not address:
-            raise serializers.ValidationError({"company_address": "Адреса обов'язкова."})
+            raise serializers.ValidationError({"company_address": "РђРґСЂРµСЃР° РѕР±РѕРІ'СЏР·РєРѕРІР°."})
 
         if subject_type in (Company.SubjectType.FOP_RESIDENT, Company.SubjectType.INDIVIDUAL):
             if not re.fullmatch(r"\d{10}", code):
-                raise serializers.ValidationError({"edrpou": "Код має містити 10 цифр."})
+                raise serializers.ValidationError({"edrpou": "РљРѕРґ РјР°С” РјС–СЃС‚РёС‚Рё 10 С†РёС„СЂ."})
         elif subject_type == Company.SubjectType.LEGAL_RESIDENT:
             if not re.fullmatch(r"\d{8}", code):
-                raise serializers.ValidationError({"edrpou": "Код ЄДРПОУ має містити 8 цифр."})
+                raise serializers.ValidationError({"edrpou": "РљРѕРґ Р„Р”Р РџРћРЈ РјР°С” РјС–СЃС‚РёС‚Рё 8 С†РёС„СЂ."})
         elif subject_type == Company.SubjectType.NON_RESIDENT:
             if not registration_country:
-                raise serializers.ValidationError({"registration_country": "Оберіть країну реєстрації."})
+                raise serializers.ValidationError({"registration_country": "РћР±РµСЂС–С‚СЊ РєСЂР°С—РЅСѓ СЂРµС”СЃС‚СЂР°С†С–С—."})
             if not CountryBusinessNumber.objects.filter(number_code=registration_country).exists():
-                raise serializers.ValidationError({"registration_country": "Країну не знайдено."})
+                raise serializers.ValidationError({"registration_country": "РљСЂР°С—РЅСѓ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."})
         else:
-            raise serializers.ValidationError({"subject_type": "Некоректний тип суб'єкта."})
+            raise serializers.ValidationError({"subject_type": "РќРµРєРѕСЂРµРєС‚РЅРёР№ С‚РёРї СЃСѓР±'С”РєС‚Р°."})
 
         if subject_type != Company.SubjectType.INDIVIDUAL and not name:
-            raise serializers.ValidationError({"name": "Назва згідно уставних документів обов'язкова."})
+            raise serializers.ValidationError({"name": "РќР°Р·РІР° Р·РіС–РґРЅРѕ СѓСЃС‚Р°РІРЅРёС… РґРѕРєСѓРјРµРЅС‚С–РІ РѕР±РѕРІ'СЏР·РєРѕРІР°."})
         if subject_type == Company.SubjectType.INDIVIDUAL and not identity_document:
-            raise serializers.ValidationError({"identity_document": "Завантажте документ, що підтверджує особу."})
+            raise serializers.ValidationError({"identity_document": "Р—Р°РІР°РЅС‚Р°Р¶С‚Рµ РґРѕРєСѓРјРµРЅС‚, С‰Рѕ РїС–РґС‚РІРµСЂРґР¶СѓС” РѕСЃРѕР±Сѓ."})
 
         attrs["name"] = name
         attrs["company_address"] = address
@@ -499,22 +530,22 @@ class CompanyRegistrationStep3Serializer(serializers.Serializer):
         cpv_ids = attrs.get("cpv_ids") or []
 
         if not goal_tenders and not goal_participation:
-            raise serializers.ValidationError("Оберіть хоча б один напрямок діяльності.")
+            raise serializers.ValidationError("РћР±РµСЂС–С‚СЊ С…РѕС‡Р° Р± РѕРґРёРЅ РЅР°РїСЂСЏРјРѕРє РґС–СЏР»СЊРЅРѕСЃС‚С–.")
 
         if goal_participation:
             if not agree_visibility:
                 raise serializers.ValidationError(
-                    {"agree_participation_visibility": "Потрібно підтвердити відображення реєстраційних даних."}
+                    {"agree_participation_visibility": "РџРѕС‚СЂС–Р±РЅРѕ РїС–РґС‚РІРµСЂРґРёС‚Рё РІС–РґРѕР±СЂР°Р¶РµРЅРЅСЏ СЂРµС”СЃС‚СЂР°С†С–Р№РЅРёС… РґР°РЅРёС…."}
                 )
             if not cpv_ids:
-                raise serializers.ValidationError({"cpv_ids": "Оберіть хоча б одну CPV-категорію."})
+                raise serializers.ValidationError({"cpv_ids": "РћР±РµСЂС–С‚СЊ С…РѕС‡Р° Р± РѕРґРЅСѓ CPV-РєР°С‚РµРіРѕСЂС–СЋ."})
         return attrs
 
 
 
 
 class ExistingCompanyStep2Serializer(serializers.Serializer):
-    """Крок 2: приєднання до існуючої компанії за кодом (ЄДРПОУ)."""
+    """РљСЂРѕРє 2: РїСЂРёС”РґРЅР°РЅРЅСЏ РґРѕ С–СЃРЅСѓСЋС‡РѕС— РєРѕРјРїР°РЅС–С— Р·Р° РєРѕРґРѕРј (Р„Р”Р РџРћРЈ)."""
 
     user_id = serializers.IntegerField(required=True)
     edrpou = serializers.CharField(max_length=20, required=True)
@@ -523,9 +554,9 @@ class ExistingCompanyStep2Serializer(serializers.Serializer):
     def validate_edrpou(self, value):
         code = (value or "").strip()
         if not code:
-            raise serializers.ValidationError("Код компанії обов'язковий.")
+            raise serializers.ValidationError("РљРѕРґ РєРѕРјРїР°РЅС–С— РѕР±РѕРІ'СЏР·РєРѕРІРёР№.")
         if not Company.objects.filter(edrpou=code, status=Company.Status.ACTIVE).exists():
-            raise serializers.ValidationError("Компанію з таким кодом не знайдено.")
+            raise serializers.ValidationError("РљРѕРјРїР°РЅС–СЋ Р· С‚Р°РєРёРј РєРѕРґРѕРј РЅРµ Р·РЅР°Р№РґРµРЅРѕ.")
         return code
 
 
@@ -622,7 +653,7 @@ class MeSerializer(serializers.Serializer):
 
 
 class ProfileUpdateSerializer(serializers.Serializer):
-    """Оновлення профілю поточного користувача (поля з кроку 1 реєстрації)."""
+    """РћРЅРѕРІР»РµРЅРЅСЏ РїСЂРѕС„С–Р»СЋ РїРѕС‚РѕС‡РЅРѕРіРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡Р° (РїРѕР»СЏ Р· РєСЂРѕРєСѓ 1 СЂРµС”СЃС‚СЂР°С†С–С—)."""
 
     first_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
     last_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
@@ -742,7 +773,7 @@ class CategorySerializer(serializers.ModelSerializer):
         required=False,
         source="cpvs",
         queryset=CpvDictionary.objects.all(),
-        help_text="Масив ID CPV-кодів, прив'язаних до категорії",
+        help_text="РњР°СЃРёРІ ID CPV-РєРѕРґС–РІ, РїСЂРёРІ'СЏР·Р°РЅРёС… РґРѕ РєР°С‚РµРіРѕСЂС–С—",
     )
 
     class Meta:
@@ -845,7 +876,7 @@ class ExpenseArticleUserSerializer(serializers.ModelSerializer):
 
 
 class UnitOfMeasureSerializer(serializers.ModelSerializer):
-    """Серіалізатор довідника одиниць виміру."""
+    """РЎРµСЂС–Р°Р»С–Р·Р°С‚РѕСЂ РґРѕРІС–РґРЅРёРєР° РѕРґРёРЅРёС†СЊ РІРёРјС–СЂСѓ."""
 
     class Meta:
         model = UnitOfMeasure
@@ -854,7 +885,7 @@ class UnitOfMeasureSerializer(serializers.ModelSerializer):
 
 
 class NomenclatureSerializer(serializers.ModelSerializer):
-    """Серіалізатор номенклатури."""
+    """РЎРµСЂС–Р°Р»С–Р·Р°С‚РѕСЂ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂРё."""
 
     unit_name = serializers.CharField(source="unit.display_short_ua", read_only=True)
     category_name = serializers.CharField(source="category.name", read_only=True)
@@ -906,7 +937,7 @@ class NomenclatureSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
-        """Унікальність: пара назва + одиниця виміру в межах компанії."""
+        """РЈРЅС–РєР°Р»СЊРЅС–СЃС‚СЊ: РїР°СЂР° РЅР°Р·РІР° + РѕРґРёРЅРёС†СЏ РІРёРјС–СЂСѓ РІ РјРµР¶Р°С… РєРѕРјРїР°РЅС–С—."""
         company = attrs.get("company") or (self.instance.company if self.instance else None)
         unit = attrs.get("unit") or (self.instance.unit_id if self.instance else None)
         name = (attrs.get("name") or (self.instance.name if self.instance else "") or "").strip()
@@ -918,21 +949,53 @@ class NomenclatureSerializer(serializers.ModelSerializer):
         if qs.exists():
             from rest_framework import serializers as drf
             raise drf.ValidationError(
-                {"name": "Номенклатура з такою назвою та одиницею виміру вже існує в довіднику."}
+                {"name": "РќРѕРјРµРЅРєР»Р°С‚СѓСЂР° Р· С‚Р°РєРѕСЋ РЅР°Р·РІРѕСЋ С‚Р° РѕРґРёРЅРёС†РµСЋ РІРёРјС–СЂСѓ РІР¶Рµ С–СЃРЅСѓС” РІ РґРѕРІС–РґРЅРёРєСѓ."}
             )
         return attrs
 
 
 class CurrencySerializer(serializers.ModelSerializer):
-    """Довідник валют (тільки читання для API)."""
+    """Р”РѕРІС–РґРЅРёРє РІР°Р»СЋС‚ (С‚С–Р»СЊРєРё С‡РёС‚Р°РЅРЅСЏ РґР»СЏ API)."""
 
     class Meta:
         model = Currency
         fields = ("id", "code", "code_iso", "name")
 
 
+class TenderConditionTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TenderConditionTemplate
+        fields = (
+            "id",
+            "company",
+            "name",
+            "content",
+            "created_by",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_by", "created_at", "updated_at")
+
+    def validate(self, attrs):
+        company = attrs.get("company") or (self.instance.company if self.instance else None)
+        name = (attrs.get("name") or (self.instance.name if self.instance else "") or "").strip()
+        if not company or not name:
+            return attrs
+        qs = TenderConditionTemplate.objects.filter(
+            company=company,
+            name__iexact=name,
+        )
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                {"name": "РЁР°Р±Р»РѕРЅ Р· С‚Р°РєРѕСЋ РЅР°Р·РІРѕСЋ РІР¶Рµ С–СЃРЅСѓС”."}
+            )
+        return attrs
+
+
 class TenderCriterionSerializer(serializers.ModelSerializer):
-    """Серіалізатор критерію тендеру."""
+    """РЎРµСЂС–Р°Р»С–Р·Р°С‚РѕСЂ РєСЂРёС‚РµСЂС–СЋ С‚РµРЅРґРµСЂСѓ."""
 
     type_label = serializers.CharField(source="get_type_display", read_only=True)
     application_label = serializers.CharField(source="get_application_display", read_only=True)
@@ -958,7 +1021,7 @@ class TenderCriterionSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "created_at", "updated_at")
 
     def validate(self, attrs):
-        """Унікальність: назва + тип критерія в межах компанії."""
+        """РЈРЅС–РєР°Р»СЊРЅС–СЃС‚СЊ: РЅР°Р·РІР° + С‚РёРї РєСЂРёС‚РµСЂС–СЏ РІ РјРµР¶Р°С… РєРѕРјРїР°РЅС–С—."""
         company = attrs.get("company") or (self.instance.company if self.instance else None)
         name = (attrs.get("name") or (self.instance.name if self.instance else "") or "").strip()
         ctype = attrs.get("type") or (self.instance.type if self.instance else None)
@@ -976,13 +1039,13 @@ class TenderCriterionSerializer(serializers.ModelSerializer):
         if qs.exists():
             from rest_framework import serializers as drf
             raise drf.ValidationError(
-                {"name": "Критерій з такою назвою та типом вже існує в довіднику."}
+                {"name": "РљСЂРёС‚РµСЂС–Р№ Р· С‚Р°РєРѕСЋ РЅР°Р·РІРѕСЋ С‚Р° С‚РёРїРѕРј РІР¶Рµ С–СЃРЅСѓС” РІ РґРѕРІС–РґРЅРёРєСѓ."}
             )
         return attrs
 
 
 class TenderAttributeSerializer(serializers.ModelSerializer):
-    """Серіалізатор атрибута тендеру."""
+    """РЎРµСЂС–Р°Р»С–Р·Р°С‚РѕСЂ Р°С‚СЂРёР±СѓС‚Р° С‚РµРЅРґРµСЂСѓ."""
 
     type_label = serializers.CharField(source="get_type_display", read_only=True)
     tender_type_label = serializers.CharField(source="get_tender_type_display", read_only=True)
@@ -1008,7 +1071,7 @@ class TenderAttributeSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "created_at", "updated_at")
 
     def validate(self, attrs):
-        """Унікальність: назва + тип атрибута в межах компанії."""
+        """РЈРЅС–РєР°Р»СЊРЅС–СЃС‚СЊ: РЅР°Р·РІР° + С‚РёРї Р°С‚СЂРёР±СѓС‚Р° РІ РјРµР¶Р°С… РєРѕРјРїР°РЅС–С—."""
         company = attrs.get("company") or (self.instance.company if self.instance else None)
         name = (attrs.get("name") or (self.instance.name if self.instance else "") or "").strip()
         atype = attrs.get("type") or (self.instance.type if self.instance else None)
@@ -1025,7 +1088,7 @@ class TenderAttributeSerializer(serializers.ModelSerializer):
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
             raise serializers.ValidationError(
-                {"name": "Атрибут з такою назвою та типом вже існує в довіднику."}
+                {"name": "РђС‚СЂРёР±СѓС‚ Р· С‚Р°РєРѕСЋ РЅР°Р·РІРѕСЋ С‚Р° С‚РёРїРѕРј РІР¶Рµ С–СЃРЅСѓС” РІ РґРѕРІС–РґРЅРёРєСѓ."}
             )
         return attrs
 
@@ -1099,7 +1162,7 @@ class ApprovalRangeMatrixSerializer(serializers.ModelSerializer):
         budget_to = attrs.get("budget_to", getattr(self.instance, "budget_to", None))
         if budget_from is not None and budget_to is not None and budget_from > budget_to:
             raise serializers.ValidationError(
-                {"budget_to": "Бюджет по має бути більшим або рівним бюджету з."}
+                {"budget_to": "Р‘СЋРґР¶РµС‚ РїРѕ РјР°С” Р±СѓС‚Рё Р±С–Р»СЊС€РёРј Р°Р±Рѕ СЂС–РІРЅРёРј Р±СЋРґР¶РµС‚Сѓ Р·."}
             )
         return attrs
 
@@ -1247,7 +1310,7 @@ class TenderApprovalJournalSerializer(serializers.ModelSerializer):
 
 
 class ProcurementTenderPositionSerializer(serializers.ModelSerializer):
-    """Позиція тендера на закупівлю."""
+    """РџРѕР·РёС†С–СЏ С‚РµРЅРґРµСЂР° РЅР° Р·Р°РєСѓРїС–РІР»СЋ."""
 
     nomenclature_id = serializers.PrimaryKeyRelatedField(
         queryset=Nomenclature.objects.all(), source="nomenclature"
@@ -1308,7 +1371,7 @@ class ProcurementTenderPositionSerializer(serializers.ModelSerializer):
 
 
 class ProcurementTenderSerializer(serializers.ModelSerializer):
-    """Тендер на закупівлю (паспорт та етапи)."""
+    """РўРµРЅРґРµСЂ РЅР° Р·Р°РєСѓРїС–РІР»СЋ (РїР°СЃРїРѕСЂС‚ С‚Р° РµС‚Р°РїРё)."""
 
     number = serializers.SerializerMethodField()
     stage_label = serializers.CharField(source="get_stage_display", read_only=True)
@@ -1338,18 +1401,18 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
     )
 
     def validate(self, attrs):
-        """Категорія CPV обовʼязкова: хоча б одна CPV має бути обрана."""
+        """РљР°С‚РµРіРѕСЂС–СЏ CPV РѕР±РѕРІКјСЏР·РєРѕРІР°: С…РѕС‡Р° Р± РѕРґРЅР° CPV РјР°С” Р±СѓС‚Рё РѕР±СЂР°РЅР°."""
         _validate_price_criterion_vat_percent(attrs, instance=self.instance)
         cpv_categories = attrs.get("cpv_categories")
         if cpv_categories is not None and len(cpv_categories) == 0:
             from rest_framework import serializers as drf
             raise drf.ValidationError(
-                {"cpv_ids": "Оберіть хоча б одну категорію CPV."}
+                {"cpv_ids": "РћР±РµСЂС–С‚СЊ С…РѕС‡Р° Р± РѕРґРЅСѓ РєР°С‚РµРіРѕСЂС–СЋ CPV."}
             )
         if not self.instance and (cpv_categories is None or len(cpv_categories) == 0):
             from rest_framework import serializers as drf
             raise drf.ValidationError(
-                {"cpv_ids": "Оберіть хоча б одну категорію CPV."}
+                {"cpv_ids": "РћР±РµСЂС–С‚СЊ С…РѕС‡Р° Р± РѕРґРЅСѓ РєР°С‚РµРіРѕСЂС–СЋ CPV."}
             )
         criterion_ids = attrs.get("tender_criteria")
         if criterion_ids is not None:
@@ -1385,7 +1448,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
         if approval_model and company and approval_model.company_id != company.id:
             from rest_framework import serializers as drf
             raise drf.ValidationError(
-                {"approval_model_id": "Модель погодження належить іншій компанії."}
+                {"approval_model_id": "РњРѕРґРµР»СЊ РїРѕРіРѕРґР¶РµРЅРЅСЏ РЅР°Р»РµР¶РёС‚СЊ С–РЅС€С–Р№ РєРѕРјРїР°РЅС–С—."}
             )
         if (
             stage_value == ProcurementTender.Stage.PREPARATION
@@ -1411,12 +1474,17 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
                 from rest_framework import serializers as drf
                 if not approval_model:
                     raise drf.ValidationError(
-                        {"approval_model_id": "Оберіть модель погодження для цієї категорії."}
+                        {"approval_model_id": "РћР±РµСЂС–С‚СЊ РјРѕРґРµР»СЊ РїРѕРіРѕРґР¶РµРЅРЅСЏ РґР»СЏ С†С–С”С— РєР°С‚РµРіРѕСЂС–С—."}
                     )
                 if not available_qs.filter(id=approval_model.id).exists():
                     raise drf.ValidationError(
-                        {"approval_model_id": "Обрана модель не відповідає параметрам застосування."}
+                        {"approval_model_id": "РћР±СЂР°РЅР° РјРѕРґРµР»СЊ РЅРµ РІС–РґРїРѕРІС–РґР°С” РїР°СЂР°РјРµС‚СЂР°Рј Р·Р°СЃС‚РѕСЃСѓРІР°РЅРЅСЏ."}
                     )
+        _validate_required_org_fields_for_user(
+            attrs=attrs,
+            instance=self.instance,
+            request=self.context.get("request"),
+        )
         return attrs
 
     criterion_ids = serializers.PrimaryKeyRelatedField(
@@ -1533,6 +1601,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             "department_name",
             "conduct_type",
             "conduct_type_label",
+            "auction_model",
             "publication_type",
             "publication_type_label",
             "currency",
@@ -1542,6 +1611,8 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             "created_by_display",
             "start_at",
             "end_at",
+            "planned_start_at",
+            "planned_end_at",
             "created_at",
             "updated_at",
             "price_criterion_vat",
@@ -1662,7 +1733,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
                 "name": c.name,
                 "type": c.type,
                 "application": getattr(c, "application", "individual"),
-                "application_label": getattr(c, "get_application_display", lambda: "Індивідуальний")(),
+                "application_label": getattr(c, "get_application_display", lambda: "Р†РЅРґРёРІС–РґСѓР°Р»СЊРЅРёР№")(),
                 "is_required": bool(getattr(c, "is_required", False)),
             }
             for c in obj.tender_criteria.all()
@@ -1723,7 +1794,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             if nom_id is not None:
                 if nom_id in seen:
                     raise drf.ValidationError(
-                        {"positions": "Одна й та сама номенклатура не може бути додана двічі до позицій тендера."}
+                        {"positions": "РћРґРЅР° Р№ С‚Р° СЃР°РјР° РЅРѕРјРµРЅРєР»Р°С‚СѓСЂР° РЅРµ РјРѕР¶Рµ Р±СѓС‚Рё РґРѕРґР°РЅР° РґРІС–С‡С– РґРѕ РїРѕР·РёС†С–Р№ С‚РµРЅРґРµСЂР°."}
                     )
                 seen.add(nom_id)
 
@@ -1734,17 +1805,29 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
         from rest_framework import serializers as drf
 
         is_online_auction = getattr(instance, "conduct_type", "") == "online_auction"
-        required_msg = (
-            "Для моделі «Класичні торги» заповніть стартову ціну, мінімальний та максимальний крок ставки по кожній позиції."
+        auction_model = str(
+            getattr(
+                instance,
+                "auction_model",
+                ProcurementTender.AuctionModel.CLASSIC_AUCTION,
+            )
+            or ProcurementTender.AuctionModel.CLASSIC_AUCTION
         )
-        base_msg = "Перевірте параметри ставки по кожній позиції: значення мають бути > 0, а мінімальний крок не може перевищувати максимальний."
+        is_classic_online_auction = (
+            is_online_auction
+            and auction_model == ProcurementTender.AuctionModel.CLASSIC_AUCTION
+        )
+        required_msg = (
+            "Р”Р»СЏ РјРѕРґРµР»С– В«РљР»Р°СЃРёС‡РЅС– С‚РѕСЂРіРёВ» Р·Р°РїРѕРІРЅС–С‚СЊ СЃС‚Р°СЂС‚РѕРІСѓ С†С–РЅСѓ, РјС–РЅС–РјР°Р»СЊРЅРёР№ С‚Р° РјР°РєСЃРёРјР°Р»СЊРЅРёР№ РєСЂРѕРє СЃС‚Р°РІРєРё РїРѕ РєРѕР¶РЅС–Р№ РїРѕР·РёС†С–С—."
+        )
+        base_msg = "РџРµСЂРµРІС–СЂС‚Рµ РїР°СЂР°РјРµС‚СЂРё СЃС‚Р°РІРєРё РїРѕ РєРѕР¶РЅС–Р№ РїРѕР·РёС†С–С—: Р·РЅР°С‡РµРЅРЅСЏ РјР°СЋС‚СЊ Р±СѓС‚Рё > 0, Р° РјС–РЅС–РјР°Р»СЊРЅРёР№ РєСЂРѕРє РЅРµ РјРѕР¶Рµ РїРµСЂРµРІРёС‰СѓРІР°С‚Рё РјР°РєСЃРёРјР°Р»СЊРЅРёР№."
 
         for item in positions_data:
             start_price = item.get("start_price")
             min_bid_step = item.get("min_bid_step")
             max_bid_step = item.get("max_bid_step")
 
-            if is_online_auction and (
+            if is_classic_online_auction and (
                 start_price in (None, "") or min_bid_step in (None, "") or max_bid_step in (None, "")
             ):
                 raise drf.ValidationError({"positions": required_msg})
@@ -1910,9 +1993,9 @@ class ProcurementTenderListSerializer(serializers.ModelSerializer):
         if stage != ProcurementTender.Stage.COMPLETED:
             return ""
         if bool(getattr(obj, "has_next_tour", False)):
-            return "Наступний тур"
+            return "РќР°СЃС‚СѓРїРЅРёР№ С‚СѓСЂ"
         winners_count = int(getattr(obj, "winners_count", 0) or 0)
-        return "З переможцем" if winners_count > 0 else "Без переможця"
+        return "Р— РїРµСЂРµРјРѕР¶С†РµРј" if winners_count > 0 else "Р‘РµР· РїРµСЂРµРјРѕР¶С†СЏ"
 
     def get_total_amount(self, obj):
         stage = str(getattr(obj, "stage", "") or "")
@@ -2006,7 +2089,7 @@ class ProcurementParticipationTenderListSerializer(serializers.ModelSerializer):
 
 
 class TenderProposalPositionSerializer(serializers.ModelSerializer):
-    """Значення по позиції в пропозиції."""
+    """Р—РЅР°С‡РµРЅРЅСЏ РїРѕ РїРѕР·РёС†С–С— РІ РїСЂРѕРїРѕР·РёС†С–С—."""
 
     tender_position_id = serializers.PrimaryKeyRelatedField(
         queryset=ProcurementTenderPosition.objects.none(), source="tender_position"
@@ -2042,7 +2125,7 @@ class TenderProposalPositionSerializer(serializers.ModelSerializer):
 
 
 class TenderProposalSerializer(serializers.ModelSerializer):
-    """Пропозиція контрагента в тендері."""
+    """РџСЂРѕРїРѕР·РёС†С–СЏ РєРѕРЅС‚СЂР°РіРµРЅС‚Р° РІ С‚РµРЅРґРµСЂС–."""
 
     supplier_company_id = serializers.PrimaryKeyRelatedField(
         queryset=Company.objects.all(), source="supplier_company"
@@ -2091,7 +2174,7 @@ class TenderProposalStatusSerializer(serializers.ModelSerializer):
 
 
 class TenderProposalPositionUpdateSerializer(serializers.Serializer):
-    """Оновлення значень по позиціях пропозиції (bulk)."""
+    """РћРЅРѕРІР»РµРЅРЅСЏ Р·РЅР°С‡РµРЅСЊ РїРѕ РїРѕР·РёС†С–СЏС… РїСЂРѕРїРѕР·РёС†С–С— (bulk)."""
 
     position_values = serializers.ListField(
         child=serializers.DictField(),
@@ -2100,7 +2183,7 @@ class TenderProposalPositionUpdateSerializer(serializers.Serializer):
 
 
 class ProcurementTenderFileSerializer(serializers.ModelSerializer):
-    """Файл, прикріплений до тендера."""
+    """Р¤Р°Р№Р», РїСЂРёРєСЂС–РїР»РµРЅРёР№ РґРѕ С‚РµРЅРґРµСЂР°."""
 
     file_url = serializers.SerializerMethodField()
     uploaded_by_display = serializers.SerializerMethodField()
@@ -2126,7 +2209,7 @@ class ProcurementTenderFileSerializer(serializers.ModelSerializer):
 
 
 class SalesTenderPositionSerializer(serializers.ModelSerializer):
-    """Позиція тендера на продаж."""
+    """РџРѕР·РёС†С–СЏ С‚РµРЅРґРµСЂР° РЅР° РїСЂРѕРґР°Р¶."""
 
     nomenclature_id = serializers.PrimaryKeyRelatedField(
         queryset=Nomenclature.objects.all(), source="nomenclature"
@@ -2187,7 +2270,7 @@ class SalesTenderPositionSerializer(serializers.ModelSerializer):
 
 
 class SalesTenderSerializer(serializers.ModelSerializer):
-    """Тендер на продаж (паспорт та етапи)."""
+    """РўРµРЅРґРµСЂ РЅР° РїСЂРѕРґР°Р¶ (РїР°СЃРїРѕСЂС‚ С‚Р° РµС‚Р°РїРё)."""
 
     number = serializers.SerializerMethodField()
     stage_label = serializers.CharField(source="get_stage_display", read_only=True)
@@ -2304,18 +2387,18 @@ class SalesTenderSerializer(serializers.ModelSerializer):
         return super().to_internal_value(self._normalize_criterion_ids_payload(data))
 
     def validate(self, attrs):
-        """Категорія CPV обовʼязкова: хоча б одна CPV має бути обрана."""
+        """РљР°С‚РµРіРѕСЂС–СЏ CPV РѕР±РѕРІКјСЏР·РєРѕРІР°: С…РѕС‡Р° Р± РѕРґРЅР° CPV РјР°С” Р±СѓС‚Рё РѕР±СЂР°РЅР°."""
         _validate_price_criterion_vat_percent(attrs, instance=self.instance)
         cpv_categories = attrs.get("cpv_categories")
         if cpv_categories is not None and len(cpv_categories) == 0:
             from rest_framework import serializers as drf
             raise drf.ValidationError(
-                {"cpv_ids": "Оберіть хоча б одну категорію CPV."}
+                {"cpv_ids": "РћР±РµСЂС–С‚СЊ С…РѕС‡Р° Р± РѕРґРЅСѓ РєР°С‚РµРіРѕСЂС–СЋ CPV."}
             )
         if not self.instance and (cpv_categories is None or len(cpv_categories) == 0):
             from rest_framework import serializers as drf
             raise drf.ValidationError(
-                {"cpv_ids": "Оберіть хоча б одну категорію CPV."}
+                {"cpv_ids": "РћР±РµСЂС–С‚СЊ С…РѕС‡Р° Р± РѕРґРЅСѓ РєР°С‚РµРіРѕСЂС–СЋ CPV."}
             )
         criterion_ids = attrs.get("tender_criteria")
         if criterion_ids is not None:
@@ -2351,7 +2434,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
         if approval_model and company and approval_model.company_id != company.id:
             from rest_framework import serializers as drf
             raise drf.ValidationError(
-                {"approval_model_id": "Модель погодження належить іншій компанії."}
+                {"approval_model_id": "РњРѕРґРµР»СЊ РїРѕРіРѕРґР¶РµРЅРЅСЏ РЅР°Р»РµР¶РёС‚СЊ С–РЅС€С–Р№ РєРѕРјРїР°РЅС–С—."}
             )
         if (
             stage_value == SalesTender.Stage.PREPARATION
@@ -2377,12 +2460,17 @@ class SalesTenderSerializer(serializers.ModelSerializer):
                 from rest_framework import serializers as drf
                 if not approval_model:
                     raise drf.ValidationError(
-                        {"approval_model_id": "Оберіть модель погодження для цієї категорії."}
+                        {"approval_model_id": "РћР±РµСЂС–С‚СЊ РјРѕРґРµР»СЊ РїРѕРіРѕРґР¶РµРЅРЅСЏ РґР»СЏ С†С–С”С— РєР°С‚РµРіРѕСЂС–С—."}
                     )
                 if not available_qs.filter(id=approval_model.id).exists():
                     raise drf.ValidationError(
-                        {"approval_model_id": "Обрана модель не відповідає параметрам застосування."}
+                        {"approval_model_id": "РћР±СЂР°РЅР° РјРѕРґРµР»СЊ РЅРµ РІС–РґРїРѕРІС–РґР°С” РїР°СЂР°РјРµС‚СЂР°Рј Р·Р°СЃС‚РѕСЃСѓРІР°РЅРЅСЏ."}
                     )
+        _validate_required_org_fields_for_user(
+            attrs=attrs,
+            instance=self.instance,
+            request=self.context.get("request"),
+        )
         return attrs
 
     class Meta:
@@ -2411,6 +2499,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             "department_name",
             "conduct_type",
             "conduct_type_label",
+            "auction_model",
             "publication_type",
             "publication_type_label",
             "currency",
@@ -2420,6 +2509,8 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             "created_by_display",
             "start_at",
             "end_at",
+            "planned_start_at",
+            "planned_end_at",
             "created_at",
             "updated_at",
             "price_criterion_vat",
@@ -2540,7 +2631,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
                 "name": c.name,
                 "type": c.type,
                 "application": getattr(c, "application", "individual"),
-                "application_label": getattr(c, "get_application_display", lambda: "Індивідуальний")(),
+                "application_label": getattr(c, "get_application_display", lambda: "Р†РЅРґРёРІС–РґСѓР°Р»СЊРЅРёР№")(),
                 "is_required": bool(getattr(c, "is_required", False)),
             }
             for c in obj.tender_criteria.all()
@@ -2730,9 +2821,9 @@ class SalesTenderListSerializer(serializers.ModelSerializer):
         if stage != SalesTender.Stage.COMPLETED:
             return ""
         if bool(getattr(obj, "has_next_tour", False)):
-            return "Наступний тур"
+            return "РќР°СЃС‚СѓРїРЅРёР№ С‚СѓСЂ"
         winners_count = int(getattr(obj, "winners_count", 0) or 0)
-        return "З переможцем" if winners_count > 0 else "Без переможця"
+        return "Р— РїРµСЂРµРјРѕР¶С†РµРј" if winners_count > 0 else "Р‘РµР· РїРµСЂРµРјРѕР¶С†СЏ"
 
     def get_total_amount(self, obj):
         stage = str(getattr(obj, "stage", "") or "")
@@ -2826,7 +2917,7 @@ class SalesParticipationTenderListSerializer(serializers.ModelSerializer):
 
 
 class SalesTenderProposalPositionSerializer(serializers.ModelSerializer):
-    """Значення по позиції в пропозиції тендера на продаж."""
+    """Р—РЅР°С‡РµРЅРЅСЏ РїРѕ РїРѕР·РёС†С–С— РІ РїСЂРѕРїРѕР·РёС†С–С— С‚РµРЅРґРµСЂР° РЅР° РїСЂРѕРґР°Р¶."""
 
     tender_position_id = serializers.PrimaryKeyRelatedField(
         queryset=SalesTenderPosition.objects.none(), source="tender_position"
@@ -2862,7 +2953,7 @@ class SalesTenderProposalPositionSerializer(serializers.ModelSerializer):
 
 
 class SalesTenderProposalSerializer(serializers.ModelSerializer):
-    """Пропозиція контрагента в тендері на продаж."""
+    """РџСЂРѕРїРѕР·РёС†С–СЏ РєРѕРЅС‚СЂР°РіРµРЅС‚Р° РІ С‚РµРЅРґРµСЂС– РЅР° РїСЂРѕРґР°Р¶."""
 
     supplier_company_id = serializers.PrimaryKeyRelatedField(
         queryset=Company.objects.all(), source="supplier_company"
@@ -2911,7 +3002,7 @@ class SalesTenderProposalStatusSerializer(serializers.ModelSerializer):
 
 
 class SalesTenderFileSerializer(serializers.ModelSerializer):
-    """Файл, прикріплений до тендера на продаж."""
+    """Р¤Р°Р№Р», РїСЂРёРєСЂС–РїР»РµРЅРёР№ РґРѕ С‚РµРЅРґРµСЂР° РЅР° РїСЂРѕРґР°Р¶."""
 
     file_url = serializers.SerializerMethodField()
     uploaded_by_display = serializers.SerializerMethodField()

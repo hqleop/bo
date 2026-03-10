@@ -8,6 +8,7 @@ import type {
   TenderProposal,
   TenderCriterion,
   TenderAttribute,
+  TenderConditionTemplate,
   TenderFile,
   TenderApprovalRoutePayload
 } from './tenders.types'
@@ -375,6 +376,42 @@ export async function createNomenclature(
 // Reference data used by tender pages
 export async function getCategories(request: RequestFn) {
   return request<unknown[]>('/categories/', { cacheTtlMs: 5 * 60_000 })
+}
+
+export async function getTenderConditionTemplates(request: RequestFn, companyId?: number | null) {
+  const query: Record<string, string> = {}
+  if (companyId && Number.isFinite(companyId)) {
+    query.company = String(Math.trunc(Number(companyId)))
+  }
+  return request<TenderConditionTemplate[]>('/tender-condition-templates/', {
+    query: Object.keys(query).length ? query : undefined,
+    cacheTtlMs: 30_000,
+  })
+}
+
+export async function createTenderConditionTemplate(
+  request: RequestFn,
+  body: { company: number; name: string; content: string }
+) {
+  return request<TenderConditionTemplate>('/tender-condition-templates/', {
+    method: 'POST',
+    body: body as unknown as Record<string, unknown>,
+  })
+}
+
+export async function updateTenderConditionTemplate(
+  request: RequestFn,
+  id: number,
+  body: { name: string; content: string }
+) {
+  return request<TenderConditionTemplate>(`/tender-condition-templates/${id}/`, {
+    method: 'PATCH',
+    body: body as unknown as Record<string, unknown>,
+  })
+}
+
+export async function deleteTenderConditionTemplate(request: RequestFn, id: number) {
+  return request<unknown>(`/tender-condition-templates/${id}/`, { method: 'DELETE' })
 }
 
 export async function getExpenses(request: RequestFn) {

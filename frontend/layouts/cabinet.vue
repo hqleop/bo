@@ -301,6 +301,11 @@ const menuLinks = computed(() => {
       to: "/cabinet/reference/attributes",
       icon: "i-heroicons-bars-3",
     },
+    {
+      label: "Шаблони умов",
+      to: "/cabinet/templates",
+      icon: "i-heroicons-document-duplicate",
+    },
   );
   if (referenceChildren.length) {
     links.push({

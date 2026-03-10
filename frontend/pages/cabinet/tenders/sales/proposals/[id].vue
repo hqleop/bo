@@ -115,7 +115,7 @@
                     v-else-if="criterionInputKind(c) === 'number'"
                     v-model="generalCriterionValues[c.id]"
                     type="number"
-                    step="0.01"
+                    step="0.0001"
                     size="sm"
                     class="w-full"
                     @blur="savePositionValues"
@@ -250,8 +250,8 @@
                         <td class="p-2">
                           {{
                             isOnlineAuction
-                              ? row.quantity
-                              : `${row.quantity} ${row.unit_name}`
+                              ? formatNumericDisplay(row.quantity)
+                              : `${formatNumericDisplay(row.quantity)} ${row.unit_name}`
                           }}
                         </td>
                         <td v-if="!isOnlineAuction" class="p-2 max-w-[200px]">
@@ -271,7 +271,7 @@
                             "
                             v-model="row.price"
                             type="number"
-                            step="0.01"
+                            step="0.0001"
                             size="sm"
                             class="min-w-[100px]"
                             @blur="savePositionValues"
@@ -308,7 +308,7 @@
                             "
                             v-model="row.next_price"
                             type="number"
-                            step="0.01"
+                            step="0.0001"
                             size="sm"
                             class="min-w-[120px]"
                           />
@@ -384,7 +384,7 @@
                               v-else-if="criterionInputKind(c) === 'number'"
                               v-model="row.criterion_values[c.id]"
                               type="number"
-                              step="0.01"
+                              step="0.0001"
                               size="sm"
                               class="min-w-[80px]"
                               @blur="savePositionValues"
@@ -660,7 +660,8 @@
                       {{ pos.name }}
                     </td>
                     <td class="p-2 bg-white whitespace-nowrap">
-                      {{ pos.quantity }} {{ pos.unit_name || "" }}
+                      {{ formatNumericDisplay(pos.quantity) }}
+                      {{ pos.unit_name || "" }}
                     </td>
                     <template v-for="proposal in proposals" :key="proposal.id">
                       <td
@@ -761,6 +762,7 @@ import {
   criterionInputKind,
   extractFilesArray,
   fileModelKey,
+  formatDecimalValue,
   formatCriterionValue,
   formatPriceValue,
   normalizeCriterionValueForSave,
@@ -922,11 +924,13 @@ const acceptanceEndAt = computed(() => {
   return Number.isNaN(timestamp) ? null : timestamp;
 });
 function formatTimerDuration(ms: number) {
-  const totalMinutes = Math.max(0, Math.floor(ms / 60000));
-  const days = Math.floor(totalMinutes / (24 * 60));
-  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
-  const minutes = totalMinutes % 60;
-  return `${days} дн / ${hours} год / ${minutes} хв`;
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${days} дн / ${pad(hours)} год / ${pad(minutes)} хв / ${pad(seconds)} с`;
 }
 const timerText = computed(() => {
   const n = now.value.getTime();
@@ -1067,10 +1071,13 @@ function getProposalPositionSum(
   const num = Number(price);
   if (Number.isNaN(num)) return null;
   const qty = Number(pos.quantity) || 0;
-  return (qty * num).toLocaleString("uk-UA", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
+  return formatDecimalValue(qty * num, 4);
+}
+
+function formatNumericDisplay(value: unknown): string {
+  const parsed = toValidNumber(value);
+  if (parsed == null) return String(value ?? "");
+  return formatDecimalValue(parsed, 4);
 }
 
 /** Продаж: краща = більша ціна, гірша = менша ціна */
@@ -1620,3 +1627,4 @@ watch(showFilesModal, async (open) => {
   await loadTenderFiles();
 });
 </script>
+

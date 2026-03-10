@@ -100,9 +100,9 @@ const tasks = ref<UserTaskRow[]>([]);
 const columns = [
   { accessorKey: "task_label", header: "Завдання" },
   { accessorKey: "tender", header: "Документ" },
-  { accessorKey: "stage_label", header: "Етап" },
-  { accessorKey: "tender_type", header: "Тип тендера" },
   { accessorKey: "tender_name", header: "Назва" },
+  { accessorKey: "tender_type", header: "Тип" },
+  { accessorKey: "stage_label", header: "Етап" },
 ];
 
 function toTaskRows(

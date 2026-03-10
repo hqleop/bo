@@ -30,6 +30,7 @@ from .views import (
     CurrencyViewSet,
     TenderCriterionViewSet,
     TenderAttributeViewSet,
+    TenderConditionTemplateViewSet,
     ApprovalModelRoleViewSet,
     ApprovalModelRoleUserViewSet,
     ApprovalRangeMatrixViewSet,
@@ -67,6 +68,7 @@ router.register(r"nomenclatures", NomenclatureViewSet, basename="nomenclature")
 router.register(r"currencies", CurrencyViewSet, basename="currency")
 router.register(r"tender-criteria", TenderCriterionViewSet, basename="tender-criterion")
 router.register(r"tender-attributes", TenderAttributeViewSet, basename="tender-attribute")
+router.register(r"tender-condition-templates", TenderConditionTemplateViewSet, basename="tender-condition-template")
 router.register(r"approval-model-roles", ApprovalModelRoleViewSet, basename="approval-model-role")
 router.register(r"approval-model-role-users", ApprovalModelRoleUserViewSet, basename="approval-model-role-user")
 router.register(r"approval-range-matrix", ApprovalRangeMatrixViewSet, basename="approval-range-matrix")

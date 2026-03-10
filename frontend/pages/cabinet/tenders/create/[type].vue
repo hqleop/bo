@@ -38,7 +38,6 @@
                       label="Категорія"
                       placeholder="Оберіть категорію"
                       search-placeholder="Пошук категорії"
-                      :disabled="(form.cpv_ids?.length ?? 0) > 0"
                       :tree="categoryTree"
                       :selected-ids="selectedCategoryIds"
                       :search-term="categorySearch"
@@ -49,7 +48,6 @@
                       label="Категорія CPV"
                       placeholder="Оберіть CPV"
                       required
-                      :disabled="!!form.category"
                       :selected-ids="form.cpv_ids"
                       :selected-labels="createCpvLabels"
                       @update:selected-ids="form.cpv_ids = $event"
@@ -64,21 +62,22 @@
                   >
                     Бюджет і валюта
                   </p>
-                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <UFormField label="Стаття бюджету">
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <UFormField label="Стаття бюджету" :required="isExpenseArticleRequired">
                       <USelectMenu
                         v-model="form.expense_article"
                         :items="expenseOptions"
                         value-key="value"
                         placeholder="Оберіть статтю"
                         size="sm"
+                        class="w-full"
                       />
                     </UFormField>
                     <UFormField label="Орієнтовний бюджет">
                       <UInput
                         v-model.number="form.estimated_budget"
                         type="number"
-                        step="0.01"
+                        step="0.0001"
                         placeholder="0"
                         size="sm"
                       />
@@ -90,6 +89,7 @@
                         value-key="value"
                         placeholder="Валюту"
                         size="sm"
+                        class="w-full"
                       />
                     </UFormField>
                   </div>
@@ -102,23 +102,25 @@
                     Організаційна структура
                   </p>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <UFormField label="Філіал">
+                    <UFormField label="Філіал" :required="isBranchRequired">
                       <USelectMenu
                         v-model="form.branch"
                         :items="branchOptions"
                         value-key="value"
                         placeholder="Оберіть філіал"
                         size="sm"
+                        class="w-full"
                         @update:model-value="onBranchChange"
                       />
                     </UFormField>
-                    <UFormField label="Підрозділ">
+                    <UFormField label="Підрозділ" :required="isDepartmentRequired">
                       <USelectMenu
                         v-model="form.department"
                         :items="departmentOptions"
                         value-key="value"
                         placeholder="Оберіть підрозділ"
                         size="sm"
+                        class="w-full"
                       />
                     </UFormField>
                   </div>
@@ -178,6 +180,16 @@
                   label="Опис умов та вимог"
                   class="mb-0 flex-1 flex flex-col min-h-0"
                 >
+                  <div class="mb-2">
+                    <UButton
+                      size="sm"
+                      variant="outline"
+                      icon="i-heroicons-document-text"
+                      @click="openConditionTemplateModal"
+                    >
+                      Обрати шаблон
+                    </UButton>
+                  </div>
                   <div
                     class="general-terms-editor-wrapper flex flex-col min-h-[320px] rounded-md border border-gray-200 bg-white overflow-hidden"
                   >
@@ -217,6 +229,47 @@
         >
       </aside>
     </div>
+    <UModal v-model:open="showConditionTemplateModal">
+      <template #content>
+        <UCard>
+          <template #header><h3>Шаблони умов</h3></template>
+          <div class="space-y-3">
+            <div
+              v-if="conditionTemplatesLoading"
+              class="py-8 text-center text-sm text-gray-500"
+            >
+              Завантаження шаблонів...
+            </div>
+            <div
+              v-else-if="!conditionTemplates.length"
+              class="py-8 text-center text-sm text-gray-500"
+            >
+              Немає доступних шаблонів умов.
+            </div>
+            <div v-else class="max-h-[60vh] overflow-auto space-y-2">
+              <UButton
+                v-for="templateItem in conditionTemplates"
+                :key="templateItem.id"
+                class="w-full justify-start"
+                variant="outline"
+                color="neutral"
+                @click="applyConditionTemplate(templateItem)"
+              >
+                {{ templateItem.name }}
+              </UButton>
+            </div>
+            <div class="flex justify-end">
+              <UButton
+                variant="outline"
+                @click="showConditionTemplateModal = false"
+              >
+                Закрити
+              </UButton>
+            </div>
+          </div>
+        </UCard>
+      </template>
+    </UModal>
     <p v-if="error" class="text-sm text-red-600 mt-3">{{ error }}</p>
   </div>
 </template>
@@ -224,6 +277,7 @@
 <script setup lang="ts">
 import { TextAlign } from "@tiptap/extension-text-align";
 import { TENDER_STAGE_ITEMS } from "~/domains/tenders/tenders.constants";
+import type { TenderConditionTemplate } from "~/domains/tenders/tenders.types";
 
 definePageMeta({
   layout: "cabinet",
@@ -263,6 +317,9 @@ const tendersUC = useTendersUseCases();
 const saving = ref(false);
 const error = ref("");
 const categorySearch = ref("");
+const showConditionTemplateModal = ref(false);
+const conditionTemplatesLoading = ref(false);
+const conditionTemplates = ref<TenderConditionTemplate[]>([]);
 
 const stepperItems = computed(() => {
   const base =
@@ -287,6 +344,7 @@ const form = reactive({
   branch: undefined as number | undefined,
   department: undefined as number | undefined,
   conduct_type: "rfx",
+  auction_model: "classic_auction",
   publication_type: "open",
   currency: undefined as number | undefined,
   general_terms: "",
@@ -354,6 +412,9 @@ const expenseOptions = ref<{ value: number; label: string }[]>([]);
 const branchOptions = ref<{ value: number; label: string }[]>([]);
 const departmentOptions = ref<{ value: number; label: string }[]>([]);
 const currencyOptions = ref<{ value: number; label: string }[]>([]);
+const isExpenseArticleRequired = computed(() => expenseOptions.value.length > 0);
+const isBranchRequired = computed(() => branchOptions.value.length > 0);
+const isDepartmentRequired = computed(() => departmentOptions.value.length > 0);
 const availableApprovalModels = ref<any[]>([]);
 let approvalModelsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const approvalModelOptions = computed(() =>
@@ -429,10 +490,29 @@ function toggleCategory(id: number) {
   form.category = form.category === id ? undefined : id;
   if (form.category) {
     applyCategoryCpvs(form.category);
-  } else {
-    form.cpv_ids = [];
-    createCpvLabels.value = [];
   }
+}
+
+async function ensureConditionTemplatesLoaded() {
+  const companyId = Number((me.value as any)?.memberships?.[0]?.company?.id || 0);
+  if (!companyId) return;
+  conditionTemplatesLoading.value = true;
+  try {
+    const { data } = await tendersUC.getTenderConditionTemplates(companyId);
+    conditionTemplates.value = Array.isArray(data) ? data : [];
+  } finally {
+    conditionTemplatesLoading.value = false;
+  }
+}
+
+async function openConditionTemplateModal() {
+  await ensureConditionTemplatesLoaded();
+  showConditionTemplateModal.value = true;
+}
+
+function applyConditionTemplate(templateItem: TenderConditionTemplate) {
+  form.general_terms = String(templateItem.content || "");
+  showConditionTemplateModal.value = false;
 }
 
 async function loadOptions() {
@@ -522,6 +602,18 @@ async function saveTender() {
     error.value = "Оберіть модель погодження.";
     return;
   }
+  if (isExpenseArticleRequired.value && !form.expense_article) {
+    error.value = "Оберіть статтю бюджету.";
+    return;
+  }
+  if (isBranchRequired.value && !form.branch) {
+    error.value = "Оберіть філіал.";
+    return;
+  }
+  if (isDepartmentRequired.value && !form.department) {
+    error.value = "Оберіть підрозділ.";
+    return;
+  }
 
   saving.value = true;
   error.value = "";
@@ -539,6 +631,7 @@ async function saveTender() {
         branch: form.branch,
         department: form.department,
         conduct_type: form.conduct_type,
+        auction_model: form.auction_model,
         publication_type: form.publication_type,
         currency: form.currency,
         general_terms: form.general_terms,
@@ -618,3 +711,4 @@ onUnmounted(() => {
   opacity: 0;
 }
 </style>
+

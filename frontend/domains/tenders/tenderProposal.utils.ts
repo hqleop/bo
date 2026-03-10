@@ -87,6 +87,16 @@ export function normalizeCriterionValueForSave(
   return text.trim() !== "" ? text : null;
 }
 
+export function formatDecimalValue(
+  value: number,
+  maximumFractionDigits = 4,
+): string {
+  return value.toLocaleString("uk-UA", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits,
+  });
+}
+
 export function formatCriterionValue(criterion: CriterionLike, value: unknown): string {
   if (value == null || value === "") return "";
   const kind = criterionInputKind(criterion);
@@ -100,6 +110,11 @@ export function formatCriterionValue(criterion: CriterionLike, value: unknown): 
       .map((item) => String(item || "").trim())
       .filter(Boolean)
       .join(", ");
+  }
+  if (kind === "number") {
+    const numberValue = toValidNumber(value);
+    if (numberValue == null) return "";
+    return formatDecimalValue(numberValue, 4);
   }
   return String(value);
 }
@@ -117,13 +132,14 @@ export function extractFilesArray(value: unknown): File[] {
 
 export function toValidNumber(value: unknown): number | null {
   if (value == null || value === "") return null;
-  const numberValue = Number(value);
+  const normalizedValue =
+    typeof value === "string"
+      ? value.replace(/\s+/g, "").replace(",", ".")
+      : value;
+  const numberValue = Number(normalizedValue);
   return Number.isFinite(numberValue) ? numberValue : null;
 }
 
 export function formatPriceValue(value: number): string {
-  return value.toLocaleString("uk-UA", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
+  return formatDecimalValue(value, 4);
 }

@@ -23,7 +23,7 @@ function boolEnv(name: string, fallback: boolean) {
 
 export default defineNuxtConfig({
   compatibilityDate: "2024-04-03",
-  devtools: { enabled: false },
+  devtools: { enabled: true },
   modules: ["@nuxt/ui"],
   runtimeConfig: {
     public: {

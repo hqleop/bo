@@ -213,6 +213,30 @@ export function useTendersUseCases() {
     return tendersApi.getCategories(fetch)
   }
 
+  async function getTenderConditionTemplates(companyId?: number | null) {
+    const { data, error } = await tendersApi.getTenderConditionTemplates(fetch, companyId)
+    return { data: Array.isArray(data) ? data : [], error }
+  }
+
+  async function createTenderConditionTemplate(body: {
+    company: number
+    name: string
+    content: string
+  }) {
+    return tendersApi.createTenderConditionTemplate(fetch, body)
+  }
+
+  async function updateTenderConditionTemplate(
+    id: number,
+    body: { name: string; content: string }
+  ) {
+    return tendersApi.updateTenderConditionTemplate(fetch, id, body)
+  }
+
+  async function deleteTenderConditionTemplate(id: number) {
+    return tendersApi.deleteTenderConditionTemplate(fetch, id)
+  }
+
   async function getExpenses() {
     return tendersApi.getExpenses(fetch)
   }
@@ -361,6 +385,10 @@ export function useTendersUseCases() {
     getUnits,
     createNomenclature,
     getCategories,
+    getTenderConditionTemplates,
+    createTenderConditionTemplate,
+    updateTenderConditionTemplate,
+    deleteTenderConditionTemplate,
     getExpenses,
     getBranches,
     getCurrencies,

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div v-if="loading" class="flex items-center justify-center py-12">
     <UIcon
       name="i-heroicons-arrow-path"
@@ -17,15 +17,24 @@
         № {{ tender.number }}
         <span class="font-normal text-gray-700">{{ tender.name }}</span>
       </h1>
-      <div v-if="tourOptions.length" class="flex items-center gap-2 shrink-0">
-        <span class="text-sm text-gray-600">Тур:</span>
-        <USelect
-          :model-value="tenderId"
-          :items="tourOptions"
-          value-key="value"
-          class="min-w-[120px]"
-          @update:model-value="onTourSelect"
-        />
+      <div class="flex items-center gap-2 shrink-0">
+        <UButton
+          variant="outline"
+          icon="i-heroicons-document-text"
+          @click="openProtocolModal"
+        >
+          Протокол
+        </UButton>
+        <div v-if="tourOptions.length" class="flex items-center gap-2 shrink-0">
+          <span class="text-sm text-gray-600">Тур:</span>
+          <USelect
+            :model-value="tenderId"
+            :items="tourOptions"
+            value-key="value"
+            class="min-w-[120px]"
+            @update:model-value="onTourSelect"
+          />
+        </div>
       </div>
     </div>
     <div
@@ -92,10 +101,7 @@
                         label="Категорія"
                         placeholder="Оберіть категорію"
                         search-placeholder="Пошук категорії"
-                        :disabled="
-                          isViewingPreviousTour ||
-                          (form.cpv_ids?.length ?? 0) > 0
-                        "
+                        :disabled="isViewingPreviousTour"
                         :tree="categoryTree"
                         :selected-ids="selectedCategoryIds"
                         :search-term="categorySearch"
@@ -106,7 +112,7 @@
                         label="Категорія CPV"
                         placeholder="Оберіть CPV"
                         required
-                        :disabled="isViewingPreviousTour || !!form.category"
+                        :disabled="isViewingPreviousTour"
                         :selected-ids="form.cpv_ids"
                         :selected-labels="tenderCpvLabels"
                         @update:selected-ids="form.cpv_ids = $event"
@@ -121,14 +127,18 @@
                     >
                       Бюджет і валюта
                     </p>
-                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                      <UFormField label="Стаття бюджету">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <UFormField
+                        label="Стаття бюджету"
+                        :required="isExpenseArticleRequired"
+                      >
                         <USelectMenu
                           v-model="form.expense_article"
                           :items="expenseOptions"
                           value-key="value"
                           placeholder="Оберіть статтю"
                           size="sm"
+                          class="w-full"
                           :disabled="isViewingPreviousTour"
                         />
                       </UFormField>
@@ -136,7 +146,7 @@
                         <UInput
                           v-model.number="form.estimated_budget"
                           type="number"
-                          step="0.01"
+                          step="0.0001"
                           placeholder="0"
                           size="sm"
                           :disabled="isViewingPreviousTour"
@@ -149,6 +159,7 @@
                           value-key="value"
                           placeholder="Валюту"
                           size="sm"
+                          class="w-full"
                           :disabled="isViewingPreviousTour"
                         />
                       </UFormField>
@@ -174,24 +185,32 @@
                       Організаційна структура
                     </p>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <UFormField label="Філіал">
+                      <UFormField
+                        label="Філіал"
+                        :required="isBranchRequired"
+                      >
                         <USelectMenu
                           v-model="form.branch"
                           :items="branchOptions"
                           value-key="value"
                           placeholder="Оберіть філіал"
                           size="sm"
+                          class="w-full"
                           :disabled="isViewingPreviousTour"
                           @update:model-value="onBranchChange"
                         />
                       </UFormField>
-                      <UFormField label="Підрозділ">
+                      <UFormField
+                        label="Підрозділ"
+                        :required="isDepartmentRequired"
+                      >
                         <USelectMenu
                           v-model="form.department"
                           :items="departmentOptions"
                           value-key="value"
                           placeholder="Оберіть підрозділ"
                           size="sm"
+                          class="w-full"
                           :disabled="isViewingPreviousTour"
                         />
                       </UFormField>
@@ -227,6 +246,50 @@
                       </UFormField>
                     </div>
                   </div>
+
+                  <div>
+                    <p
+                      class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
+                    >
+                      Публікація (орієнтовно)
+                    </p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <UFormField label="Орієнтовна дата та час прийому пропозицій">
+                        <div class="grid grid-cols-[1fr_auto] gap-2">
+                          <DateValuePicker
+                            :model-value="plannedStartDate"
+                            :disabled="isViewingPreviousTour"
+                            @update:model-value="plannedStartDate = $event || ''"
+                          />
+                          <UInput
+                            v-model="plannedStartTime"
+                            placeholder="ГГ:ХХ"
+                            inputmode="numeric"
+                            class="w-24"
+                            :disabled="isViewingPreviousTour"
+                            @update:model-value="plannedStartTime = formatTimeInput($event)"
+                          />
+                        </div>
+                      </UFormField>
+                      <UFormField label="Орієнтовна дата та час завершення">
+                        <div class="grid grid-cols-[1fr_auto] gap-2">
+                          <DateValuePicker
+                            :model-value="plannedEndDate"
+                            :disabled="isViewingPreviousTour"
+                            @update:model-value="plannedEndDate = $event || ''"
+                          />
+                          <UInput
+                            v-model="plannedEndTime"
+                            placeholder="ГГ:ХХ"
+                            inputmode="numeric"
+                            class="w-24"
+                            :disabled="isViewingPreviousTour"
+                            @update:model-value="plannedEndTime = formatTimeInput($event)"
+                          />
+                        </div>
+                      </UFormField>
+                    </div>
+                  </div>
                 </div>
 
                 <div
@@ -241,6 +304,17 @@
                     label="Опис умов та вимог"
                     class="mb-0 flex-1 flex flex-col min-h-0"
                   >
+                    <div class="mb-2">
+                      <UButton
+                        size="sm"
+                        variant="outline"
+                        icon="i-heroicons-document-text"
+                        :disabled="isViewingPreviousTour"
+                        @click="openConditionTemplateModal"
+                      >
+                        Обрати шаблон
+                      </UButton>
+                    </div>
                     <div
                       class="general-terms-editor-wrapper flex flex-col min-h-[320px] rounded-md border border-gray-200 bg-white overflow-hidden"
                     >
@@ -687,50 +761,83 @@
                   class="h-full min-h-0 flex flex-col gap-4"
                 >
                   <div class="rounded-lg p-4 bg-gray-50/50">
-                    <h4 class="text-sm font-semibold text-gray-700 mb-3">
-                      Параметри цінового критерія
-                    </h4>
-                    <div class="flex flex-wrap gap-6">
-                      <UFormField label="ПДВ" class="min-w-[200px]">
-                        <USelectMenu
-                          v-model="priceCriterionVat"
-                          :items="vatOptions"
-                          value-key="value"
-                          placeholder="Оберіть варіант"
-                          :disabled="isViewingPreviousTour || isParticipant"
-                          @update:model-value="onPriceCriterionVatChange"
-                        />
-                      </UFormField>
-                      <UFormField
-                        label="% ПДВ"
-                        class="min-w-[180px]"
-                        :required="isVatPercentRequired"
-                      >
-                        <UInput
-                          v-model="priceCriterionVatPercent"
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="0.01"
-                          placeholder="Напр. 20"
-                          :disabled="
-                            isViewingPreviousTour ||
-                            isParticipant ||
-                            !isVatPercentRequired
-                          "
-                          @blur="onPriceCriterionVatPercentBlur"
-                        />
-                      </UFormField>
-                      <UFormField label="Доставка" class="min-w-[260px]">
-                        <USelectMenu
-                          v-model="priceCriterionDelivery"
-                          :items="deliveryOptions"
-                          value-key="value"
-                          placeholder="Оберіть варіант"
-                          :disabled="isViewingPreviousTour || isParticipant"
-                          @update:model-value="onPriceCriterionDeliveryChange"
-                        />
-                      </UFormField>
+                    <div
+                      :class="[
+                        'grid grid-cols-1 gap-6',
+                        isOnlineAuctionConductType
+                          ? 'xl:grid-cols-2'
+                          : 'xl:grid-cols-1',
+                      ]"
+                    >
+                      <div>
+                        <h4 class="text-sm font-semibold text-gray-700 mb-3">
+                          Параметри цінового критерія
+                        </h4>
+                        <div class="flex flex-wrap gap-6">
+                          <UFormField label="ПДВ" class="min-w-[200px]">
+                            <USelectMenu
+                              v-model="priceCriterionVat"
+                              :items="vatOptions"
+                              value-key="value"
+                              placeholder="Оберіть варіант"
+                              :disabled="isViewingPreviousTour || isParticipant"
+                              @update:model-value="onPriceCriterionVatChange"
+                            />
+                          </UFormField>
+                          <UFormField
+                            label="% ПДВ"
+                            class="min-w-[180px]"
+                            :required="isVatPercentRequired"
+                          >
+                            <UInput
+                              v-model="priceCriterionVatPercent"
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.0001"
+                              placeholder="Напр. 20"
+                              :disabled="
+                                isViewingPreviousTour ||
+                                isParticipant ||
+                                !isVatPercentRequired
+                              "
+                              @blur="onPriceCriterionVatPercentBlur"
+                            />
+                          </UFormField>
+                          <UFormField label="Доставка" class="min-w-[260px]">
+                            <USelectMenu
+                              v-model="priceCriterionDelivery"
+                              :items="deliveryOptions"
+                              value-key="value"
+                              placeholder="Оберіть варіант"
+                              :disabled="isViewingPreviousTour || isParticipant"
+                              @update:model-value="onPriceCriterionDeliveryChange"
+                            />
+                          </UFormField>
+                        </div>
+                      </div>
+                      <div v-if="isOnlineAuctionConductType">
+                        <h4 class="text-sm font-semibold text-gray-700 mb-3">
+                          Параметри онлайн торгів
+                        </h4>
+                        <UFormField
+                          label="Модель проведення"
+                          class="max-w-xs"
+                          :required="isOnlineAuctionConductType"
+                        >
+                          <USelectMenu
+                            v-model="form.auction_model"
+                            :items="auctionModelOptions"
+                            value-key="value"
+                            placeholder="Оберіть модель"
+                            :disabled="
+                              isViewingPreviousTour ||
+                              isParticipant ||
+                              !isOnlineAuctionConductType
+                            "
+                          />
+                        </UFormField>
+                      </div>
                     </div>
                   </div>
                   <div
@@ -846,7 +953,7 @@
                             <UInput
                               type="number"
                               min="0"
-                              step="0.01"
+                              step="0.0001"
                               v-model.number="row.original.quantity"
                               size="sm"
                               :disabled="isViewingPreviousTour || isParticipant"
@@ -856,7 +963,7 @@
                             <UInput
                               type="number"
                               min="0"
-                              step="0.01"
+                              step="0.0001"
                               v-model.number="row.original.start_price"
                               size="sm"
                               :disabled="isViewingPreviousTour || isParticipant"
@@ -866,7 +973,7 @@
                             <UInput
                               type="number"
                               min="0"
-                              step="0.01"
+                              step="0.0001"
                               v-model.number="row.original.min_bid_step"
                               size="sm"
                               :disabled="isViewingPreviousTour || isParticipant"
@@ -876,7 +983,7 @@
                             <UInput
                               type="number"
                               min="0"
-                              step="0.01"
+                              step="0.0001"
                               v-model.number="row.original.max_bid_step"
                               size="sm"
                               :disabled="isViewingPreviousTour || isParticipant"
@@ -900,7 +1007,7 @@
                               v-if="attribute.type === 'numeric'"
                               type="number"
                               min="0"
-                              step="0.01"
+                              step="0.0001"
                               size="sm"
                               :model-value="
                                 ensurePositionAttributeValues(row.original)[
@@ -1314,10 +1421,13 @@
                     >
                       <td class="p-2">{{ pos.name }}</td>
                       <td class="p-2">
-                        {{ pos.quantity }} {{ pos.unit_name ?? "" }}
+                        {{ formatDecimalDisplay(pos.quantity) }}
+                        {{ pos.unit_name ?? "" }}
                       </td>
                       <td class="p-2">{{ pos.winner_supplier_name ?? "—" }}</td>
-                      <td class="p-2">{{ pos.winner_price ?? "—" }}</td>
+                      <td class="p-2">
+                        {{ formatNumericOrDash(pos.winner_price) }}
+                      </td>
                       <td class="p-2">
                         {{
                           getApprovalPositionTotal(pos.quantity, pos.winner_price)
@@ -1451,6 +1561,15 @@
             @click="openTimingModal"
           >
             Змінити час проведення
+          </UButton>
+          <UButton
+            v-if="canShowAcceptanceInvitationsButton"
+            class="w-full"
+            variant="outline"
+            :disabled="isViewingPreviousTour"
+            @click="showAcceptanceInvitationsModal = true"
+          >
+            Запрошення
           </UButton>
           <UButton
             class="w-full"
@@ -1587,19 +1706,21 @@
           <template #header
             ><h4 class="text-sm font-semibold">Маршрут погодження</h4></template
           >
-          <div class="mt-2 flex-1 min-h-0 overflow-auto text-xs">
-            <div class="space-y-2 pr-1 min-w-max">
+          <div class="mt-2 flex-1 min-h-0 overflow-auto text-xs approval-route-scroll">
+            <div class="space-y-2 pr-1 min-w-max pb-2">
               <div
                 v-for="(node, index) in approvalRouteNodes"
                 :key="`${node.kind}-${node.order || index}-${index}`"
-                class="rounded border border-gray-200 p-2 min-w-[260px]"
+                class="rounded bg-gray-50/70 p-2 min-w-[220px] max-w-[320px]"
               >
-                <div class="flex items-center gap-2 font-medium whitespace-nowrap">
+                <div class="flex items-center gap-2 font-medium">
                   <UIcon
                     :name="node.kind === 'role' ? 'i-lucide-users-round' : 'i-lucide-user-round'"
                     class="size-4 text-gray-600"
                   />
-                  <span>{{ node.label || (node.kind === "role" ? "Роль" : "Автор тендера") }}</span>
+                  <span class="break-words">{{
+                    node.label || (node.kind === "role" ? "Роль" : "Автор тендера")
+                  }}</span>
                 </div>
                 <div class="mt-2 space-y-1.5">
                   <div
@@ -1613,7 +1734,7 @@
                     >
                       <UIcon :name="approvalUserStatusIcon(userNode.status)" class="size-4" />
                     </span>
-                    <span class="whitespace-nowrap">{{
+                    <span class="break-words">{{
                       userNode.short_name || userNode.full_name || "—"
                     }}</span>
                   </div>
@@ -1733,6 +1854,102 @@
       </template>
     </UModal>
 
+    <UModal
+      v-model:open="showProtocolModal"
+      :ui="{ content: 'w-[calc(100vw-2rem)] !max-w-[96vw]' }"
+    >
+      <template #content>
+        <UCard class="max-h-[92vh] overflow-hidden flex flex-col">
+          <template #header>
+            <div class="flex items-center justify-between gap-2">
+              <h3 class="text-lg font-semibold">Протокол процедури</h3>
+              <UButton
+                :to="protocolPdfUrl"
+                target="_blank"
+                rel="noopener"
+                icon="i-heroicons-arrow-down-tray"
+                variant="outline"
+              >
+                Завантажити PDF
+              </UButton>
+            </div>
+          </template>
+          <div class="flex-1 min-h-[70vh]">
+            <iframe
+              :src="protocolPdfUrl"
+              title="Протокол тендерної процедури"
+              class="w-full h-full border-0 rounded-md bg-white"
+            />
+          </div>
+        </UCard>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="showConditionTemplateModal">
+      <template #content>
+        <UCard>
+          <template #header><h3>Шаблони умов</h3></template>
+          <div class="space-y-3">
+            <div
+              v-if="conditionTemplatesLoading"
+              class="py-8 text-center text-sm text-gray-500"
+            >
+              Завантаження шаблонів...
+            </div>
+            <div
+              v-else-if="!conditionTemplates.length"
+              class="py-8 text-center text-sm text-gray-500"
+            >
+              Немає доступних шаблонів умов.
+            </div>
+            <div v-else class="max-h-[60vh] overflow-auto space-y-2">
+              <UButton
+                v-for="templateItem in conditionTemplates"
+                :key="templateItem.id"
+                class="w-full justify-start"
+                variant="outline"
+                color="neutral"
+                @click="applyConditionTemplate(templateItem)"
+              >
+                {{ templateItem.name }}
+              </UButton>
+            </div>
+            <div class="flex justify-end">
+              <UButton
+                variant="outline"
+                @click="showConditionTemplateModal = false"
+              >
+                Закрити
+              </UButton>
+            </div>
+          </div>
+        </UCard>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="showAcceptanceInvitationsModal">
+      <template #content>
+        <UCard>
+          <template #header><h3>Запрошення</h3></template>
+          <div class="space-y-3">
+            <UButton class="w-full" @click="repeatAcceptanceInvitationNotice">
+              Повторити сповіщення
+            </UButton>
+            <UButton
+              class="w-full"
+              variant="outline"
+              @click="
+                showAcceptanceInvitationsModal = false;
+                showInviteByEmailModal = true;
+              "
+            >
+              Запросити по email
+            </UButton>
+          </div>
+        </UCard>
+      </template>
+    </UModal>
+
     <UModal v-model:open="showPublishModal">
       <template #content>
         <UCard>
@@ -1766,6 +1983,7 @@
                   placeholder="ГГ:ХХ"
                   maxlength="5"
                   class="w-full"
+                  @update:model-value="publishStartTime = formatTimeInput($event)"
                 />
               </UFormField>
               <UFormField label="Час завершення" required>
@@ -1776,6 +1994,7 @@
                   placeholder="ГГ:ХХ"
                   maxlength="5"
                   class="w-full"
+                  @update:model-value="publishEndTime = formatTimeInput($event)"
                 />
               </UFormField>
             </div>
@@ -1889,6 +2108,7 @@
                   placeholder="ГГ:ХХ"
                   maxlength="5"
                   class="w-full"
+                  @update:model-value="timingStartTime = formatTimeInput($event)"
                   :disabled="!canEditStart"
                 />
               </UFormField>
@@ -1900,6 +2120,7 @@
                   placeholder="ГГ:ХХ"
                   maxlength="5"
                   class="w-full"
+                  @update:model-value="timingEndTime = formatTimeInput($event)"
                 />
               </UFormField>
             </div>
@@ -1961,6 +2182,9 @@
                   placeholder="ГГ:ХХ"
                   maxlength="5"
                   class="w-full"
+                  @update:model-value="
+                    resumeAcceptanceStartTime = formatTimeInput($event)
+                  "
                 />
               </UFormField>
               <UFormField label="Час завершення" required>
@@ -1971,6 +2195,9 @@
                   placeholder="ГГ:ХХ"
                   maxlength="5"
                   class="w-full"
+                  @update:model-value="
+                    resumeAcceptanceEndTime = formatTimeInput($event)
+                  "
                 />
               </UFormField>
             </div>
@@ -2051,7 +2278,7 @@
             <UFormField label="Варіант рішення" required>
               <USelectMenu
                 v-model="selectedDecisionMode"
-                :items="decisionModeOptions"
+                :items="decisionModeSelectableOptions"
                 value-key="value"
                 placeholder="Оберіть рішення"
                 class="w-full"
@@ -2176,7 +2403,8 @@
                 >
                   <td class="p-2 bg-white whitespace-nowrap">{{ pos.name }}</td>
                   <td class="p-2 bg-white whitespace-nowrap">
-                    {{ pos.quantity }} {{ pos.unit_name || "" }}
+                    {{ formatDecimalDisplay(pos.quantity) }}
+                    {{ pos.unit_name || "" }}
                   </td>
                   <template
                     v-for="proposal in decisionProposals"
@@ -2196,13 +2424,17 @@
                       "
                     >
                       {{
-                        getProposalPositionValue(proposal, pos.id)?.price ?? "—"
+                        formatNumericOrDash(
+                          getProposalPositionValue(proposal, pos.id)?.price,
+                        )
                       }}
                     </td>
                     <td class="p-2 border-l border-gray-200">
                       {{
-                        getProposalPositionValue(proposal, pos.id)
-                          ?.price_without_vat ?? "—"
+                        formatNumericOrDash(
+                          getProposalPositionValue(proposal, pos.id)
+                            ?.price_without_vat,
+                        )
                       }}
                     </td>
                     <td
@@ -2284,22 +2516,27 @@
                 >
                   <td class="p-2">{{ pos.name }}</td>
                   <td class="p-2">
-                    {{ pos.quantity }} {{ pos.unit_name || "" }}
+                    {{ formatDecimalDisplay(pos.quantity) }}
+                    {{ pos.unit_name || "" }}
                   </td>
                   <td class="p-2">
                     {{
-                      getProposalPositionValue(
-                        selectedParticipantProposal,
-                        pos.id,
-                      )?.price ?? "—"
+                      formatNumericOrDash(
+                        getProposalPositionValue(
+                          selectedParticipantProposal,
+                          pos.id,
+                        )?.price,
+                      )
                     }}
                   </td>
                   <td class="p-2">
                     {{
-                      getProposalPositionValue(
-                        selectedParticipantProposal,
-                        pos.id,
-                      )?.price_without_vat ?? "—"
+                      formatNumericOrDash(
+                        getProposalPositionValue(
+                          selectedParticipantProposal,
+                          pos.id,
+                        )?.price_without_vat,
+                      )
                     }}
                   </td>
                   <td
@@ -2366,11 +2603,11 @@
               <table class="w-full min-w-0 text-sm border-collapse table-fixed">
                 <thead>
                   <tr class="border-b border-gray-200 bg-gray-50">
-                    <th
-                      class="text-left py-2 px-3 font-medium text-gray-700 w-10"
-                    >
-                      Видимість
-                    </th>
+                      <th
+                        class="text-left py-2 px-3 font-medium text-gray-700 w-32 whitespace-nowrap"
+                      >
+                        Видимість
+                      </th>
                     <th class="text-left py-2 px-3 font-medium text-gray-700">
                       Файл
                     </th>
@@ -2391,10 +2628,10 @@
                     :key="f.id"
                     class="border-b border-gray-100 hover:bg-gray-50"
                   >
-                    <td class="py-2 px-3 w-10">
-                      <UCheckbox
-                        :model-value="f.visible_to_participants"
-                        :disabled="isReadOnlyApprover"
+                      <td class="py-2 px-3 w-32 whitespace-nowrap">
+                        <UCheckbox
+                          :model-value="f.visible_to_participants"
+                          :disabled="isReadOnlyApprover"
                         @update:model-value="toggleFileVisibility(f.id, $event)"
                       />
                     </td>
@@ -2815,6 +3052,7 @@
 <script setup lang="ts">
 import { TextAlign } from "@tiptap/extension-text-align";
 import { TENDER_STAGE_ITEMS } from "~/domains/tenders/tenders.constants";
+import type { TenderConditionTemplate } from "~/domains/tenders/tenders.types";
 
 definePageMeta({
   layout: "cabinet",
@@ -2825,6 +3063,9 @@ definePageMeta({
 const route = useRoute();
 const tenderId = computed(() => Number(route.params.id));
 const isSales = true;
+const protocolPdfUrl = computed(
+  () => `/api/sales-tenders/${tenderId.value}/protocol-pdf/`,
+);
 const tendersUC = useTendersUseCases();
 const { me } = useMe();
 const myCompanyId = computed(
@@ -2937,8 +3178,14 @@ const selectedAttributeId = ref<number | null>(null);
 const loadingNomenclatures = ref(false);
 const loadingReferenceAttributes = ref(false);
 const tenderPositions = ref<any[]>([]);
+const isOnlineAuctionConductType = computed(
+  () => (form.conduct_type ?? tender.value?.conduct_type) === "online_auction",
+);
 const isClassicAuctionMode = computed(
-  () => (tender.value?.conduct_type ?? form.conduct_type) === "online_auction",
+  () =>
+    isOnlineAuctionConductType.value &&
+    String(form.auction_model ?? tender.value?.auction_model) ===
+      "classic_auction",
 );
 /** Позиції для відображення: з API (tender.positions) або локальний ref (для власника після loadTender). */
 const displayTenderPositions = computed(() => {
@@ -2977,10 +3224,15 @@ const publishStartDate = ref("");
 const publishEndDate = ref("");
 const publishStartTime = ref("");
 const publishEndTime = ref("");
+const plannedStartDate = ref("");
+const plannedEndDate = ref("");
+const plannedStartTime = ref("");
+const plannedEndTime = ref("");
 const timingStartDate = ref("");
 const timingEndDate = ref("");
 const timingStartTime = ref("");
 const timingEndTime = ref("");
+const showProtocolModal = ref(false);
 const showApprovalJournalModal = ref(false);
 const showApprovalActionModal = ref(false);
 const approvalActionSaving = ref(false);
@@ -3007,6 +3259,11 @@ const showDecisionJustificationField = computed(
     selectedDecisionMode.value === "winner" ||
     selectedDecisionMode.value === "cancel",
 );
+const decisionModeSelectableOptions = computed(() =>
+  submittedDecisionProposals.value.length > 0
+    ? decisionModeOptions
+    : decisionModeOptions.filter((item) => item.value !== "winner"),
+);
 const showResumeAcceptanceModal = ref(false);
 const resumeAcceptanceForm = reactive({ start_at: "", end_at: "" });
 const resumeAcceptanceStartDate = ref("");
@@ -3017,6 +3274,10 @@ const resumeAcceptanceSaving = ref(false);
 const showWinnerModal = ref(false);
 const showInvitationPanel = ref(false);
 const showInviteByEmailModal = ref(false);
+const showAcceptanceInvitationsModal = ref(false);
+const showConditionTemplateModal = ref(false);
+const conditionTemplates = ref<TenderConditionTemplate[]>([]);
+const conditionTemplatesLoading = ref(false);
 const showAttachedFilesModal = ref(false);
 const showProposalsModal = ref(false);
 const showParticipantProposalModal = ref(false);
@@ -3610,6 +3871,15 @@ const canShowAuthorApprovalButtons = computed(
     isTenderAuthor.value &&
     !approvalRouteHasApprovers.value,
 );
+const canShowAcceptanceInvitationsButton = computed(() => {
+  const conductType = String(tender.value?.conduct_type ?? form.conduct_type);
+  return (
+    displayStage.value === "acceptance" &&
+    !isParticipant.value &&
+    !isViewingPreviousTour.value &&
+    (conductType === "rfx" || conductType === "online_auction")
+  );
+});
 
 const stepperItems = computed(() => {
   const progressIndex = currentProcessIndex.value;
@@ -3655,6 +3925,7 @@ const form = reactive({
   branch: null as number | null,
   department: null as number | null,
   conduct_type: "rfx",
+  auction_model: "classic_auction",
   publication_type: "open",
   currency: null as number | null,
   general_terms: "",
@@ -3688,12 +3959,18 @@ const publicationTypeOptions = [
   { value: "open", label: "Відкрита процедура" },
   { value: "closed", label: "Закрита процедура" },
 ];
+const auctionModelOptions = [
+  { value: "classic_auction", label: "Класичний аукціон" },
+];
 
 const categoryTree = ref<any[]>([]);
 const expenseOptions = ref<{ value: number; label: string }[]>([]);
 const branchOptions = ref<{ value: number; label: string }[]>([]);
 const departmentOptions = ref<{ value: number; label: string }[]>([]);
 const currencyOptions = ref<{ value: number; label: string }[]>([]);
+const isExpenseArticleRequired = computed(() => expenseOptions.value.length > 0);
+const isBranchRequired = computed(() => branchOptions.value.length > 0);
+const isDepartmentRequired = computed(() => departmentOptions.value.length > 0);
 const availableApprovalModels = ref<any[]>([]);
 const approvalModelOptions = computed(() =>
   availableApprovalModels.value.map((m: any) => ({
@@ -3862,6 +4139,21 @@ const decisionTableColumns = computed(() => [
   { accessorKey: "profit_market", header: decisionMarketMetricHeader.value },
 ]);
 
+function formatDecimalDisplay(value: unknown, maximumFractionDigits = 4): string {
+  const normalized = Number(String(value ?? "").replace(",", "."));
+  if (!Number.isFinite(normalized)) return String(value ?? "");
+  return normalized.toLocaleString("uk-UA", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits,
+  });
+}
+
+function formatNumericOrDash(value: unknown): string {
+  const normalized = Number(String(value ?? "").replace(",", "."));
+  if (!Number.isFinite(normalized)) return "—";
+  return formatDecimalDisplay(normalized);
+}
+
 const decisionTableRows = computed(() => {
   const proposals = submittedDecisionProposals.value;
   const selected = selectedWinnerByPosition.value;
@@ -3894,9 +4186,9 @@ const decisionTableRows = computed(() => {
         : currentTourMarketPrice;
     const marketValue =
       estimatedMarketMethod.value === "arithmetic_mean" && marketPrice != null
-        ? marketPrice.toFixed(2)
+        ? formatDecimalDisplay(marketPrice)
         : marketPrice != null
-          ? marketPrice.toFixed(2)
+          ? formatDecimalDisplay(marketPrice)
           : "—";
 
     let bestProposal: any = null;
@@ -3914,7 +4206,8 @@ const decisionTableRows = computed(() => {
       bestProposal?.supplier_name ??
       bestProposal?.supplier_company?.name ??
       "—";
-    const bestPriceStr = bestPrice != null ? bestPrice.toFixed(2) : "—";
+    const bestPriceStr =
+      bestPrice != null ? formatDecimalDisplay(bestPrice) : "—";
 
     const hasManualSelection = Object.prototype.hasOwnProperty.call(
       selected,
@@ -3939,28 +4232,29 @@ const decisionTableRows = computed(() => {
       selectedProposal?.supplier_company?.name ??
       "—";
     const selectedPriceStr =
-      selectedPrice != null ? selectedPrice.toFixed(2) : "—";
+      selectedPrice != null ? formatDecimalDisplay(selectedPrice) : "—";
 
     const priceDiff =
       bestPrice != null && selectedPrice != null
         ? selectedPrice - bestPrice
         : null;
-    const priceDiffStr = priceDiff != null ? priceDiff.toFixed(2) : "—";
+    const priceDiffStr =
+      priceDiff != null ? formatDecimalDisplay(priceDiff) : "—";
 
     const profitMarket =
       marketPrice != null && selectedPrice != null
         ? selectedPrice - marketPrice
         : null;
     const profitMarketStr =
-      profitMarket != null ? profitMarket.toFixed(2) : "—";
+      profitMarket != null ? formatDecimalDisplay(profitMarket) : "—";
 
     return {
       id: pos.id,
       name: pos.name,
       quantity_value: Number(pos.quantity),
       quantity_unit: pos.unit_name
-        ? `${pos.quantity} ${pos.unit_name}`
-        : String(pos.quantity),
+        ? `${formatDecimalDisplay(pos.quantity)} ${pos.unit_name}`
+        : formatDecimalDisplay(pos.quantity),
       market_value: marketValue,
       market_value_num: marketPrice,
       best_counterparty: bestCounterparty,
@@ -4010,20 +4304,14 @@ const decisionSummary = computed(() => {
 
 function formatDecisionSummaryAmount(value: number | null) {
   if (value == null || !Number.isFinite(value)) return "—";
-  return value.toLocaleString("uk-UA", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return formatDecimalDisplay(value);
 }
 
 function getApprovalPositionTotal(quantityRaw: unknown, priceRaw: unknown) {
   const quantity = Number(quantityRaw);
   const price = Number(String(priceRaw ?? "").replace(",", "."));
   if (!Number.isFinite(quantity) || !Number.isFinite(price)) return "—";
-  return (quantity * price).toLocaleString("uk-UA", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return formatDecimalDisplay(quantity * price);
 }
 
 /** Дерево для UTree (Nuxt UI): категорії (батьки) → номенклатури (діти), формат TreeItem */
@@ -4330,6 +4618,7 @@ async function savePreparation() {
     price_criterion_vat_percent:
       isVatPercentRequired.value && vatPercent != null ? vatPercent : null,
     price_criterion_delivery: priceCriterionDelivery.value ?? "",
+    auction_model: form.auction_model,
     attribute_ids: normalizedAttributeIds(
       (tenderAttributes.value || []).map((a: any) => a?.id),
     ),
@@ -5057,11 +5346,36 @@ function flattenTree(
   return out;
 }
 
+function findCategoryById(tree: any[], id: number): any | null {
+  for (const node of tree || []) {
+    if (Number(node?.id) === Number(id)) return node;
+    if (node?.children?.length) {
+      const found = findCategoryById(node.children, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function applyCategoryCpvs(categoryId: number | null) {
+  if (categoryId == null) return;
+  const category = findCategoryById(categoryTree.value, categoryId);
+  const cpvs = Array.isArray(category?.cpvs) ? category.cpvs : [];
+  form.cpv_ids = cpvs
+    .map((c: any) => Number(c?.id))
+    .filter((id: number) => Number.isFinite(id));
+  tenderCpvLabels.value = cpvs
+    .map(
+      (c: any) =>
+        c?.label || `${c?.cpv_code || ""} - ${c?.name_ua || ""}`.trim(),
+    )
+    .filter((label: string) => !!label);
+}
+
 function toggleCategory(id: number) {
   form.category = form.category === id ? null : id;
   if (form.category) {
-    form.cpv_ids = [];
-    tenderCpvLabels.value = [];
+    applyCategoryCpvs(form.category);
   }
 }
 
@@ -5104,6 +5418,25 @@ function normalizeTimeValue(value?: string | null): string {
   if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return "";
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${pad(hours)}:${pad(minutes)}`;
+}
+
+function formatTimeInput(value: string | number | null | undefined): string {
+  const digits = String(value ?? "")
+    .replace(/\D/g, "")
+    .slice(0, 4);
+  if (!digits) return "";
+  let hours = digits.slice(0, 2);
+  let minutes = digits.slice(2, 4);
+  if (hours.length === 2) {
+    const normalizedHours = Math.max(0, Math.min(23, Number(hours)));
+    hours = String(normalizedHours).padStart(2, "0");
+  }
+  if (minutes.length === 2) {
+    const normalizedMinutes = Math.max(0, Math.min(59, Number(minutes)));
+    minutes = String(normalizedMinutes).padStart(2, "0");
+  }
+  if (digits.length <= 2) return `${hours}${digits.length === 2 ? ":" : ""}`;
+  return `${hours}:${minutes}`;
 }
 
 function parseVatPercentValue(value: unknown): number | null {
@@ -5230,6 +5563,29 @@ function applyResumeAcceptanceScheduleToForm() {
   return true;
 }
 
+function syncPlannedPublicationFromTender() {
+  const fallbackTimes = getDefaultPublishTimes();
+  plannedStartDate.value =
+    normalizeDateValue(dateFromInput(tender.value?.planned_start_at)) || "";
+  plannedEndDate.value =
+    normalizeDateValue(dateFromInput(tender.value?.planned_end_at)) || "";
+  plannedStartTime.value =
+    normalizeTimeValue(timeFromInput(tender.value?.planned_start_at)) ||
+    (plannedStartDate.value ? fallbackTimes.start : "");
+  plannedEndTime.value =
+    normalizeTimeValue(timeFromInput(tender.value?.planned_end_at)) ||
+    (plannedEndDate.value ? fallbackTimes.end : "");
+}
+
+function buildPlannedPublicationPayload() {
+  const startAt = buildDateTimeInput(plannedStartDate.value, plannedStartTime.value);
+  const endAt = buildDateTimeInput(plannedEndDate.value, plannedEndTime.value);
+  return {
+    planned_start_at: startAt ? inputToIso(startAt) : null,
+    planned_end_at: endAt ? inputToIso(endAt) : null,
+  };
+}
+
 async function loadTender() {
   loading.value = true;
   try {
@@ -5328,6 +5684,7 @@ async function loadTender() {
       branch: tenderData.branch ?? null,
       department: tenderData.department ?? null,
       conduct_type: tenderData.conduct_type ?? "rfx",
+      auction_model: tenderData.auction_model ?? "classic_auction",
       publication_type: tenderData.publication_type ?? "open",
       currency: tenderData.currency ?? null,
       general_terms: tenderData.general_terms ?? "",
@@ -5336,6 +5693,7 @@ async function loadTender() {
     await loadAvailableApprovalModels();
     timingForm.start_at = isoToInput(tenderData.start_at);
     timingForm.end_at = isoToInput(tenderData.end_at);
+    syncPlannedPublicationFromTender();
     await loadTours();
     if (displayStage.value === "decision") {
       await loadDecisionMarketReference({ skipLoader: true });
@@ -5351,11 +5709,13 @@ async function loadTender() {
 }
 
 function formatTimerDuration(ms: number) {
-  const totalMinutes = Math.max(0, Math.floor(ms / 60000));
-  const days = Math.floor(totalMinutes / (24 * 60));
-  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
-  const minutes = totalMinutes % 60;
-  return `${days} дн / ${hours} год / ${minutes} хв`;
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${days} дн / ${pad(hours)} год / ${pad(minutes)} хв / ${pad(seconds)} с`;
 }
 
 const acceptanceStartAtMs = computed(() => {
@@ -5766,6 +6126,41 @@ async function submitApprovalAction() {
   }
 }
 
+async function ensureConditionTemplatesLoaded() {
+  const companyId = Number(tender.value?.company || myCompanyId.value || 0);
+  if (!companyId) return;
+  conditionTemplatesLoading.value = true;
+  try {
+    const { data } = await tendersUC.getTenderConditionTemplates(companyId);
+    conditionTemplates.value = Array.isArray(data) ? data : [];
+  } finally {
+    conditionTemplatesLoading.value = false;
+  }
+}
+
+async function openConditionTemplateModal() {
+  await ensureConditionTemplatesLoaded();
+  showConditionTemplateModal.value = true;
+}
+
+function applyConditionTemplate(templateItem: TenderConditionTemplate) {
+  form.general_terms = String(templateItem.content || "");
+  showConditionTemplateModal.value = false;
+}
+
+function repeatAcceptanceInvitationNotice() {
+  showAcceptanceInvitationsModal.value = false;
+  useToast().add({
+    title: "Функціонал у роботі",
+    description: "Повторне сповіщення учасників буде доступне найближчим часом.",
+    color: "neutral",
+  });
+}
+
+function openProtocolModal() {
+  showProtocolModal.value = true;
+}
+
 async function savePassport() {
   const cpvIds = form.cpv_ids ?? [];
   if (cpvIds.length === 0) {
@@ -5784,6 +6179,30 @@ async function savePassport() {
     });
     return;
   }
+  if (isExpenseArticleRequired.value && !form.expense_article) {
+    useToast().add({
+      title: "Заповніть обовʼязкове поле",
+      description: "Оберіть статтю бюджету.",
+      color: "error",
+    });
+    return;
+  }
+  if (isBranchRequired.value && !form.branch) {
+    useToast().add({
+      title: "Заповніть обовʼязкове поле",
+      description: "Оберіть філіал.",
+      color: "error",
+    });
+    return;
+  }
+  if (isDepartmentRequired.value && !form.department) {
+    useToast().add({
+      title: "Заповніть обовʼязкове поле",
+      description: "Оберіть підрозділ.",
+      color: "error",
+    });
+    return;
+  }
   saving.value = true;
   try {
     const ok = await patchTender({
@@ -5795,10 +6214,12 @@ async function savePassport() {
       branch: form.branch,
       department: form.department,
       conduct_type: form.conduct_type,
+      auction_model: form.auction_model,
       publication_type: form.publication_type,
       currency: form.currency,
       general_terms: form.general_terms,
       approval_model_id: form.approval_model_id,
+      ...buildPlannedPublicationPayload(),
       stage: "preparation",
     });
     if (!ok) {
@@ -5817,8 +6238,13 @@ function openPublishModal() {
   if (!validatePreparationReadinessBeforePublication()) {
     return;
   }
-  timingForm.start_at = isoToInput(tender.value?.start_at);
-  timingForm.end_at = isoToInput(tender.value?.end_at);
+  const plannedStart = buildDateTimeInput(
+    plannedStartDate.value,
+    plannedStartTime.value,
+  );
+  const plannedEnd = buildDateTimeInput(plannedEndDate.value, plannedEndTime.value);
+  timingForm.start_at = isoToInput(tender.value?.start_at || inputToIso(plannedStart));
+  timingForm.end_at = isoToInput(tender.value?.end_at || inputToIso(plannedEnd));
   syncPublishScheduleFromTimingForm();
   showPublishModal.value = true;
 }
@@ -5977,7 +6403,15 @@ async function autoAdvanceAcceptance() {
 }
 
 function openDecisionModal() {
-  selectedDecisionMode.value = null;
+  if (!decisionModeSelectableOptions.value.length) {
+    useToast().add({
+      title: "Недоступні варіанти рішення",
+      description: "Спочатку дочекайтесь появи пропозицій учасників.",
+      color: "error",
+    });
+    return;
+  }
+  selectedDecisionMode.value = decisionModeSelectableOptions.value[0].value;
   decisionJustification.value = "";
   showDecisionModal.value = true;
 }
@@ -6110,10 +6544,7 @@ function getProposalPositionSum(
   const num = Number(price);
   if (Number.isNaN(num)) return null;
   const qty = Number(pos.quantity) || 0;
-  return (qty * num).toLocaleString("uk-UA", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
+  return formatDecimalDisplay(qty * num);
 }
 
 function getProposalCriterionValue(
@@ -6168,7 +6599,7 @@ onMounted(async () => {
   acceptanceTimerNowMs.value = Date.now();
   acceptanceTimerInterval = setInterval(() => {
     acceptanceTimerNowMs.value = Date.now();
-  }, 30000);
+  }, 1000);
   startAcceptanceRefresh();
 });
 
@@ -6265,6 +6696,17 @@ onUnmounted(() => {
   z-index: 2;
   background: var(--ui-bg);
 }
+.approval-route-scroll {
+  scrollbar-gutter: stable both-edges;
+}
+.approval-route-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.approval-route-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.8);
+  border-radius: 9999px;
+}
 @media (max-width: 1024px) {
   .prep-tabs :deep([role="tablist"]) {
     width: 100%;
@@ -6296,3 +6738,4 @@ onUnmounted(() => {
   opacity: 0;
 }
 </style>
+

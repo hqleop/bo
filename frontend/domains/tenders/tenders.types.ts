@@ -61,6 +61,16 @@ export interface TenderAttribute {
   [key: string]: unknown
 }
 
+export interface TenderConditionTemplate {
+  id: number
+  company: number
+  name: string
+  content: string
+  created_by?: number | null
+  created_at?: string
+  updated_at?: string
+}
+
 export interface TenderFile {
   id: number
   name?: string

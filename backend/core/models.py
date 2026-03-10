@@ -658,6 +658,36 @@ class TenderAttribute(models.Model):
         return self.name
 
 
+class TenderConditionTemplate(models.Model):
+    """Reusable condition text templates for tender passport."""
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="tender_condition_templates",
+    )
+    name = models.CharField(max_length=255)
+    content = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_tender_condition_templates",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Шаблон умов тендера"
+        verbose_name_plural = "Шаблони умов тендера"
+        ordering = ["name", "id"]
+        unique_together = (("company", "name"),)
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class ApprovalModelRole(models.Model):
     """Company-scoped role used in approval models."""
 
@@ -815,6 +845,9 @@ class ProcurementTender(models.Model):
         RFX = "rfx", "Збір пропозицій (RFx)"
         ONLINE_AUCTION = "online_auction", "Онлайн торги"
 
+    class AuctionModel(models.TextChoices):
+        CLASSIC_AUCTION = "classic_auction", "Класичний аукціон"
+
     class PublicationType(models.TextChoices):
         OPEN = "open", "Відкрита процедура"
         CLOSED = "closed", "Закрита процедура"
@@ -890,6 +923,11 @@ class ProcurementTender(models.Model):
         choices=ConductType.choices,
         default=ConductType.RFX,
     )
+    auction_model = models.CharField(
+        max_length=32,
+        choices=AuctionModel.choices,
+        default=AuctionModel.CLASSIC_AUCTION,
+    )
     publication_type = models.CharField(
         max_length=20,
         choices=PublicationType.choices,
@@ -910,6 +948,8 @@ class ProcurementTender(models.Model):
     )
     start_at = models.DateTimeField(null=True, blank=True)
     end_at = models.DateTimeField(null=True, blank=True)
+    planned_start_at = models.DateTimeField(null=True, blank=True)
+    planned_end_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     approval_model = models.ForeignKey(
@@ -1209,6 +1249,9 @@ class SalesTender(models.Model):
         RFX = "rfx", "Збір пропозицій (RFx)"
         ONLINE_AUCTION = "online_auction", "Онлайн торги"
 
+    class AuctionModel(models.TextChoices):
+        CLASSIC_AUCTION = "classic_auction", "Класичний аукціон"
+
     class PublicationType(models.TextChoices):
         OPEN = "open", "Відкрита процедура"
         CLOSED = "closed", "Закрита процедура"
@@ -1284,6 +1327,11 @@ class SalesTender(models.Model):
         choices=ConductType.choices,
         default=ConductType.RFX,
     )
+    auction_model = models.CharField(
+        max_length=32,
+        choices=AuctionModel.choices,
+        default=AuctionModel.CLASSIC_AUCTION,
+    )
     publication_type = models.CharField(
         max_length=20,
         choices=PublicationType.choices,
@@ -1304,6 +1352,8 @@ class SalesTender(models.Model):
     )
     start_at = models.DateTimeField(null=True, blank=True)
     end_at = models.DateTimeField(null=True, blank=True)
+    planned_start_at = models.DateTimeField(null=True, blank=True)
+    planned_end_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     approval_model = models.ForeignKey(
