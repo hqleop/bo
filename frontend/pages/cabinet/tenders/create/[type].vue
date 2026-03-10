@@ -10,10 +10,14 @@
       />
     </div>
     <div class="flex flex-1 min-h-0 gap-6">
-      <div class="flex-1 min-w-0 min-h-0 overflow-y-auto flex">
+      <div
+        class="flex-1 min-w-0 min-h-0 overflow-y-auto flex border border-gray-200 rounded-xl bg-white shadow-sm"
+      >
         <UCard class="overflow-hidden flex-1 min-h-full">
           <template #header>
-            <h3 class="text-lg font-semibold text-gray-900">{{ passportTitle }}</h3>
+            <h3 class="text-lg font-semibold text-gray-900">
+              {{ passportTitle }}
+            </h3>
           </template>
           <UForm :state="form" class="space-y-6">
             <div class="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-6 lg:gap-8">
@@ -28,11 +32,6 @@
                 </UFormField>
 
                 <div>
-                  <p
-                    class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
-                  >
-                    Категорізація
-                  </p>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <ContentSearch
                       label="Категорія"
@@ -57,13 +56,11 @@
                 </div>
 
                 <div>
-                  <p
-                    class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
-                  >
-                    Бюджет і валюта
-                  </p>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <UFormField label="Стаття бюджету" :required="isExpenseArticleRequired">
+                    <UFormField
+                      label="Стаття бюджету"
+                      :required="isExpenseArticleRequired"
+                    >
                       <USelectMenu
                         v-model="form.expense_article"
                         :items="expenseOptions"
@@ -73,34 +70,31 @@
                         class="w-full"
                       />
                     </UFormField>
-                    <UFormField label="Орієнтовний бюджет">
-                      <UInput
-                        v-model.number="form.estimated_budget"
-                        type="number"
-                        step="0.0001"
-                        placeholder="0"
-                        size="sm"
-                      />
-                    </UFormField>
-                    <UFormField label="Валюта" required>
-                      <USelectMenu
-                        v-model="form.currency"
-                        :items="currencyOptions"
-                        value-key="value"
-                        placeholder="Валюту"
-                        size="sm"
-                        class="w-full"
-                      />
-                    </UFormField>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <UFormField label="Орієнтовний бюджет">
+                        <UInput
+                          v-model.number="form.estimated_budget"
+                          type="number"
+                          step="0.0001"
+                          placeholder="0"
+                          size="sm"
+                        />
+                      </UFormField>
+                      <UFormField label="Валюта" required>
+                        <USelectMenu
+                          v-model="form.currency"
+                          :items="currencyOptions"
+                          value-key="value"
+                          placeholder="Валюту"
+                          size="sm"
+                          class="w-full"
+                        />
+                      </UFormField>
+                    </div>
                   </div>
                 </div>
 
                 <div>
-                  <p
-                    class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
-                  >
-                    Організаційна структура
-                  </p>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <UFormField label="Філіал" :required="isBranchRequired">
                       <USelectMenu
@@ -113,7 +107,10 @@
                         @update:model-value="onBranchChange"
                       />
                     </UFormField>
-                    <UFormField label="Підрозділ" :required="isDepartmentRequired">
+                    <UFormField
+                      label="Підрозділ"
+                      :required="isDepartmentRequired"
+                    >
                       <USelectMenu
                         v-model="form.department"
                         :items="departmentOptions"
@@ -127,11 +124,6 @@
                 </div>
 
                 <div>
-                  <p
-                    class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
-                  >
-                    Параметри процедури
-                  </p>
                   <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <UFormField label="Тип проведення" required>
                       <USelectMenu
@@ -171,11 +163,48 @@
               <div
                 class="border-t border-gray-200 pt-5 lg:border-t-0 lg:border-l lg:border-gray-200 lg:pt-0 lg:pl-6 flex flex-col min-h-[320px]"
               >
-                <p
-                  class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
-                >
-                  Загальні умови проведення тендера
-                </p>
+                <div class="mb-6">
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <UFormField
+                      label="Орієнтовна дата та час прийому пропозицій"
+                    >
+                      <div class="grid grid-cols-[1fr_auto] gap-2">
+                        <DateValuePicker
+                          :model-value="plannedStartDate"
+                          @update:model-value="plannedStartDate = $event || ''"
+                        />
+                        <UInput
+                          v-model="plannedStartTime"
+                          placeholder="ГГ:ХХ"
+                          inputmode="numeric"
+                          maxlength="5"
+                          class="w-24"
+                          @update:model-value="
+                            plannedStartTime = formatTimeInput($event)
+                          "
+                        />
+                      </div>
+                    </UFormField>
+                    <UFormField label="Орієнтовна дата та час завершення">
+                      <div class="grid grid-cols-[1fr_auto] gap-2">
+                        <DateValuePicker
+                          :model-value="plannedEndDate"
+                          @update:model-value="plannedEndDate = $event || ''"
+                        />
+                        <UInput
+                          v-model="plannedEndTime"
+                          placeholder="ГГ:ХХ"
+                          inputmode="numeric"
+                          maxlength="5"
+                          class="w-24"
+                          @update:model-value="
+                            plannedEndTime = formatTimeInput($event)
+                          "
+                        />
+                      </div>
+                    </UFormField>
+                  </div>
+                </div>
                 <UFormField
                   label="Опис умов та вимог"
                   class="mb-0 flex-1 flex flex-col min-h-0"
@@ -197,7 +226,11 @@
                       v-slot="{ editor }"
                       v-model="form.general_terms"
                       content-type="html"
-                      :extensions="[TextAlign.configure({ types: ['heading', 'paragraph'] })]"
+                      :extensions="[
+                        TextAlign.configure({
+                          types: ['heading', 'paragraph'],
+                        }),
+                      ]"
                       placeholder="Опишіть загальні умови, вимоги до учасників, порядок оцінки пропозицій тощо. Цей текст буде доступний учасникам."
                       :ui="{
                         root: 'flex flex-col min-h-[300px]',
@@ -220,7 +253,9 @@
         </UCard>
       </div>
 
-      <aside class="w-56 flex-shrink-0 space-y-3 rounded-xl border border-gray-200 bg-white shadow-sm p-3">
+      <aside
+        class="w-56 flex-shrink-0 space-y-3 rounded-xl border border-gray-200 bg-white shadow-sm p-3"
+      >
         <UButton class="w-full" :loading="saving" @click="saveTender"
           >Зберегти</UButton
         >
@@ -270,7 +305,6 @@
         </UCard>
       </template>
     </UModal>
-    <p v-if="error" class="text-sm text-red-600 mt-3">{{ error }}</p>
   </div>
 </template>
 
@@ -313,9 +347,9 @@ const listView = computed(() => (isSales.value ? "sales" : "purchase"));
 
 const { me } = useMe();
 const tendersUC = useTendersUseCases();
+const toast = useToast();
 
 const saving = ref(false);
-const error = ref("");
 const categorySearch = ref("");
 const showConditionTemplateModal = ref(false);
 const conditionTemplatesLoading = ref(false);
@@ -350,6 +384,10 @@ const form = reactive({
   general_terms: "",
   approval_model_id: null as number | null,
 });
+const plannedStartDate = ref("");
+const plannedEndDate = ref("");
+const plannedStartTime = ref("");
+const plannedEndTime = ref("");
 
 const selectedCategoryIds = computed(() =>
   form.category ? [form.category] : [],
@@ -388,7 +426,11 @@ const generalTermsEditorToolbarItems = [
       content: { align: "start" },
       items: [
         { kind: "bulletList", icon: "i-lucide-list", label: "Bullet List" },
-        { kind: "orderedList", icon: "i-lucide-list-ordered", label: "Ordered List" },
+        {
+          kind: "orderedList",
+          icon: "i-lucide-list-ordered",
+          label: "Ordered List",
+        },
       ],
     },
   ],
@@ -398,10 +440,30 @@ const generalTermsEditorToolbarItems = [
       tooltip: { text: "Text Align" },
       content: { align: "end" },
       items: [
-        { kind: "textAlign", align: "left", icon: "i-lucide-align-left", label: "Align Left" },
-        { kind: "textAlign", align: "center", icon: "i-lucide-align-center", label: "Align Center" },
-        { kind: "textAlign", align: "right", icon: "i-lucide-align-right", label: "Align Right" },
-        { kind: "textAlign", align: "justify", icon: "i-lucide-align-justify", label: "Align Justify" },
+        {
+          kind: "textAlign",
+          align: "left",
+          icon: "i-lucide-align-left",
+          label: "Align Left",
+        },
+        {
+          kind: "textAlign",
+          align: "center",
+          icon: "i-lucide-align-center",
+          label: "Align Center",
+        },
+        {
+          kind: "textAlign",
+          align: "right",
+          icon: "i-lucide-align-right",
+          label: "Align Right",
+        },
+        {
+          kind: "textAlign",
+          align: "justify",
+          icon: "i-lucide-align-justify",
+          label: "Align Justify",
+        },
       ],
     },
   ],
@@ -412,7 +474,9 @@ const expenseOptions = ref<{ value: number; label: string }[]>([]);
 const branchOptions = ref<{ value: number; label: string }[]>([]);
 const departmentOptions = ref<{ value: number; label: string }[]>([]);
 const currencyOptions = ref<{ value: number; label: string }[]>([]);
-const isExpenseArticleRequired = computed(() => expenseOptions.value.length > 0);
+const isExpenseArticleRequired = computed(
+  () => expenseOptions.value.length > 0,
+);
 const isBranchRequired = computed(() => branchOptions.value.length > 0);
 const isDepartmentRequired = computed(() => departmentOptions.value.length > 0);
 const availableApprovalModels = ref<any[]>([]);
@@ -427,14 +491,12 @@ const isApprovalModelLookupReady = computed(() => {
   const categoryId = Number(form.category || 0);
   const hasCategory = Number.isInteger(categoryId) && categoryId > 0;
   const budgetRaw = form.estimated_budget;
-  const hasBudget =
-    budgetRaw != null && Number.isFinite(Number(budgetRaw));
+  const hasBudget = budgetRaw != null && Number.isFinite(Number(budgetRaw));
   return hasCategory && hasBudget;
 });
 const isApprovalModelRequired = computed(
   () =>
-    isApprovalModelLookupReady.value &&
-    approvalModelOptions.value.length > 0,
+    isApprovalModelLookupReady.value && approvalModelOptions.value.length > 0,
 );
 
 // Ініціалізація типу проведення за режимом
@@ -494,7 +556,9 @@ function toggleCategory(id: number) {
 }
 
 async function ensureConditionTemplatesLoaded() {
-  const companyId = Number((me.value as any)?.memberships?.[0]?.company?.id || 0);
+  const companyId = Number(
+    (me.value as any)?.memberships?.[0]?.company?.id || 0,
+  );
   if (!companyId) return;
   conditionTemplatesLoading.value = true;
   try {
@@ -526,19 +590,30 @@ async function loadOptions() {
   categoryTree.value = (cats.data as any[]) || [];
   expenseOptions.value = flattenTree((expenses.data as any[]) || []);
   branchOptions.value = flattenTree((branches.data as any[]) || []);
-  currencyOptions.value = ((currencies.data as any[]) || []).map((c: any) => ({
+  const rawCurrencies = (currencies.data as any[]) || [];
+  currencyOptions.value = rawCurrencies.map((c: any) => ({
     value: c.id,
-    label: `${c.code} - ${c.name}`,
+    label: String(c.code || ""),
   }));
 
   if (!form.currency && currencyOptions.value.length) {
-    const firstCurrency = currencyOptions.value[0];
-    if (firstCurrency) form.currency = firstCurrency.value;
+    const preferredCurrency = rawCurrencies.find(
+      (currency: any) => String(currency?.code || "").toUpperCase() === "UAH",
+    );
+    const preferredCurrencyId = Number(preferredCurrency?.id);
+    if (Number.isInteger(preferredCurrencyId) && preferredCurrencyId > 0) {
+      form.currency = preferredCurrencyId;
+    } else {
+      const firstCurrency = currencyOptions.value[0];
+      if (firstCurrency) form.currency = firstCurrency.value;
+    }
   }
 }
 
 async function loadAvailableApprovalModels() {
-  const companyId = Number((me.value as any)?.memberships?.[0]?.company?.id || 0);
+  const companyId = Number(
+    (me.value as any)?.memberships?.[0]?.company?.id || 0,
+  );
   if (!companyId || !isApprovalModelLookupReady.value) {
     availableApprovalModels.value = [];
     form.approval_model_id = null;
@@ -576,13 +651,103 @@ function onBranchChange() {
   loadDepartments();
 }
 
+function inputToIso(value: string) {
+  return value ? new Date(value).toISOString() : null;
+}
+
+function normalizeDateValue(value?: string | null): string {
+  const raw = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  return "";
+}
+
+function normalizeTimeValue(value?: string | null): string {
+  const raw = String(value || "").trim();
+  const parsed = raw.match(/^(\d{1,2}):(\d{1,2})$/);
+  if (!parsed) return "";
+  const hours = Number(parsed[1]);
+  const minutes = Number(parsed[2]);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return "";
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(hours)}:${pad(minutes)}`;
+}
+
+function formatTimeInput(value: string | number | null | undefined): string {
+  const raw = String(value ?? "").replace(/[^\d:]/g, "");
+  if (!raw) return "";
+
+  const normalizeHours = (input: string): string => {
+    if (!input) return "";
+    const parsed = Number(input);
+    if (!Number.isFinite(parsed)) return "";
+    const bounded = Math.max(0, Math.min(23, parsed));
+    return input.length >= 2
+      ? String(bounded).padStart(2, "0")
+      : String(bounded);
+  };
+  const normalizeMinutes = (input: string): string => {
+    if (!input) return "";
+    const parsed = Number(input);
+    if (!Number.isFinite(parsed)) return "";
+    const bounded = Math.max(0, Math.min(59, parsed));
+    return input.length >= 2
+      ? String(bounded).padStart(2, "0")
+      : String(bounded);
+  };
+
+  if (raw.includes(":")) {
+    const colonIndex = raw.indexOf(":");
+    const hoursInput = raw.slice(0, colonIndex).replace(/\D/g, "").slice(0, 2);
+    const minutesInput = raw
+      .slice(colonIndex + 1)
+      .replace(/\D/g, "")
+      .slice(0, 2);
+    if (!hoursInput) return "";
+    const hours = normalizeHours(hoursInput);
+    if (raw.endsWith(":") && !minutesInput) return `${hours}:`;
+    const minutes = normalizeMinutes(minutesInput);
+    return `${hours}:${minutes}`;
+  }
+
+  const digits = raw.replace(/\D/g, "").slice(0, 4);
+  if (!digits) return "";
+  if (digits.length <= 2) {
+    const hours = normalizeHours(digits);
+    return `${hours}${digits.length === 2 ? ":" : ""}`;
+  }
+  if (digits.length === 3) {
+    const hours = normalizeHours(digits.slice(0, 1));
+    const minutes = normalizeMinutes(digits.slice(1, 3));
+    return `${hours}:${minutes}`;
+  }
+  const hours = normalizeHours(digits.slice(0, 2));
+  const minutes = normalizeMinutes(digits.slice(2, 4));
+  return `${hours}:${minutes}`;
+}
+
+function buildDateTimeInput(dateValue: string, timeValue: string): string {
+  const normalizedDate = normalizeDateValue(dateValue);
+  const normalizedTime = normalizeTimeValue(timeValue);
+  if (!normalizedDate || !normalizedTime) return "";
+  return `${normalizedDate}T${normalizedTime}`;
+}
+
 async function saveTender() {
   if (!form.name.trim()) {
-    error.value = "Вкажіть назву тендера.";
+    toast.add({
+      title: "Заповніть обов'язкове поле",
+      description: "Вкажіть назву тендера.",
+      color: "error",
+    });
     return;
   }
   if (!form.currency) {
-    error.value = "Оберіть валюту тендера.";
+    toast.add({
+      title: "Заповніть обов'язкове поле",
+      description: "Оберіть валюту тендера.",
+      color: "error",
+    });
     return;
   }
 
@@ -595,29 +760,56 @@ async function saveTender() {
 
   const cpvIds = form.cpv_ids ?? [];
   if (cpvIds.length === 0) {
-    error.value = "Оберіть хоча б одну категорію CPV.";
+    toast.add({
+      title: "Заповніть обов'язкове поле",
+      description: "Оберіть хоча б одну категорію CPV.",
+      color: "error",
+    });
     return;
   }
   if (isApprovalModelRequired.value && !form.approval_model_id) {
-    error.value = "Оберіть модель погодження.";
+    toast.add({
+      title: "Заповніть обов'язкове поле",
+      description: "Оберіть модель погодження.",
+      color: "error",
+    });
     return;
   }
   if (isExpenseArticleRequired.value && !form.expense_article) {
-    error.value = "Оберіть статтю бюджету.";
+    toast.add({
+      title: "Заповніть обов'язкове поле",
+      description: "Оберіть статтю бюджету.",
+      color: "error",
+    });
     return;
   }
   if (isBranchRequired.value && !form.branch) {
-    error.value = "Оберіть філіал.";
+    toast.add({
+      title: "Заповніть обов'язкове поле",
+      description: "Оберіть філіал.",
+      color: "error",
+    });
     return;
   }
   if (isDepartmentRequired.value && !form.department) {
-    error.value = "Оберіть підрозділ.";
+    toast.add({
+      title: "Заповніть обов'язкове поле",
+      description: "Оберіть підрозділ.",
+      color: "error",
+    });
     return;
   }
 
   saving.value = true;
-  error.value = "";
   try {
+    const plannedStart = buildDateTimeInput(
+      plannedStartDate.value,
+      plannedStartTime.value,
+    );
+    const plannedEnd = buildDateTimeInput(
+      plannedEndDate.value,
+      plannedEndTime.value,
+    );
     const { data: created, error: createError } = await tendersUC.createTender(
       isSales.value,
       {
@@ -636,14 +828,20 @@ async function saveTender() {
         currency: form.currency,
         general_terms: form.general_terms,
         approval_model_id: form.approval_model_id,
+        planned_start_at: plannedStart ? inputToIso(plannedStart) : null,
+        planned_end_at: plannedEnd ? inputToIso(plannedEnd) : null,
       },
     );
 
     if (createError || !created?.id) {
-      error.value =
-        typeof createError === "string"
-          ? createError
-          : "Помилка створення тендера.";
+      toast.add({
+        title: "Помилка створення тендера",
+        description:
+          typeof createError === "string"
+            ? createError
+            : "Перевірте заповнення полів та спробуйте ще раз.",
+        color: "error",
+      });
       return;
     }
 
@@ -666,7 +864,12 @@ onMounted(async () => {
 });
 
 watch(
-  () => [form.category, form.estimated_budget, isSales.value, (me.value as any)?.memberships?.[0]?.company?.id],
+  () => [
+    form.category,
+    form.estimated_budget,
+    isSales.value,
+    (me.value as any)?.memberships?.[0]?.company?.id,
+  ],
   () => {
     if (approvalModelsDebounceTimer) {
       clearTimeout(approvalModelsDebounceTimer);
@@ -703,12 +906,13 @@ onUnmounted(() => {
 }
 
 /* Редактор «Опис умов та вимог»: плейсхолдер зникає при фокусі, вся область клікабельна */
-.general-terms-editor-wrapper:focus-within :deep(.ProseMirror p.is-empty::before) {
+.general-terms-editor-wrapper:focus-within
+  :deep(.ProseMirror p.is-empty::before) {
   opacity: 0;
 }
 .general-terms-editor-wrapper :deep(.ProseMirror.is-editor-empty:focus::before),
-.general-terms-editor-wrapper :deep(.ProseMirror p.is-empty:first-child:focus::before) {
+.general-terms-editor-wrapper
+  :deep(.ProseMirror p.is-empty:first-child:focus::before) {
   opacity: 0;
 }
 </style>
-

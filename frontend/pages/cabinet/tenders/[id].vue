@@ -61,8 +61,7 @@
 
     <div class="flex flex-1 min-h-0 gap-6 border-0 ring-0">
       <div
-        class="flex-1 min-w-0 min-h-0 border-0 ring-0 flex flex-col"
-        :class="displayStage === 'preparation' ? '' : 'overflow-y-auto'"
+        class="flex-1 min-w-0 min-h-0 border-0 ring-0 flex flex-col overflow-y-auto"
       >
         <template v-if="displayStage === 'passport'">
           <UCard class="overflow-hidden min-h-full">
@@ -91,11 +90,6 @@
                   </UFormField>
 
                   <div>
-                    <p
-                      class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
-                    >
-                      Категорізація
-                    </p>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <ContentSearch
                         label="Категорія"
@@ -122,12 +116,9 @@
                   </div>
 
                   <div>
-                    <p
-                      class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
+                    <div
+                      class="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem] gap-4 items-start"
                     >
-                      Бюджет і валюта
-                    </p>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <UFormField
                         label="Стаття бюджету"
                         :required="isExpenseArticleRequired"
@@ -166,6 +157,7 @@
                       <UFormField
                         label="Модель погодження"
                         :required="isApprovalModelRequired"
+                        class="md:col-span-3"
                       >
                         <USelectMenu
                           v-model="form.approval_model_id"
@@ -179,11 +171,6 @@
                   </div>
 
                   <div>
-                    <p
-                      class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
-                    >
-                      Організаційна структура
-                    </p>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <UFormField
                         label="Філіал"
@@ -218,11 +205,6 @@
                   </div>
 
                   <div>
-                    <p
-                      class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
-                    >
-                      Параметри процедури
-                    </p>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <UFormField label="Тип проведення" required>
                         <USelectMenu
@@ -247,12 +229,12 @@
                     </div>
                   </div>
 
-                  <div>
-                    <p
-                      class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
-                    >
-                      Публікація (орієнтовно)
-                    </p>
+                </div>
+
+                <div
+                  class="border-t border-gray-200 pt-5 lg:border-t-0 lg:border-l lg:border-gray-200 lg:pt-0 lg:pl-6 flex flex-col min-h-[320px]"
+                >
+                  <div class="mb-6">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <UFormField label="Орієнтовна дата та час прийому пропозицій">
                         <div class="grid grid-cols-[1fr_auto] gap-2">
@@ -265,6 +247,7 @@
                             v-model="plannedStartTime"
                             placeholder="ГГ:ХХ"
                             inputmode="numeric"
+                            maxlength="5"
                             class="w-24"
                             :disabled="isViewingPreviousTour"
                             @update:model-value="plannedStartTime = formatTimeInput($event)"
@@ -282,6 +265,7 @@
                             v-model="plannedEndTime"
                             placeholder="ГГ:ХХ"
                             inputmode="numeric"
+                            maxlength="5"
                             class="w-24"
                             :disabled="isViewingPreviousTour"
                             @update:model-value="plannedEndTime = formatTimeInput($event)"
@@ -290,16 +274,6 @@
                       </UFormField>
                     </div>
                   </div>
-                </div>
-
-                <div
-                  class="border-t border-gray-200 pt-5 lg:border-t-0 lg:border-l lg:border-gray-200 lg:pt-0 lg:pl-6 flex flex-col min-h-[320px]"
-                >
-                  <p
-                    class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3"
-                  >
-                    Загальні умови проведення тендера
-                  </p>
                   <UFormField
                     label="Опис умов та вимог"
                     class="mb-0 flex-1 flex flex-col min-h-0"
@@ -5590,21 +5564,55 @@ function normalizeTimeValue(value?: string | null): string {
 }
 
 function formatTimeInput(value: string | number | null | undefined): string {
-  const digits = String(value ?? "")
-    .replace(/\D/g, "")
-    .slice(0, 4);
+  const raw = String(value ?? "").replace(/[^\d:]/g, "");
+  if (!raw) return "";
+
+  const normalizeHours = (input: string): string => {
+    if (!input) return "";
+    const parsed = Number(input);
+    if (!Number.isFinite(parsed)) return "";
+    const bounded = Math.max(0, Math.min(23, parsed));
+    return input.length >= 2
+      ? String(bounded).padStart(2, "0")
+      : String(bounded);
+  };
+  const normalizeMinutes = (input: string): string => {
+    if (!input) return "";
+    const parsed = Number(input);
+    if (!Number.isFinite(parsed)) return "";
+    const bounded = Math.max(0, Math.min(59, parsed));
+    return input.length >= 2
+      ? String(bounded).padStart(2, "0")
+      : String(bounded);
+  };
+
+  if (raw.includes(":")) {
+    const colonIndex = raw.indexOf(":");
+    const hoursInput = raw.slice(0, colonIndex).replace(/\D/g, "").slice(0, 2);
+    const minutesInput = raw
+      .slice(colonIndex + 1)
+      .replace(/\D/g, "")
+      .slice(0, 2);
+    if (!hoursInput) return "";
+    const hours = normalizeHours(hoursInput);
+    if (raw.endsWith(":") && !minutesInput) return `${hours}:`;
+    const minutes = normalizeMinutes(minutesInput);
+    return `${hours}:${minutes}`;
+  }
+
+  const digits = raw.replace(/\D/g, "").slice(0, 4);
   if (!digits) return "";
-  let hours = digits.slice(0, 2);
-  let minutes = digits.slice(2, 4);
-  if (hours.length === 2) {
-    const normalizedHours = Math.max(0, Math.min(23, Number(hours)));
-    hours = String(normalizedHours).padStart(2, "0");
+  if (digits.length <= 2) {
+    const hours = normalizeHours(digits);
+    return `${hours}${digits.length === 2 ? ":" : ""}`;
   }
-  if (minutes.length === 2) {
-    const normalizedMinutes = Math.max(0, Math.min(59, Number(minutes)));
-    minutes = String(normalizedMinutes).padStart(2, "0");
+  if (digits.length === 3) {
+    const hours = normalizeHours(digits.slice(0, 1));
+    const minutes = normalizeMinutes(digits.slice(1, 3));
+    return `${hours}:${minutes}`;
   }
-  if (digits.length <= 2) return `${hours}${digits.length === 2 ? ":" : ""}`;
+  const hours = normalizeHours(digits.slice(0, 2));
+  const minutes = normalizeMinutes(digits.slice(2, 4));
   return `${hours}:${minutes}`;
 }
 
@@ -5939,10 +5947,23 @@ async function loadOptions() {
   categoryTree.value = (cats.data as any[]) || [];
   expenseOptions.value = flattenTree((expenses.data as any[]) || []);
   branchOptions.value = flattenTree((branches.data as any[]) || []);
-  currencyOptions.value = ((currencies.data as any[]) || []).map((c: any) => ({
+  const rawCurrencies = (currencies.data as any[]) || [];
+  currencyOptions.value = rawCurrencies.map((c: any) => ({
     value: c.id,
-    label: `${c.code} - ${c.name}`,
+    label: String(c.code || ""),
   }));
+  if (!form.currency && currencyOptions.value.length) {
+    const preferredCurrency = rawCurrencies.find(
+      (currency: any) => String(currency?.code || "").toUpperCase() === "UAH",
+    );
+    const preferredCurrencyId = Number(preferredCurrency?.id);
+    if (Number.isInteger(preferredCurrencyId) && preferredCurrencyId > 0) {
+      form.currency = preferredCurrencyId;
+    } else {
+      const firstCurrency = currencyOptions.value[0];
+      if (firstCurrency) form.currency = firstCurrency.value;
+    }
+  }
 }
 
 async function loadNomenclaturesForPreparation() {
