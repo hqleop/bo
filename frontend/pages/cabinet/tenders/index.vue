@@ -4,7 +4,11 @@
       <h2 class="text-2xl font-bold">
         {{ viewType === "purchase" ? "Журнал закупівель" : "Журнал продажів" }}
       </h2>
-      <UButton icon="i-heroicons-plus" type="button" @click="navigateTo(createUrl)">
+      <UButton
+        icon="i-heroicons-plus"
+        type="button"
+        @click="navigateTo(createUrl)"
+      >
         Створити процедуру
       </UButton>
     </div>
@@ -20,43 +24,52 @@
               :columns="tableColumns"
               class="w-full tenders-journal-table"
             >
-            <template #number-cell="{ row }">
-              <NuxtLink
-                :to="viewType === 'purchase' ? `/cabinet/tenders/${row.original.id}` : `/cabinet/tenders/sales/${row.original.id}`"
-                class="text-primary hover:underline font-medium"
-              >
-                №{{ row.original.number }}{{ ` (тур ${row.original.tour_number || 1})` }}
-              </NuxtLink>
-            </template>
+              <template #number-cell="{ row }">
+                <NuxtLink
+                  :to="
+                    viewType === 'purchase'
+                      ? `/cabinet/tenders/${row.original.id}`
+                      : `/cabinet/tenders/sales/${row.original.id}`
+                  "
+                  class="text-primary hover:underline font-medium"
+                >
+                  №{{ row.original.number
+                  }}{{ ` (тур ${row.original.tour_number || 1})` }}
+                </NuxtLink>
+              </template>
 
-            <template #name-cell="{ row }">
-              <NuxtLink
-                :to="viewType === 'purchase' ? `/cabinet/tenders/${row.original.id}` : `/cabinet/tenders/sales/${row.original.id}`"
-                class="text-primary hover:underline"
-              >
-                {{ row.original.name }}
-              </NuxtLink>
-            </template>
+              <template #name-cell="{ row }">
+                <NuxtLink
+                  :to="
+                    viewType === 'purchase'
+                      ? `/cabinet/tenders/${row.original.id}`
+                      : `/cabinet/tenders/sales/${row.original.id}`
+                  "
+                  class="text-primary hover:underline"
+                >
+                  {{ row.original.name }}
+                </NuxtLink>
+              </template>
 
-            <template #created_at-cell="{ row }">
-              {{ formatDateTime(row.original.created_at) }}
-            </template>
+              <template #created_at-cell="{ row }">
+                {{ formatDateTime(row.original.created_at) }}
+              </template>
 
-            <template #decision_label-cell="{ row }">
-              {{ row.original.decision_label || "-" }}
-            </template>
+              <template #decision_label-cell="{ row }">
+                {{ row.original.decision_label || "-" }}
+              </template>
 
-            <template #total_amount-cell="{ row }">
-              {{ formatAmount(row.original.total_amount) }}
-            </template>
+              <template #total_amount-cell="{ row }">
+                {{ formatAmount(row.original.total_amount) }}
+              </template>
 
-            <template #economy_amount-cell="{ row }">
-              {{ formatAmount(row.original.economy_amount) }}
-            </template>
+              <template #economy_amount-cell="{ row }">
+                {{ formatAmount(row.original.economy_amount) }}
+              </template>
 
-            <template #profit_amount-cell="{ row }">
-              {{ formatAmount(row.original.profit_amount) }}
-            </template>
+              <template #profit_amount-cell="{ row }">
+                {{ formatAmount(row.original.profit_amount) }}
+              </template>
             </UTable>
           </div>
 
@@ -295,7 +308,7 @@ const tableColumns = computed(() => {
   const metricColumn =
     viewType.value === "purchase"
       ? { accessorKey: "economy_amount", header: "Економія" }
-      : { accessorKey: "profit_amount", header: "Прибуток" };
+      : { accessorKey: "profit_amount", header: "Вигода" };
   const totalAmountColumn =
     viewType.value === "purchase"
       ? { accessorKey: "total_amount", header: "Сума закупівлі" }
@@ -373,7 +386,9 @@ function flattenTree(items: any[]): any[] {
 }
 
 function formatAuthorLabel(user: any) {
-  const parts = [user?.last_name, user?.first_name, user?.middle_name].filter(Boolean);
+  const parts = [user?.last_name, user?.first_name, user?.middle_name].filter(
+    Boolean,
+  );
   const fullName = parts.join(" ").trim();
   return fullName || String(user?.email || `ID ${user?.id || ""}`).trim();
 }
@@ -518,11 +533,15 @@ watch(
       return;
     }
 
-    await Promise.all(branchIds.map((branchId) => ensureDepartmentsLoaded(branchId)));
+    await Promise.all(
+      branchIds.map((branchId) => ensureDepartmentsLoaded(branchId)),
+    );
 
     const allowedDepartmentIds = new Set<number>();
     for (const branchId of branchIds) {
-      const departmentIds = flattenTree(departmentsByBranch.value[branchId] || [])
+      const departmentIds = flattenTree(
+        departmentsByBranch.value[branchId] || [],
+      )
         .map((item: any) => Number(item?.id || 0))
         .filter((value) => value > 0);
       for (const departmentId of departmentIds) {
