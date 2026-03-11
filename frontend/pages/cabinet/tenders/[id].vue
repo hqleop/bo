@@ -64,7 +64,7 @@
         class="flex-1 min-w-0 min-h-0 border-0 ring-0 flex flex-col overflow-y-auto"
       >
         <template v-if="displayStage === 'passport'">
-          <UCard class="overflow-hidden min-h-full">
+          <UCard class="flex-1 min-h-full">
             <template #header>
               <h3 class="text-lg font-semibold text-gray-900">
                 Паспорт тендера
@@ -116,9 +116,7 @@
                   </div>
 
                   <div>
-                    <div
-                      class="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem] gap-4 items-start"
-                    >
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <UFormField
                         label="Стаття бюджету"
                         :required="isExpenseArticleRequired"
@@ -133,49 +131,36 @@
                           :disabled="isViewingPreviousTour"
                         />
                       </UFormField>
-                      <UFormField label="Орієнтовний бюджет">
-                        <UInput
-                          v-model.number="form.estimated_budget"
-                          type="number"
-                          step="0.0001"
-                          placeholder="0"
-                          size="sm"
-                          :disabled="isViewingPreviousTour"
-                        />
-                      </UFormField>
-                      <UFormField label="Валюта" required>
-                        <USelectMenu
-                          v-model="form.currency"
-                          :items="currencyOptions"
-                          value-key="value"
-                          placeholder="Валюту"
-                          size="sm"
-                          class="w-full"
-                          :disabled="isViewingPreviousTour"
-                        />
-                      </UFormField>
-                      <UFormField
-                        label="Модель погодження"
-                        :required="isApprovalModelRequired"
-                        class="md:col-span-3"
-                      >
-                        <USelectMenu
-                          v-model="form.approval_model_id"
-                          :items="approvalModelOptions"
-                          value-key="value"
-                          placeholder="Оберіть модель"
-                          :disabled="isViewingPreviousTour || !isApprovalModelLookupReady"
-                        />
-                      </UFormField>
+                      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <UFormField label="Орієнтовний бюджет">
+                          <UInput
+                            v-model.number="form.estimated_budget"
+                            type="number"
+                            step="0.0001"
+                            placeholder="0"
+                            size="sm"
+                            class="w-full"
+                            :disabled="isViewingPreviousTour"
+                          />
+                        </UFormField>
+                        <UFormField label="Валюта" required>
+                          <USelectMenu
+                            v-model="form.currency"
+                            :items="currencyOptions"
+                            value-key="value"
+                            placeholder="Валюту"
+                            size="sm"
+                            class="w-full"
+                            :disabled="isViewingPreviousTour"
+                          />
+                        </UFormField>
+                      </div>
                     </div>
                   </div>
 
                   <div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <UFormField
-                        label="Філіал"
-                        :required="isBranchRequired"
-                      >
+                      <UFormField label="Філіал" :required="isBranchRequired">
                         <USelectMenu
                           v-model="form.branch"
                           :items="branchOptions"
@@ -205,7 +190,7 @@
                   </div>
 
                   <div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="grid grid-cols-2 md:grid-cols-2 gap-4">
                       <UFormField label="Тип проведення" required>
                         <USelectMenu
                           v-model="form.conduct_type"
@@ -213,6 +198,7 @@
                           value-key="value"
                           placeholder="Оберіть тип"
                           size="sm"
+                          class="w-full"
                           :disabled="isViewingPreviousTour"
                         />
                       </UFormField>
@@ -223,12 +209,31 @@
                           value-key="value"
                           placeholder="Оберіть тип"
                           size="sm"
+                          class="w-full"
                           :disabled="isViewingPreviousTour"
                         />
                       </UFormField>
+                      <div class="grid grid-cols-1 md:grid-cols-1 gap-4">
+                        <UFormField
+                          label="Модель погодження"
+                          :required="isApprovalModelRequired"
+                        >
+                          <USelectMenu
+                            v-model="form.approval_model_id"
+                            :items="approvalModelOptions"
+                            value-key="value"
+                            placeholder="Оберіть модель"
+                            size="sm"
+                            class="w-full"
+                            :disabled="
+                              isViewingPreviousTour ||
+                              !isApprovalModelLookupReady
+                            "
+                          />
+                        </UFormField>
+                      </div>
                     </div>
                   </div>
-
                 </div>
 
                 <div
@@ -236,12 +241,14 @@
                 >
                   <div class="mb-6">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <UFormField label="Орієнтовна дата та час прийому пропозицій">
+                      <UFormField label="Орієнтовна дата прийому пропозицій">
                         <div class="grid grid-cols-[1fr_auto] gap-2">
                           <DateValuePicker
                             :model-value="plannedStartDate"
                             :disabled="isViewingPreviousTour"
-                            @update:model-value="plannedStartDate = $event || ''"
+                            @update:model-value="
+                              plannedStartDate = $event || ''
+                            "
                           />
                           <UInput
                             v-model="plannedStartTime"
@@ -250,7 +257,9 @@
                             maxlength="5"
                             class="w-24"
                             :disabled="isViewingPreviousTour"
-                            @update:model-value="plannedStartTime = formatTimeInput($event)"
+                            @update:model-value="
+                              plannedStartTime = formatTimeInput($event)
+                            "
                           />
                         </div>
                       </UFormField>
@@ -268,7 +277,9 @@
                             maxlength="5"
                             class="w-24"
                             :disabled="isViewingPreviousTour"
-                            @update:model-value="plannedEndTime = formatTimeInput($event)"
+                            @update:model-value="
+                              plannedEndTime = formatTimeInput($event)
+                            "
                           />
                         </div>
                       </UFormField>
@@ -787,7 +798,9 @@
                               value-key="value"
                               placeholder="Оберіть варіант"
                               :disabled="isViewingPreviousTour || isParticipant"
-                              @update:model-value="onPriceCriterionDeliveryChange"
+                              @update:model-value="
+                                onPriceCriterionDeliveryChange
+                              "
                             />
                           </UFormField>
                         </div>
@@ -1212,10 +1225,10 @@
             <template #header>
               <h3 class="text-lg font-semibold">Прийом пропозицій</h3>
             </template>
-                        <div class="border border-gray-200 rounded-lg overflow-hidden">
+            <div class="border border-gray-200 rounded-lg overflow-hidden">
               <table class="w-full text-sm border-collapse">
                 <thead>
-                            <tr class="border-b border-gray-200 bg-gray-50">
+                  <tr class="border-b border-gray-200 bg-gray-50">
                     <th class="text-left p-2 font-medium">Контрагент</th>
                     <th class="text-left p-2 font-medium">
                       Час підтвердження участі
@@ -1230,7 +1243,7 @@
                   <tr
                     v-for="proposal in decisionProposals"
                     :key="proposal.id"
-                              class="border-b border-gray-200 hover:bg-gray-50/50"
+                    class="border-b border-gray-200 hover:bg-gray-50/50"
                   >
                     <td class="p-2">
                       {{
@@ -1289,7 +1302,9 @@
               </div>
               <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
                 <div class="rounded border border-gray-200 bg-white p-3">
-                  <div class="text-xs text-gray-500">Вартість по кращій ціні</div>
+                  <div class="text-xs text-gray-500">
+                    Вартість по кращій ціні
+                  </div>
                   <div class="text-base font-semibold text-gray-900">
                     {{ formatDecisionSummaryAmount(decisionSummary.bestTotal) }}
                   </div>
@@ -1299,13 +1314,19 @@
                     Вартість за ціною що обирається
                   </div>
                   <div class="text-base font-semibold text-gray-900">
-                    {{ formatDecisionSummaryAmount(decisionSummary.selectedTotal) }}
+                    {{
+                      formatDecisionSummaryAmount(decisionSummary.selectedTotal)
+                    }}
                   </div>
                 </div>
                 <div class="rounded border border-gray-200 bg-white p-3">
                   <div class="text-xs text-gray-500">Економія в сумі</div>
                   <div class="text-base font-semibold text-gray-900">
-                    {{ formatDecisionSummaryAmount(decisionSummary.aggregateTotal) }}
+                    {{
+                      formatDecisionSummaryAmount(
+                        decisionSummary.aggregateTotal,
+                      )
+                    }}
                   </div>
                 </div>
               </div>
@@ -1376,7 +1397,7 @@
               <div class="border border-gray-200 rounded-lg overflow-hidden">
                 <table class="w-full text-sm border-collapse">
                   <thead>
-                  <tr class="border-b border-gray-200 bg-gray-50">
+                    <tr class="border-b border-gray-200 bg-gray-50">
                       <th class="text-left p-2 font-medium">Позиція</th>
                       <th class="text-left p-2 font-medium">Кількість</th>
                       <th class="text-left p-2 font-medium">Переможець</th>
@@ -1395,7 +1416,7 @@
                     <tr
                       v-for="pos in displayTenderPositions"
                       :key="pos.id"
-                    class="border-b border-gray-200 hover:bg-gray-50/50"
+                      class="border-b border-gray-200 hover:bg-gray-50/50"
                     >
                       <td class="p-2">{{ pos.name }}</td>
                       <td class="p-2">
@@ -1410,7 +1431,10 @@
                       </td>
                       <td class="p-2">
                         {{
-                          getApprovalPositionTotal(pos.quantity, pos.winner_price)
+                          getApprovalPositionTotal(
+                            pos.quantity,
+                            pos.winner_price,
+                          )
                         }}
                       </td>
                       <td v-for="c in tenderCriteria" :key="c.id" class="p-2">
@@ -1444,7 +1468,9 @@
         </template>
       </div>
 
-      <aside class="w-56 flex-shrink-0 flex min-h-0 flex-col gap-3 rounded-xl border border-gray-200 bg-white shadow-sm p-3">
+      <aside
+        class="w-56 flex-shrink-0 flex min-h-0 flex-col gap-3 rounded-xl border border-gray-200 bg-white shadow-sm p-3"
+      >
         <template v-if="displayStage === 'passport'">
           <UButton
             class="w-full"
@@ -1686,7 +1712,9 @@
           <template #header
             ><h4 class="text-sm font-semibold">Маршрут погодження</h4></template
           >
-          <div class="mt-2 flex-1 min-h-0 overflow-auto text-xs approval-route-scroll">
+          <div
+            class="mt-2 flex-1 min-h-0 overflow-auto text-xs approval-route-scroll"
+          >
             <div class="space-y-2 pr-1 min-w-max pb-2">
               <div
                 v-for="(node, index) in approvalRouteNodes"
@@ -1695,11 +1723,16 @@
               >
                 <div class="flex items-center gap-2 font-medium">
                   <UIcon
-                    :name="node.kind === 'role' ? 'i-lucide-users-round' : 'i-lucide-user-round'"
+                    :name="
+                      node.kind === 'role'
+                        ? 'i-lucide-users-round'
+                        : 'i-lucide-user-round'
+                    "
                     class="size-4 text-gray-600"
                   />
                   <span class="break-words">{{
-                    node.label || (node.kind === "role" ? "Роль" : "Автор тендера")
+                    node.label ||
+                    (node.kind === "role" ? "Роль" : "Автор тендера")
                   }}</span>
                 </div>
                 <div class="mt-2 space-y-1.5">
@@ -1712,7 +1745,10 @@
                       class="inline-flex h-6 w-6 items-center justify-center rounded-full"
                       :class="approvalUserStatusClass(userNode.status)"
                     >
-                      <UIcon :name="approvalUserStatusIcon(userNode.status)" class="size-4" />
+                      <UIcon
+                        :name="approvalUserStatusIcon(userNode.status)"
+                        class="size-4"
+                      />
                     </span>
                     <span class="break-words">{{
                       userNode.short_name || userNode.full_name || "—"
@@ -1963,7 +1999,9 @@
                   placeholder="ГГ:ХХ"
                   maxlength="5"
                   class="w-full"
-                  @update:model-value="publishStartTime = formatTimeInput($event)"
+                  @update:model-value="
+                    publishStartTime = formatTimeInput($event)
+                  "
                 />
               </UFormField>
               <UFormField label="Час завершення" required>
@@ -2088,7 +2126,9 @@
                   placeholder="ГГ:ХХ"
                   maxlength="5"
                   class="w-full"
-                  @update:model-value="timingStartTime = formatTimeInput($event)"
+                  @update:model-value="
+                    timingStartTime = formatTimeInput($event)
+                  "
                   :disabled="!canEditStart"
                 />
               </UFormField>
@@ -2492,7 +2532,7 @@
                 <tr
                   v-for="pos in displayTenderPositions"
                   :key="pos.id"
-              class="border-b border-gray-200 hover:bg-gray-50/50"
+                  class="border-b border-gray-200 hover:bg-gray-50/50"
                 >
                   <td class="p-2">{{ pos.name }}</td>
                   <td class="p-2">
@@ -2583,11 +2623,11 @@
               <table class="w-full min-w-0 text-sm border-collapse table-fixed">
                 <thead>
                   <tr class="border-b border-gray-200 bg-gray-50">
-                      <th
-                        class="text-left py-2 px-3 font-medium text-gray-700 w-32 whitespace-nowrap"
-                      >
-                        Видимість
-                      </th>
+                    <th
+                      class="text-left py-2 px-3 font-medium text-gray-700 w-32 whitespace-nowrap"
+                    >
+                      Видимість
+                    </th>
                     <th class="text-left py-2 px-3 font-medium text-gray-700">
                       Файл
                     </th>
@@ -2608,10 +2648,10 @@
                     :key="f.id"
                     class="border-b border-gray-100 hover:bg-gray-50"
                   >
-                      <td class="py-2 px-3 w-32 whitespace-nowrap">
-                        <UCheckbox
-                          :model-value="f.visible_to_participants"
-                          :disabled="isReadOnlyApprover"
+                    <td class="py-2 px-3 w-32 whitespace-nowrap">
+                      <UCheckbox
+                        :model-value="f.visible_to_participants"
+                        :disabled="isReadOnlyApprover"
                         @update:model-value="toggleFileVisibility(f.id, $event)"
                       />
                     </td>
@@ -3908,7 +3948,8 @@ const canShowPreparationGoDecisionButton = computed(
 const canShowApproverActionButtons = computed(
   () =>
     !isParticipant.value &&
-    (displayStage.value === "preparation" || displayStage.value === "approval") &&
+    (displayStage.value === "preparation" ||
+      displayStage.value === "approval") &&
     !isViewingPreviousTourOnly.value &&
     approvalRouteCanApproverAction.value,
 );
@@ -4022,7 +4063,9 @@ const expenseOptions = ref<{ value: number; label: string }[]>([]);
 const branchOptions = ref<{ value: number; label: string }[]>([]);
 const departmentOptions = ref<{ value: number; label: string }[]>([]);
 const currencyOptions = ref<{ value: number; label: string }[]>([]);
-const isExpenseArticleRequired = computed(() => expenseOptions.value.length > 0);
+const isExpenseArticleRequired = computed(
+  () => expenseOptions.value.length > 0,
+);
 const isBranchRequired = computed(() => branchOptions.value.length > 0);
 const isDepartmentRequired = computed(() => departmentOptions.value.length > 0);
 const availableApprovalModels = ref<any[]>([]);
@@ -4037,14 +4080,12 @@ const isApprovalModelLookupReady = computed(() => {
   const categoryId = Number(form.category || 0);
   const hasCategory = Number.isInteger(categoryId) && categoryId > 0;
   const budgetRaw = form.estimated_budget;
-  const hasBudget =
-    budgetRaw != null && Number.isFinite(Number(budgetRaw));
+  const hasBudget = budgetRaw != null && Number.isFinite(Number(budgetRaw));
   return hasCategory && hasBudget;
 });
 const isApprovalModelRequired = computed(
   () =>
-    isApprovalModelLookupReady.value &&
-    approvalModelOptions.value.length > 0,
+    isApprovalModelLookupReady.value && approvalModelOptions.value.length > 0,
 );
 const selectedApprovalModelSteps = computed(() => {
   const selected = availableApprovalModels.value.find(
@@ -4072,9 +4113,7 @@ const positionsColumns = computed(() => {
       { accessorKey: "max_bid_step", header: "Макс. крок ставки" },
     );
   }
-  base.push(
-    { accessorKey: "description", header: "Опис" },
-  );
+  base.push({ accessorKey: "description", header: "Опис" });
   for (const attribute of tenderAttributes.value || []) {
     base.push({
       accessorKey: attributeAccessorKey(attribute.id),
@@ -4209,7 +4248,10 @@ const decisionTableColumns = computed(() => [
   },
 ]);
 
-function formatDecimalDisplay(value: unknown, maximumFractionDigits = 4): string {
+function formatDecimalDisplay(
+  value: unknown,
+  maximumFractionDigits = 4,
+): string {
   const normalized = Number(String(value ?? "").replace(",", "."));
   if (!Number.isFinite(normalized)) return String(value ?? "");
   return normalized.toLocaleString("uk-UA", {
@@ -4242,9 +4284,8 @@ const decisionTableRows = computed(() => {
       prices.length > 0
         ? prices.reduce((a, b) => a + b, 0) / prices.length
         : null;
-    const firstTourMarketPriceRaw = firstTourMarketByPositionId.value[
-      Number(pos.id)
-    ];
+    const firstTourMarketPriceRaw =
+      firstTourMarketByPositionId.value[Number(pos.id)];
     const firstTourMarketPrice =
       firstTourMarketPriceRaw != null &&
       Number.isFinite(Number(firstTourMarketPriceRaw))
@@ -4442,12 +4483,12 @@ function onNomenclatureTreeSelect(
   const isDoubleClick = (orig as { detail?: number })?.detail === 2;
   if (isLeaf && item.id != null) {
     const numId = typeof item.id === "number" ? item.id : Number(item.id);
-      if (!Number.isNaN(numId)) {
-        selectedNomenclatureId.value = numId;
-        if (isDoubleClick) {
-          addPositionFromNomenclature(numId);
-        }
+    if (!Number.isNaN(numId)) {
+      selectedNomenclatureId.value = numId;
+      if (isDoubleClick) {
+        addPositionFromNomenclature(numId);
       }
+    }
   } else {
     selectedNomenclatureId.value = null;
   }
@@ -5533,7 +5574,9 @@ function inputToIso(value: string) {
 }
 
 function dateFromInput(value?: string | null): string {
-  const datePart = String(value || "").trim().slice(0, 10);
+  const datePart = String(value || "")
+    .trim()
+    .slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return "";
   return datePart;
 }
@@ -5661,7 +5704,9 @@ function getDefaultPublishTimes() {
     end.getDate() !== now.getDate();
   return {
     start: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
-    end: crossesDay ? "23:59" : `${pad(end.getHours())}:${pad(end.getMinutes())}`,
+    end: crossesDay
+      ? "23:59"
+      : `${pad(end.getHours())}:${pad(end.getMinutes())}`,
   };
 }
 
@@ -5671,15 +5716,20 @@ function syncPublishScheduleFromTimingForm() {
   publishStartDate.value =
     normalizeDateValue(dateFromInput(timingForm.start_at)) || todayDate;
   publishEndDate.value =
-    normalizeDateValue(dateFromInput(timingForm.end_at)) || publishStartDate.value;
+    normalizeDateValue(dateFromInput(timingForm.end_at)) ||
+    publishStartDate.value;
   publishStartTime.value =
-    normalizeTimeValue(timeFromInput(timingForm.start_at)) || fallbackTimes.start;
+    normalizeTimeValue(timeFromInput(timingForm.start_at)) ||
+    fallbackTimes.start;
   publishEndTime.value =
     normalizeTimeValue(timeFromInput(timingForm.end_at)) || fallbackTimes.end;
 }
 
 function applyPublishScheduleToTimingForm() {
-  const startAt = buildDateTimeInput(publishStartDate.value, publishStartTime.value);
+  const startAt = buildDateTimeInput(
+    publishStartDate.value,
+    publishStartTime.value,
+  );
   const endAt = buildDateTimeInput(publishEndDate.value, publishEndTime.value);
   if (!startAt || !endAt) return false;
   timingForm.start_at = startAt;
@@ -5693,15 +5743,20 @@ function syncTimingScheduleFromForm() {
   timingStartDate.value =
     normalizeDateValue(dateFromInput(timingForm.start_at)) || nowDate;
   timingEndDate.value =
-    normalizeDateValue(dateFromInput(timingForm.end_at)) || timingStartDate.value;
+    normalizeDateValue(dateFromInput(timingForm.end_at)) ||
+    timingStartDate.value;
   timingStartTime.value =
-    normalizeTimeValue(timeFromInput(timingForm.start_at)) || fallbackTimes.start;
+    normalizeTimeValue(timeFromInput(timingForm.start_at)) ||
+    fallbackTimes.start;
   timingEndTime.value =
     normalizeTimeValue(timeFromInput(timingForm.end_at)) || fallbackTimes.end;
 }
 
 function applyTimingScheduleToForm() {
-  const startAt = buildDateTimeInput(timingStartDate.value, timingStartTime.value);
+  const startAt = buildDateTimeInput(
+    timingStartDate.value,
+    timingStartTime.value,
+  );
   const endAt = buildDateTimeInput(timingEndDate.value, timingEndTime.value);
   if (!startAt || !endAt) return false;
   timingForm.start_at = startAt;
@@ -5755,7 +5810,10 @@ function syncPlannedPublicationFromTender() {
 }
 
 function buildPlannedPublicationPayload() {
-  const startAt = buildDateTimeInput(plannedStartDate.value, plannedStartTime.value);
+  const startAt = buildDateTimeInput(
+    plannedStartDate.value,
+    plannedStartTime.value,
+  );
   const endAt = buildDateTimeInput(plannedEndDate.value, plannedEndTime.value);
   return {
     planned_start_at: startAt ? inputToIso(startAt) : null,
@@ -5903,7 +5961,9 @@ function normalizeDecisionMarketMode(
   return value === "current_tour" ? "current_tour" : "first_tour";
 }
 
-async function loadDecisionMarketReference(options: { skipLoader?: boolean } = {}) {
+async function loadDecisionMarketReference(
+  options: { skipLoader?: boolean } = {},
+) {
   if (!tenderId.value) return;
   const { data, error } = await tendersUC.getDecisionMarketReference(
     tenderId.value,
@@ -6081,7 +6141,10 @@ async function patchTender(payload: Record<string, unknown>) {
       tender.value?.conduct_type ?? form.conduct_type,
     );
   }
-  if (displayStage.value === "preparation" || displayStage.value === "approval") {
+  if (
+    displayStage.value === "preparation" ||
+    displayStage.value === "approval"
+  ) {
     await loadApprovalRoute();
   } else {
     approvalRoutePayload.value = null;
@@ -6160,7 +6223,9 @@ function approvalUserStatusClass(status: string | undefined) {
 }
 
 function approvalUserStatusIcon(status: string | undefined) {
-  return status === "approved" ? "i-lucide-user-round-check" : "i-lucide-user-round";
+  return status === "approved"
+    ? "i-lucide-user-round-check"
+    : "i-lucide-user-round";
 }
 
 function openApprovalSubmitModal() {
@@ -6224,7 +6289,10 @@ async function submitApprovalSubmit() {
     }
     showApprovalSubmitModal.value = false;
     await loadTender();
-    if (displayStage.value === "preparation" || displayStage.value === "approval") {
+    if (
+      displayStage.value === "preparation" ||
+      displayStage.value === "approval"
+    ) {
       await loadApprovalRoute();
     }
   } finally {
@@ -6281,7 +6349,10 @@ async function submitApprovalAction() {
     }
     showApprovalActionModal.value = false;
     await loadTender();
-    if (displayStage.value === "preparation" || displayStage.value === "approval") {
+    if (
+      displayStage.value === "preparation" ||
+      displayStage.value === "approval"
+    ) {
       await loadApprovalRoute();
     }
   } finally {
@@ -6315,7 +6386,8 @@ function repeatAcceptanceInvitationNotice() {
   showAcceptanceInvitationsModal.value = false;
   useToast().add({
     title: "Функціонал у роботі",
-    description: "Повторне сповіщення учасників буде доступне найближчим часом.",
+    description:
+      "Повторне сповіщення учасників буде доступне найближчим часом.",
     color: "neutral",
   });
 }
@@ -6405,9 +6477,16 @@ function openPublishModal() {
     plannedStartDate.value,
     plannedStartTime.value,
   );
-  const plannedEnd = buildDateTimeInput(plannedEndDate.value, plannedEndTime.value);
-  timingForm.start_at = isoToInput(tender.value?.start_at || inputToIso(plannedStart));
-  timingForm.end_at = isoToInput(tender.value?.end_at || inputToIso(plannedEnd));
+  const plannedEnd = buildDateTimeInput(
+    plannedEndDate.value,
+    plannedEndTime.value,
+  );
+  timingForm.start_at = isoToInput(
+    tender.value?.start_at || inputToIso(plannedStart),
+  );
+  timingForm.end_at = isoToInput(
+    tender.value?.end_at || inputToIso(plannedEnd),
+  );
   syncPublishScheduleFromTimingForm();
   showPublishModal.value = true;
 }
@@ -6599,9 +6678,7 @@ async function fixDecision(mode: DecisionMode) {
       comment?: string;
     } = { mode };
     if (mode === "winner") {
-      body.position_winners = Object.entries(
-        selectedWinnerByPosition.value,
-      )
+      body.position_winners = Object.entries(selectedWinnerByPosition.value)
         .filter(([, proposal_id]) => proposal_id != null)
         .map(([position_id, proposal_id]) => ({
           position_id: Number(position_id),
@@ -6698,11 +6775,15 @@ async function fetchChangedDecisionProposals(
       offset + REALTIME_INCREMENTAL_SYNC_CHUNK_SIZE,
     );
     if (!chunk.length) continue;
-    const { data, error } = await tendersUC.getTenderProposals(tenderId.value, isSales, {
-      skipLoader: true,
-      proposalIds: chunk,
-      statusOnly: !loadFullDetails,
-    });
+    const { data, error } = await tendersUC.getTenderProposals(
+      tenderId.value,
+      isSales,
+      {
+        skipLoader: true,
+        proposalIds: chunk,
+        statusOnly: !loadFullDetails,
+      },
+    );
     if (error || !Array.isArray(data)) return null;
     changedProposals.push(...data);
   }
@@ -6773,10 +6854,14 @@ async function loadDecisionProposals(
       }
     }
 
-    const { data } = await tendersUC.getTenderProposals(tenderId.value, isSales, {
-      skipLoader,
-      statusOnly: !loadFullDetails,
-    });
+    const { data } = await tendersUC.getTenderProposals(
+      tenderId.value,
+      isSales,
+      {
+        skipLoader,
+        statusOnly: !loadFullDetails,
+      },
+    );
     decisionProposals.value = Array.isArray(data) ? data : [];
     decisionProposalsFullLoaded.value = loadFullDetails;
     if (!loadFullDetails) {
@@ -6793,10 +6878,14 @@ async function loadDecisionProposals(
     loadFullDetails,
   );
   if (!Array.isArray(changedProposals)) {
-    const { data } = await tendersUC.getTenderProposals(tenderId.value, isSales, {
-      skipLoader: true,
-      statusOnly: !loadFullDetails,
-    });
+    const { data } = await tendersUC.getTenderProposals(
+      tenderId.value,
+      isSales,
+      {
+        skipLoader: true,
+        statusOnly: !loadFullDetails,
+      },
+    );
     decisionProposals.value = Array.isArray(data) ? data : [];
     decisionProposalsFullLoaded.value = loadFullDetails;
     if (!loadFullDetails) {
@@ -6962,7 +7051,8 @@ watch(
       next == null ||
       next === prev ||
       !tender.value?.id ||
-      (displayStage.value !== "preparation" && displayStage.value !== "approval")
+      (displayStage.value !== "preparation" &&
+        displayStage.value !== "approval")
     ) {
       return;
     }
@@ -7098,4 +7188,3 @@ onUnmounted(() => {
   opacity: 0;
 }
 </style>
-

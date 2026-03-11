@@ -11,9 +11,9 @@
     </div>
     <div class="flex flex-1 min-h-0 gap-6">
       <div
-        class="flex-1 min-w-0 min-h-0 overflow-y-auto flex border border-gray-200 rounded-xl bg-white shadow-sm"
+        class="flex-1 min-w-0 min-h-0 flex border border-gray-200 rounded-xl bg-white shadow-sm"
       >
-        <UCard class="overflow-hidden flex-1 min-h-full">
+        <UCard class="flex-1 min-h-full">
           <template #header>
             <h3 class="text-lg font-semibold text-gray-900">
               {{ passportTitle }}
@@ -78,6 +78,7 @@
                           step="0.0001"
                           placeholder="0"
                           size="sm"
+                          class="w-full"
                         />
                       </UFormField>
                       <UFormField label="Валюта" required>
@@ -124,7 +125,7 @@
                 </div>
 
                 <div>
-                  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div class="grid grid-cols-2 md:grid-cols-2 gap-4">
                     <UFormField label="Тип проведення" required>
                       <USelectMenu
                         v-model="form.conduct_type"
@@ -132,6 +133,7 @@
                         value-key="value"
                         placeholder="Оберіть тип"
                         size="sm"
+                        class="w-full"
                       />
                     </UFormField>
                     <UFormField label="Тип публікації" required>
@@ -141,21 +143,25 @@
                         value-key="value"
                         placeholder="Оберіть тип"
                         size="sm"
+                        class="w-full"
                       />
                     </UFormField>
-                    <UFormField
-                      label="Модель погодження"
-                      :required="isApprovalModelRequired"
-                    >
-                      <USelectMenu
-                        v-model="form.approval_model_id"
-                        :items="approvalModelOptions"
-                        value-key="value"
-                        placeholder="Оберіть модель"
-                        size="sm"
-                        :disabled="!isApprovalModelLookupReady"
-                      />
-                    </UFormField>
+                    <div class="grid grid-cols-1 md:grid-cols-1 gap-4">
+                      <UFormField
+                        label="Модель погодження"
+                        :required="isApprovalModelRequired"
+                      >
+                        <USelectMenu
+                          v-model="form.approval_model_id"
+                          :items="approvalModelOptions"
+                          value-key="value"
+                          placeholder="Оберіть модель"
+                          size="sm"
+                          class="w-full"
+                          :disabled="!isApprovalModelLookupReady"
+                        />
+                      </UFormField>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -165,9 +171,7 @@
               >
                 <div class="mb-6">
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <UFormField
-                      label="Орієнтовна дата та час прийому пропозицій"
-                    >
+                    <UFormField label="Орієнтовна дата прийому пропозицій">
                       <div class="grid grid-cols-[1fr_auto] gap-2">
                         <DateValuePicker
                           :model-value="plannedStartDate"

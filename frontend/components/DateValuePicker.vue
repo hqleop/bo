@@ -75,7 +75,7 @@ const props = withDefaults(
   }>(),
   {
     modelValue: "",
-    placeholder: "Оберіть дату",
+    placeholder: "Дата",
     disabled: false,
     size: "sm",
     buttonClass: "",

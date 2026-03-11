@@ -60,11 +60,9 @@
     />
 
     <div class="flex flex-1 min-h-0 gap-6">
-      <div
-        class="flex-1 min-w-0 min-h-0 flex flex-col overflow-y-auto"
-      >
+      <div class="flex-1 min-w-0 min-h-0 flex flex-col overflow-y-auto">
         <template v-if="displayStage === 'passport'">
-          <UCard class="overflow-hidden min-h-full">
+          <UCard class="flex-1 min-h-full">
             <template #header>
               <h3 class="text-lg font-semibold text-gray-900">
                 Паспорт тендера
@@ -116,9 +114,7 @@
                   </div>
 
                   <div>
-                    <div
-                      class="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem] gap-4 items-start"
-                    >
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <UFormField
                         label="Стаття бюджету"
                         :required="isExpenseArticleRequired"
@@ -133,42 +129,30 @@
                           :disabled="isViewingPreviousTour"
                         />
                       </UFormField>
-                      <UFormField label="Орієнтовний бюджет">
-                        <UInput
-                          v-model.number="form.estimated_budget"
-                          type="number"
-                          step="0.0001"
-                          placeholder="0"
-                          size="sm"
-                          :disabled="isViewingPreviousTour"
-                        />
-                      </UFormField>
-                      <UFormField label="Валюта" required>
-                        <USelectMenu
-                          v-model="form.currency"
-                          :items="currencyOptions"
-                          value-key="value"
-                          placeholder="Валюту"
-                          size="sm"
-                          class="w-full"
-                          :disabled="isViewingPreviousTour"
-                        />
-                      </UFormField>
-                      <UFormField
-                        label="Модель погодження"
-                        :required="isApprovalModelRequired"
-                        class="md:col-span-3"
-                      >
-                        <USelectMenu
-                          v-model="form.approval_model_id"
-                          :items="approvalModelOptions"
-                          value-key="value"
-                          placeholder="Оберіть модель"
-                          :disabled="
-                            isViewingPreviousTour || !isApprovalModelLookupReady
-                          "
-                        />
-                      </UFormField>
+                      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <UFormField label="Орієнтовний бюджет">
+                          <UInput
+                            v-model.number="form.estimated_budget"
+                            type="number"
+                            step="0.0001"
+                            placeholder="0"
+                            size="sm"
+                            class="w-full"
+                            :disabled="isViewingPreviousTour"
+                          />
+                        </UFormField>
+                        <UFormField label="Валюта" required>
+                          <USelectMenu
+                            v-model="form.currency"
+                            :items="currencyOptions"
+                            value-key="value"
+                            placeholder="Валюту"
+                            size="sm"
+                            class="w-full"
+                            :disabled="isViewingPreviousTour"
+                          />
+                        </UFormField>
+                      </div>
                     </div>
                   </div>
 
@@ -204,7 +188,7 @@
                   </div>
 
                   <div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="grid grid-cols-2 md:grid-cols-2 gap-4">
                       <UFormField label="Тип проведення" required>
                         <USelectMenu
                           v-model="form.conduct_type"
@@ -212,6 +196,7 @@
                           value-key="value"
                           placeholder="Оберіть тип"
                           size="sm"
+                          class="w-full"
                           :disabled="isViewingPreviousTour"
                         />
                       </UFormField>
@@ -222,12 +207,31 @@
                           value-key="value"
                           placeholder="Оберіть тип"
                           size="sm"
+                          class="w-full"
                           :disabled="isViewingPreviousTour"
                         />
                       </UFormField>
+                      <div class="grid grid-cols-1 md:grid-cols-1 gap-4">
+                        <UFormField
+                          label="Модель погодження"
+                          :required="isApprovalModelRequired"
+                        >
+                          <USelectMenu
+                            v-model="form.approval_model_id"
+                            :items="approvalModelOptions"
+                            value-key="value"
+                            placeholder="Оберіть модель"
+                            size="sm"
+                            class="w-full"
+                            :disabled="
+                              isViewingPreviousTour ||
+                              !isApprovalModelLookupReady
+                            "
+                          />
+                        </UFormField>
+                      </div>
                     </div>
                   </div>
-
                 </div>
 
                 <div
@@ -235,9 +239,7 @@
                 >
                   <div class="mb-6">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <UFormField
-                        label="Орієнтовна дата та час прийому пропозицій"
-                      >
+                      <UFormField label="Орієнтовна дата прийому пропозицій">
                         <div class="grid grid-cols-[1fr_auto] gap-2">
                           <DateValuePicker
                             :model-value="plannedStartDate"
