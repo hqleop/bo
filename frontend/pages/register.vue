@@ -70,6 +70,12 @@
 
       <div v-else-if="currentStep === 2">
         <div class="space-y-4">
+          <UAlert
+            color="info"
+            variant="subtle"
+            title="Обліковий запис вже створено"
+            description="Після заповнення першого кроку ваш обліковий запис вже створений. Ви можете завершити реєстрацію зараз або продовжити пізніше."
+          />
           <UFormField label="Тип суб'єкта" name="subject_type" required>
             <USelectMenu
               v-model="step2Form.subject_type"
@@ -199,8 +205,8 @@
               type="button"
               variant="outline"
               block
-              @click="currentStep = 1"
-              >Назад</UButton
+              @click="goToHome"
+              >Продовжити пізніше</UButton
             >
             <UButton
               type="button"
@@ -223,10 +229,35 @@
               name="goal_tenders"
               label="Організація тендерів"
             />
+            <div v-if="step3Form.goal_tenders" class="pl-6 space-y-2">
+              <UCheckbox
+                v-model="step3Form.goal_tenders_sales"
+                name="goal_tenders_sales"
+                label="Продажі"
+              />
+              <UCheckbox
+                v-model="step3Form.goal_tenders_purchase"
+                name="goal_tenders_purchase"
+                label="Закупівлі"
+              />
+            </div>
             <UCheckbox
               v-model="step3Form.goal_participation"
               name="goal_participation"
               label="Участь в тендерах"
+            />
+          </div>
+
+          <div v-if="step3Form.goal_participation" class="pl-6 space-y-2">
+            <UCheckbox
+              v-model="step3Form.goal_participation_sales"
+              name="goal_participation_sales"
+              label="Продажі"
+            />
+            <UCheckbox
+              v-model="step3Form.goal_participation_purchase"
+              name="goal_participation_purchase"
+              label="Закупівлі"
             />
           </div>
 
@@ -379,7 +410,11 @@ type RegistrationCompanyLookup = {
 
 const step3Form = reactive({
   goal_tenders: false,
+  goal_tenders_sales: false,
+  goal_tenders_purchase: false,
   goal_participation: false,
+  goal_participation_sales: false,
+  goal_participation_purchase: false,
   agree_participation_visibility: false,
 });
 
@@ -583,6 +618,36 @@ const scheduleCompanyLookup = () => {
     void lookupCompanyByCode();
   }, 350);
 };
+
+watch(
+  () => step3Form.goal_tenders,
+  (enabled, previous) => {
+    if (enabled && !previous) {
+      step3Form.goal_tenders_sales = true;
+      step3Form.goal_tenders_purchase = true;
+      return;
+    }
+    if (!enabled) {
+      step3Form.goal_tenders_sales = false;
+      step3Form.goal_tenders_purchase = false;
+    }
+  },
+);
+
+watch(
+  () => step3Form.goal_participation,
+  (enabled, previous) => {
+    if (enabled && !previous) {
+      step3Form.goal_participation_sales = true;
+      step3Form.goal_participation_purchase = true;
+      return;
+    }
+    if (!enabled) {
+      step3Form.goal_participation_sales = false;
+      step3Form.goal_participation_purchase = false;
+    }
+  },
+);
 
 watch(
   () => step2Form.subject_type,
@@ -812,7 +877,23 @@ const onStep3Submit = async () => {
       return;
     }
 
+    if (
+      step3Form.goal_tenders &&
+      !step3Form.goal_tenders_sales &&
+      !step3Form.goal_tenders_purchase
+    ) {
+      alert("Оберіть напрямок для організації тендерів: Продажі або Закупівлі.");
+      return;
+    }
+
     if (step3Form.goal_participation) {
+      if (
+        !step3Form.goal_participation_sales &&
+        !step3Form.goal_participation_purchase
+      ) {
+        alert("Оберіть напрямок для участі в тендерах: Продажі або Закупівлі.");
+        return;
+      }
       if (!step3Form.agree_participation_visibility) {
         alert("Підтвердьте відображення реєстраційних даних.");
         return;
