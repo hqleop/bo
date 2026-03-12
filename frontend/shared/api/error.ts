@@ -1,4 +1,6 @@
 const DEFAULT_API_ERROR_MESSAGE = "Request failed";
+const GENERIC_HTTP_ERROR_RE =
+  /^(bad request|request failed|pomylka zapytu|failed to fetch)$/i;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object") return null;
@@ -36,15 +38,43 @@ function extractFirstMessage(payload: unknown): string | null {
   return null;
 }
 
+function extractFromStructuredHttpError(error: unknown): string | null {
+  const record = asRecord(error);
+  if (!record) return null;
+
+  const response = asRecord(record.response);
+  const candidates: unknown[] = [
+    record.data,
+    response?._data,
+    response?.data,
+    record.body,
+  ];
+
+  for (const candidate of candidates) {
+    const message = extractFirstMessage(candidate);
+    if (message) return message;
+  }
+
+  return null;
+}
+
 export function getApiErrorMessage(
   error: unknown,
   fallback = DEFAULT_API_ERROR_MESSAGE,
 ): string {
+  const structured = extractFromStructuredHttpError(error);
+  if (structured) return structured;
+
   const direct = extractFirstMessage(error);
-  if (direct) return direct;
+  if (direct && !GENERIC_HTTP_ERROR_RE.test(direct)) return direct;
 
   const record = asRecord(error);
-  if (!record) return fallback;
+  if (!record) {
+    if (typeof error === "string" && !GENERIC_HTTP_ERROR_RE.test(error.trim())) {
+      return error.trim();
+    }
+    return fallback;
+  }
 
   const fromData = extractFirstMessage(record.data);
   if (fromData) return fromData;

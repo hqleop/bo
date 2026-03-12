@@ -24,7 +24,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth.password_validation import validate_password
 from django.core.cache import cache
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.db.models import (
     Q,
     Exists,
@@ -2322,13 +2322,21 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 @permission_classes([permissions.AllowAny])
 def registration_step1(request):
     """Step 1: Create user."""
+    duplicate_email_message = (
+        "Користувач з таким email вже існує. У разі якщо ви не завершили реєстарцію, можете продовжити при вході."
+    )
     serializer = UserRegistrationStep1Serializer(data=request.data)
-    if serializer.is_valid():
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
         user = serializer.save()
-        user.registration_step = 2
-        user.save(update_fields=["registration_step"])
-        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    except IntegrityError:
+        return Response({"email": [duplicate_email_message]}, status=status.HTTP_400_BAD_REQUEST)
+
+    user.registration_step = 2
+    user.save(update_fields=["registration_step"])
+    return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 
 @extend_schema(
@@ -2369,7 +2377,11 @@ def registration_company_lookup(request):
     if not code:
         return Response({"edrpou": "Вкажіть код компанії."}, status=status.HTTP_400_BAD_REQUEST)
 
-    company = Company.objects.filter(edrpou=code, status=Company.Status.ACTIVE).first()
+    company = (
+        Company.objects.filter(edrpou=code, status=Company.Status.ACTIVE)
+        .prefetch_related("cpv_categories")
+        .first()
+    )
     if not company:
         return Response(
             {"exists": False, "has_registered_users": False, "company": None},
@@ -2520,7 +2532,7 @@ def registration_step2_existing_company(request):
                     body=f"Користувач {user.get_full_name() or user.email} ({user.email}) хоче приєднатися до компанії {company.name}.",
                     meta={"membership_id": membership.id, "user_id": user.id, "company_id": company.id},
                 )
-        user.registration_step = 4 if has_approved else 3
+        user.registration_step = 3
         user.save(update_fields=["registration_step"])
 
     return Response(CompanyUserSerializer(membership).data, status=status.HTTP_201_CREATED)
@@ -2558,13 +2570,15 @@ def registration_step2_existing_company(request):
 @permission_classes([permissions.AllowAny])
 def registration_step3_company_cpvs(request):
     """Крок 3: напрямки діяльності та CPV-категорії."""
-    payload = CompanyRegistrationStep3Serializer(data=request.data)
-    if not payload.is_valid():
-        return Response(payload.errors, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        user_id = int(request.data.get("user_id"))
+    except (TypeError, ValueError):
+        return Response({"user_id": "Вкажіть коректний ID користувача."}, status=status.HTTP_400_BAD_REQUEST)
 
-    user_id = payload.validated_data["user_id"]
-    company_id = payload.validated_data["company_id"]
-    cpv_ids = payload.validated_data.get("cpv_ids") or []
+    try:
+        company_id = int(request.data.get("company_id"))
+    except (TypeError, ValueError):
+        return Response({"company_id": "Вкажіть коректний ID компанії."}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         user = User.objects.get(id=user_id)
@@ -2576,14 +2590,30 @@ def registration_step3_company_cpvs(request):
     except Company.DoesNotExist:
         return Response({"company_id": "Компанію не знайдено або вона неактивна."}, status=status.HTTP_400_BAD_REQUEST)
 
-    if not CompanyUser.objects.filter(
-        user=user, company=company, status=CompanyUser.Status.APPROVED
-    ).exists():
+    membership = (
+        CompanyUser.objects.filter(user=user, company=company)
+        .only("id", "status")
+        .order_by("-created_at")
+        .first()
+    )
+    if not membership:
         return Response(
             {"non_field_errors": "Користувач не має підтвердженого зв'язку з цією компанією."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    if membership.status != CompanyUser.Status.APPROVED:
+        if user.registration_step != 4:
+            user.registration_step = 4
+            user.save(update_fields=["registration_step"])
+        serializer = CompanyCpvSerializer(company)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    payload = CompanyRegistrationStep3Serializer(data=request.data)
+    if not payload.is_valid():
+        return Response(payload.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    cpv_ids = payload.validated_data.get("cpv_ids") or []
     approved_count = CompanyUser.objects.filter(
         company=company, status=CompanyUser.Status.APPROVED
     ).count()

@@ -8,6 +8,7 @@
       <UForm :state="form" @submit="onSubmit" class="space-y-4">
         <UFormField label="Email" name="email" required>
           <UInput
+            class="w-full"
             v-model="form.email"
             type="email"
             placeholder="your@email.com"
@@ -16,6 +17,7 @@
 
         <UFormField label="Пароль" name="password" required>
           <UInput
+            class="w-full"
             v-model="form.password"
             type="password"
             placeholder="••••••••"
@@ -71,10 +73,13 @@ const onSubmit = async () => {
     const me = await refreshMe();
     const registrationStep = Number((me as any)?.registration_step ?? 4);
     if (registrationStep < 4) {
-      await navigateTo(`/register?step=${Math.min(Math.max(registrationStep, 1), 3)}`);
+      await navigateTo(
+        `/register?step=${Math.min(Math.max(registrationStep, 1), 3)}`,
+      );
       return;
     }
-    const hasMemberships = Array.isArray(me?.memberships) && me.memberships.length > 0;
+    const hasMemberships =
+      Array.isArray(me?.memberships) && me.memberships.length > 0;
     if (!hasMemberships) {
       await navigateTo("/register?step=2");
       return;

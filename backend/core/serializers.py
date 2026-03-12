@@ -200,7 +200,9 @@ class UserRegistrationStep1Serializer(serializers.Serializer):
     def validate_email(self, value):
         email = (value or "").strip().lower()
         if User.objects.filter(email__iexact=email).exists():
-            raise serializers.ValidationError("РљРѕСЂРёСЃС‚СѓРІР°С‡ Р· С‚Р°РєРёРј email РІР¶Рµ С–СЃРЅСѓС”.")
+            raise serializers.ValidationError(
+                "Користувач з таким email вже існує. У разі якщо ви не завершили реєстарцію, можете продовжити при вході."
+            )
         return email
 
     def create(self, validated_data):
@@ -281,6 +283,10 @@ class RegistrationCompanyLookupCompanySerializer(serializers.ModelSerializer):
     """Public company fields allowed during registration lookup."""
 
     registration_country = serializers.CharField(read_only=True)
+    cpv_categories = serializers.SerializerMethodField()
+    goal_tenders = serializers.BooleanField(read_only=True)
+    goal_participation = serializers.BooleanField(read_only=True)
+    agree_participation_visibility = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Company
@@ -291,8 +297,24 @@ class RegistrationCompanyLookupCompanySerializer(serializers.ModelSerializer):
             "subject_type",
             "registration_country",
             "company_address",
+            "goal_tenders",
+            "goal_participation",
+            "agree_participation_visibility",
+            "cpv_categories",
         )
         read_only_fields = fields
+
+    def get_cpv_categories(self, obj):
+        qs = obj.cpv_categories.all()
+        return [
+            {
+                "id": cpv.id,
+                "cpv_code": cpv.cpv_code,
+                "name_ua": cpv.name_ua,
+                "label": f"{cpv.cpv_code} - {cpv.name_ua}",
+            }
+            for cpv in qs
+        ]
 
 
 class CountryBusinessNumberSerializer(serializers.ModelSerializer):

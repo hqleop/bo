@@ -195,6 +195,7 @@
             <CpvTenderModalSelect
               label="Категорії CPV"
               placeholder="Оберіть одну або кілька CPV-категорій"
+              :disabled="isStep3CpvLocked"
               :selected-ids="cpvSelectedIds"
               :selected-labels="cpvSelectedLabels"
               @update:selected-ids="cpvSelectedIds = $event"
@@ -301,6 +302,15 @@ type RegistrationCompanyLookup = {
     subject_type?: SubjectType;
     registration_country?: string;
     company_address?: string;
+    goal_tenders?: boolean;
+    goal_participation?: boolean;
+    agree_participation_visibility?: boolean;
+    cpv_categories?: Array<{
+      id: number;
+      cpv_code?: string;
+      name_ua?: string;
+      label?: string;
+    }>;
   } | null;
 };
 
@@ -322,6 +332,7 @@ const subjectTypeOptions = [
 
 const registrationCountryOptions = ref<Array<{ label: string; value: string }>>([]);
 const companyLookup = ref<RegistrationCompanyLookup | null>(null);
+const existingCompanyJoinPending = ref(false);
 const companyLookupLoading = ref(false);
 let companyLookupTimer: ReturnType<typeof setTimeout> | null = null;
 let companyLookupRequestId = 0;
@@ -335,6 +346,7 @@ const shouldUseExistingCompanyFlow = computed(
 const isCompanyDataLocked = computed(
   () => Boolean(companyLookup.value?.exists && companyLookup.value?.has_registered_users),
 );
+const isStep3CpvLocked = computed(() => existingCompanyJoinPending.value);
 
 const codeLabel = computed(() => {
   if (step2Form.subject_type === "fop_resident") return "ІПН";
@@ -379,6 +391,19 @@ const initRegistrationState = async () => {
 
   userId.value = me?.user?.id ?? null;
   companyId.value = Number((me as any)?.registration_company_id ?? null) || null;
+  const memberships = Array.isArray((me as any)?.memberships)
+    ? ((me as any).memberships as any[])
+    : [];
+  existingCompanyJoinPending.value = memberships.some((membership) => {
+    const membershipCompanyId = Number(
+      (membership as any)?.company?.id ?? (membership as any)?.company_id ?? null,
+    );
+    return (
+      membershipCompanyId > 0 &&
+      membershipCompanyId === companyId.value &&
+      String((membership as any)?.status || "") === "pending"
+    );
+  });
 
   if (registrationStep >= 4 && hasMemberships) {
     await navigateTo("/cabinet/dashboard");
@@ -420,6 +445,20 @@ const applyLookupCompanyData = (lookup: RegistrationCompanyLookup) => {
   step2Form.name = String(company.name || "");
   step2Form.company_address = String(company.company_address || "");
   step2Form.registration_country = String(company.registration_country || "");
+  step3Form.goal_tenders = Boolean(company.goal_tenders);
+  step3Form.goal_participation = Boolean(company.goal_participation);
+  step3Form.agree_participation_visibility = Boolean(
+    company.agree_participation_visibility,
+  );
+  const companyCpvs = Array.isArray(company.cpv_categories)
+    ? company.cpv_categories
+    : [];
+  cpvSelectedIds.value = companyCpvs
+    .map((cpv) => Number(cpv?.id))
+    .filter((id) => Number.isFinite(id) && id > 0);
+  cpvSelectedLabels.value = companyCpvs.map((cpv) =>
+    String(cpv?.label || `${cpv?.cpv_code || ""} - ${cpv?.name_ua || ""}`).trim(),
+  );
   if (lookup.has_registered_users) {
     step2Form.identity_document = null;
   }
@@ -614,14 +653,7 @@ const onStep2Submit = async () => {
     }
 
     const membershipStatus = String((data as any)?.status || "");
-    if (membershipStatus === "pending") {
-      successModalTitle.value = "Запит на приєднання надіслано";
-      successModalText.value =
-        "Реєстрацію завершено. Ваш запит на приєднання до компанії передано адміністратору для підтвердження.";
-      successModalOpen.value = true;
-      return;
-    }
-
+    existingCompanyJoinPending.value = membershipStatus === "pending";
     currentStep.value = 3;
     return;
   }
@@ -651,6 +683,7 @@ const onStep2Submit = async () => {
     return;
   }
 
+  existingCompanyJoinPending.value = false;
   companyId.value = Number((data as any)?.id ?? null) || companyId.value;
   currentStep.value = 3;
 };
@@ -676,19 +709,21 @@ const onStep3Submit = async () => {
     return;
   }
 
-  if (!step3Form.goal_tenders && !step3Form.goal_participation) {
-    alert("Оберіть хоча б один напрямок діяльності.");
-    return;
-  }
-
-  if (step3Form.goal_participation) {
-    if (!step3Form.agree_participation_visibility) {
-      alert("Підтвердьте відображення реєстраційних даних.");
+  if (!existingCompanyJoinPending.value) {
+    if (!step3Form.goal_tenders && !step3Form.goal_participation) {
+      alert("Оберіть хоча б один напрямок діяльності.");
       return;
     }
-    if (!cpvSelectedIds.value.length) {
-      alert("Оберіть хоча б одну CPV-категорію.");
-      return;
+
+    if (step3Form.goal_participation) {
+      if (!step3Form.agree_participation_visibility) {
+        alert("Підтвердьте відображення реєстраційних даних.");
+        return;
+      }
+      if (!cpvSelectedIds.value.length) {
+        alert("Оберіть хоча б одну CPV-категорію.");
+        return;
+      }
     }
   }
 
