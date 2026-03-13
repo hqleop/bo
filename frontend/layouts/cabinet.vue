@@ -112,6 +112,8 @@
 </template>
 
 <script setup lang="ts">
+import { resolveRegistrationStep } from "~/shared/registrationFlow";
+
 const { isAuthenticated, checkAuth, getAuthHeaders } = useAuth();
 
 // Перевірка автентифікації при завантаженні
@@ -130,7 +132,7 @@ const meLoading = ref(true);
 if (import.meta.client) {
   try {
     const mePayload = await refreshMe();
-    const registrationStep = Number((mePayload as any)?.registration_step ?? 4);
+    const registrationStep = resolveRegistrationStep(mePayload as any);
     if (registrationStep < 4) {
       await navigateTo(`/register?step=${Math.min(Math.max(registrationStep, 1), 3)}`);
     } else {

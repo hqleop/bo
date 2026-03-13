@@ -170,6 +170,7 @@
             <UCheckbox
               v-model="step2Form.agree_trade_rules"
               name="agree_trade_rules"
+              required
             >
               <template #label>
                 Я погоджуюсь з
@@ -186,6 +187,7 @@
             <UCheckbox
               v-model="step2Form.agree_privacy_policy"
               name="agree_privacy_policy"
+              required
             >
               <template #label>
                 Я погоджуюся з
@@ -201,11 +203,7 @@
           </div>
 
           <div class="flex gap-4">
-            <UButton
-              type="button"
-              variant="outline"
-              block
-              @click="goToHome"
+            <UButton type="button" variant="outline" block @click="goToHome"
               >Продовжити пізніше</UButton
             >
             <UButton
@@ -246,19 +244,18 @@
               name="goal_participation"
               label="Участь в тендерах"
             />
-          </div>
-
-          <div v-if="step3Form.goal_participation" class="pl-6 space-y-2">
-            <UCheckbox
-              v-model="step3Form.goal_participation_sales"
-              name="goal_participation_sales"
-              label="Продажі"
-            />
-            <UCheckbox
-              v-model="step3Form.goal_participation_purchase"
-              name="goal_participation_purchase"
-              label="Закупівлі"
-            />
+            <div v-if="step3Form.goal_participation" class="pl-6 space-y-2">
+              <UCheckbox
+                v-model="step3Form.goal_participation_sales"
+                name="goal_participation_sales"
+                label="Продажі"
+              />
+              <UCheckbox
+                v-model="step3Form.goal_participation_purchase"
+                name="goal_participation_purchase"
+                label="Закупівлі"
+              />
+            </div>
           </div>
 
           <div v-if="step3Form.goal_participation" class="space-y-4">
@@ -266,6 +263,7 @@
               v-model="step3Form.agree_participation_visibility"
               name="agree_participation_visibility"
               label="Погоджуюсь, що мої реєстраційні дані відображатимуться організаторам тендерів"
+              required
             />
 
             <CpvTenderModalSelect
@@ -332,6 +330,7 @@
 
 <script setup lang="ts">
 import { getApiErrorMessage } from "~/shared/api/error";
+import { resolveRegistrationStep } from "~/shared/registrationFlow";
 import { onBeforeUnmount } from "vue";
 
 definePageMeta({
@@ -495,7 +494,7 @@ const initRegistrationState = async () => {
   const me = await refreshMe();
   const hasMemberships =
     Array.isArray(me?.memberships) && me.memberships.length > 0;
-  const registrationStep = Number((me as any)?.registration_step ?? 4);
+  const registrationStep = resolveRegistrationStep(me as any);
 
   userId.value = me?.user?.id ?? null;
   companyId.value =
@@ -522,7 +521,9 @@ const initRegistrationState = async () => {
   }
 
   const queryStep = getQueryStep();
-  currentStep.value = queryStep ?? Math.min(Math.max(registrationStep, 1), 3);
+  const resolvedStep = Math.min(Math.max(registrationStep, 1), 3);
+  currentStep.value =
+    queryStep != null ? Math.max(queryStep, resolvedStep) : resolvedStep;
   if (currentStep.value < 1 || currentStep.value > 3) currentStep.value = 1;
 };
 
@@ -621,12 +622,7 @@ const scheduleCompanyLookup = () => {
 
 watch(
   () => step3Form.goal_tenders,
-  (enabled, previous) => {
-    if (enabled && !previous) {
-      step3Form.goal_tenders_sales = true;
-      step3Form.goal_tenders_purchase = true;
-      return;
-    }
+  (enabled) => {
     if (!enabled) {
       step3Form.goal_tenders_sales = false;
       step3Form.goal_tenders_purchase = false;
@@ -636,12 +632,7 @@ watch(
 
 watch(
   () => step3Form.goal_participation,
-  (enabled, previous) => {
-    if (enabled && !previous) {
-      step3Form.goal_participation_sales = true;
-      step3Form.goal_participation_purchase = true;
-      return;
-    }
+  (enabled) => {
     if (!enabled) {
       step3Form.goal_participation_sales = false;
       step3Form.goal_participation_purchase = false;
@@ -789,6 +780,35 @@ const onStep2Submit = async () => {
   const normalizedCode = String(step2Form.edrpou ?? "").trim();
 
   if (shouldUseExistingCompanyFlow.value) {
+    const lookupCompanyId = Number((companyLookup.value as any)?.company?.id ?? null);
+    if (lookupCompanyId > 0) {
+      if (companyId.value === lookupCompanyId) {
+        currentStep.value = 3;
+        return;
+      }
+
+      const me = await refreshMe();
+      const memberships = Array.isArray((me as any)?.memberships)
+        ? ((me as any).memberships as any[])
+        : [];
+      const existingMembership = memberships.find((membership) => {
+        const membershipCompanyId = Number(
+          (membership as any)?.company?.id ??
+            (membership as any)?.company_id ??
+            null,
+        );
+        return membershipCompanyId > 0 && membershipCompanyId === lookupCompanyId;
+      });
+
+      if (existingMembership) {
+        companyId.value = lookupCompanyId;
+        existingCompanyJoinPending.value =
+          String((existingMembership as any)?.status || "") === "pending";
+        currentStep.value = 3;
+        return;
+      }
+    }
+
     loading.value = true;
     const { data, error } = await usersUC.registerStep2Existing({
       user_id: userId.value,
@@ -882,7 +902,9 @@ const onStep3Submit = async () => {
       !step3Form.goal_tenders_sales &&
       !step3Form.goal_tenders_purchase
     ) {
-      alert("Оберіть напрямок для організації тендерів: Продажі або Закупівлі.");
+      alert(
+        "Оберіть напрямок для організації тендерів: Продажі або Закупівлі.",
+      );
       return;
     }
 

@@ -45,6 +45,8 @@
 </template>
 
 <script setup lang="ts">
+import { resolveRegistrationStep } from "~/shared/registrationFlow";
+
 definePageMeta({
   layout: "site",
 });
@@ -71,7 +73,7 @@ const onSubmit = async () => {
 
   if (result.success) {
     const me = await refreshMe();
-    const registrationStep = Number((me as any)?.registration_step ?? 4);
+    const registrationStep = resolveRegistrationStep(me as any);
     if (registrationStep < 4) {
       await navigateTo(
         `/register?step=${Math.min(Math.max(registrationStep, 1), 3)}`,
