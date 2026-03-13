@@ -1719,7 +1719,7 @@
               <div
                 v-for="(node, index) in approvalRouteNodes"
                 :key="`${node.kind}-${node.order || index}-${index}`"
-                class="rounded bg-gray-50/70 p-2 min-w-[220px] max-w-[320px]"
+                class="rounded p-2 max-w-[320px]"
               >
                 <div class="flex items-center gap-2 font-medium">
                   <UIcon
