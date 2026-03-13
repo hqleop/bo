@@ -33,6 +33,7 @@
               :key="node.id"
               :item="node"
               :selected-ids="selectedIds"
+              :disabled-ids="disabledIds"
               @toggle="$emit('toggle', $event)"
             />
           </div>
@@ -52,6 +53,7 @@ const props = defineProps<{
   tree?: any[];
   selectedIds?: number[];
   searchTerm?: string;
+  disabledIds?: number[];
 }>();
 
 const emit = defineEmits<{

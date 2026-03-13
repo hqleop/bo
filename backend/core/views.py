@@ -281,6 +281,74 @@ def _expand_tree_ids_with_ancestors(model_cls, source_ids):
     return all_ids
 
 
+def _expand_tree_ids_with_descendants(model_cls, source_ids):
+    pending = {int(item_id) for item_id in source_ids if item_id is not None}
+    all_ids = set(pending)
+    while pending:
+        child_ids = set(
+            model_cls.objects.filter(parent_id__in=pending).values_list("id", flat=True)
+        )
+        new_ids = child_ids - all_ids
+        if not new_ids:
+            break
+        all_ids.update(new_ids)
+        pending = new_ids
+    return all_ids
+
+
+def _copy_tree_user_assignments(
+    *,
+    source_obj,
+    target_ids,
+    assignment_model,
+    relation_field,
+):
+    source_user_ids = list(
+        assignment_model.objects.filter(
+            **{f"{relation_field}_id": source_obj.id}
+        ).values_list("user_id", flat=True)
+    )
+    normalized_target_ids = sorted(
+        {
+            int(target_id)
+            for target_id in (target_ids or [])
+            if target_id is not None and int(target_id) != int(source_obj.id)
+        }
+    )
+    if not source_user_ids or not normalized_target_ids:
+        return {
+            "created_count": 0,
+            "target_ids": normalized_target_ids,
+            "source_user_ids": source_user_ids,
+        }
+
+    existing_pairs = set(
+        assignment_model.objects.filter(
+            **{
+                f"{relation_field}_id__in": normalized_target_ids,
+                "user_id__in": source_user_ids,
+            }
+        ).values_list(f"{relation_field}_id", "user_id")
+    )
+
+    to_create = []
+    for target_id in normalized_target_ids:
+        for user_id in source_user_ids:
+            pair = (target_id, user_id)
+            if pair in existing_pairs:
+                continue
+            to_create.append(assignment_model(**{f"{relation_field}_id": target_id, "user_id": user_id}))
+
+    if to_create:
+        assignment_model.objects.bulk_create(to_create, ignore_conflicts=True)
+
+    return {
+        "created_count": len(to_create),
+        "target_ids": normalized_target_ids,
+        "source_user_ids": source_user_ids,
+    }
+
+
 def _normalize_alnum_token(value):
     return re.sub(r"[^0-9a-zа-яіїєґ]", "", str(value or "").strip().casefold())
 
@@ -3811,6 +3879,7 @@ class BranchViewSet(viewsets.ModelViewSet):
         """Filter by user's companies and optionally by user's assignments."""
         user = self.request.user
         self._allowed_tree_ids = None
+        self._directly_assigned_ids = None
         if user.is_superuser:
             return Branch.objects.all()
 
@@ -3821,6 +3890,7 @@ class BranchViewSet(viewsets.ModelViewSet):
 
         if _is_truthy_query_param(self.request.query_params.get("assigned_only")):
             assigned_ids = set(queryset.filter(users__user=user).values_list("id", flat=True))
+            self._directly_assigned_ids = assigned_ids
             if not assigned_ids:
                 self._allowed_tree_ids = set()
                 return queryset.none().select_related("parent", "company")
@@ -3834,6 +3904,8 @@ class BranchViewSet(viewsets.ModelViewSet):
         context = super().get_serializer_context()
         if getattr(self, "_allowed_tree_ids", None) is not None:
             context["allowed_ids"] = self._allowed_tree_ids
+        if getattr(self, "_directly_assigned_ids", None) is not None:
+            context["directly_assigned_ids"] = self._directly_assigned_ids
         return context
 
     @extend_schema(
@@ -3886,6 +3958,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         """
         user = self.request.user
         self._allowed_tree_ids = None
+        self._directly_assigned_ids = None
         if user.is_superuser:
             queryset = Department.objects.all()
         else:
@@ -3897,19 +3970,22 @@ class DepartmentViewSet(viewsets.ModelViewSet):
                 branch__company_id__in=user_companies
             )
 
-            if _is_truthy_query_param(self.request.query_params.get("assigned_only")):
-                assigned_ids = set(queryset.filter(users__user=user).values_list("id", flat=True))
-                if not assigned_ids:
-                    self._allowed_tree_ids = set()
-                    queryset = queryset.none()
-                else:
-                    allowed_ids = _expand_tree_ids_with_ancestors(Department, assigned_ids)
-                    self._allowed_tree_ids = allowed_ids
-                    queryset = queryset.filter(id__in=allowed_ids).distinct()
-
         branch_id = self.request.query_params.get("branch_id")
         if branch_id:
             queryset = queryset.filter(branch_id=branch_id)
+
+        if not user.is_superuser and _is_truthy_query_param(
+            self.request.query_params.get("assigned_only")
+        ):
+            assigned_ids = set(queryset.filter(users__user=user).values_list("id", flat=True))
+            self._directly_assigned_ids = assigned_ids
+            if not assigned_ids:
+                self._allowed_tree_ids = set()
+                queryset = queryset.none()
+            else:
+                allowed_ids = _expand_tree_ids_with_ancestors(Department, assigned_ids)
+                self._allowed_tree_ids = allowed_ids
+                queryset = queryset.filter(id__in=allowed_ids).distinct()
 
         return queryset.select_related("parent", "branch")
 
@@ -3917,6 +3993,8 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         context = super().get_serializer_context()
         if getattr(self, "_allowed_tree_ids", None) is not None:
             context["allowed_ids"] = self._allowed_tree_ids
+        if getattr(self, "_directly_assigned_ids", None) is not None:
+            context["directly_assigned_ids"] = self._directly_assigned_ids
         return context
 
     @extend_schema(
@@ -3928,7 +4006,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     )
     def list(self, request, *args, **kwargs):
         branch_id = request.query_params.get("branch_id")
-        if not branch_id:
+        if not branch_id and not _is_truthy_query_param(request.query_params.get("assigned_only")):
             return Response({"error": "Параметр branch_id обов'язковий"}, status=400)
         # get_queryset вже відфільтрує за branch_id, тут лише беремо корені
         queryset = self.get_queryset().filter(parent__isnull=True)
@@ -4016,6 +4094,65 @@ class BranchUserViewSet(viewsets.ModelViewSet):
         return Response(created, status=201)
 
     @extend_schema(
+        summary="Скопіювати користувачів у батьківський філіал",
+        description="Копіює користувачів поточного філіалу в його батьківський філіал без дублювання.",
+    )
+    @action(detail=False, methods=["post"], url_path="copy-parent")
+    def copy_parent(self, request):
+        branch_id = request.data.get("branch")
+        if not branch_id:
+            return Response({"error": "Параметр branch обов'язковий"}, status=400)
+
+        user = request.user
+        if user.is_superuser:
+            source = Branch.objects.filter(id=branch_id).first()
+        else:
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            source = Branch.objects.filter(id=branch_id, company_id__in=user_companies).first()
+        if source is None:
+            return Response({"error": "Філіал не знайдено"}, status=404)
+
+        result = _copy_tree_user_assignments(
+            source_obj=source,
+            target_ids=[source.parent_id] if source.parent_id else [],
+            assignment_model=BranchUser,
+            relation_field="branch",
+        )
+        return Response(result)
+
+    @extend_schema(
+        summary="Скопіювати користувачів у дочірні філіали",
+        description="Копіює користувачів поточного філіалу в усі дочірні філіали без дублювання.",
+    )
+    @action(detail=False, methods=["post"], url_path="copy-descendants")
+    def copy_descendants(self, request):
+        branch_id = request.data.get("branch")
+        if not branch_id:
+            return Response({"error": "Параметр branch обов'язковий"}, status=400)
+
+        user = request.user
+        if user.is_superuser:
+            source = Branch.objects.filter(id=branch_id).first()
+        else:
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            source = Branch.objects.filter(id=branch_id, company_id__in=user_companies).first()
+        if source is None:
+            return Response({"error": "Філіал не знайдено"}, status=404)
+
+        target_ids = _expand_tree_ids_with_descendants(Branch, {source.id}) - {source.id}
+        result = _copy_tree_user_assignments(
+            source_obj=source,
+            target_ids=target_ids,
+            assignment_model=BranchUser,
+            relation_field="branch",
+        )
+        return Response(result)
+
+    @extend_schema(
         summary="Видалити користувача з філіалу",
         description="Видалити користувача з філіалу.",
     )
@@ -4082,6 +4219,69 @@ class DepartmentUserViewSet(viewsets.ModelViewSet):
         return Response(created, status=201)
 
     @extend_schema(
+        summary="Скопіювати користувачів у батьківський підрозділ",
+        description="Копіює користувачів поточного підрозділу в його батьківський підрозділ без дублювання.",
+    )
+    @action(detail=False, methods=["post"], url_path="copy-parent")
+    def copy_parent(self, request):
+        department_id = request.data.get("department")
+        if not department_id:
+            return Response({"error": "Параметр department обов'язковий"}, status=400)
+
+        user = request.user
+        if user.is_superuser:
+            source = Department.objects.filter(id=department_id).first()
+        else:
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            source = Department.objects.filter(
+                id=department_id, branch__company_id__in=user_companies
+            ).first()
+        if source is None:
+            return Response({"error": "Підрозділ не знайдено"}, status=404)
+
+        result = _copy_tree_user_assignments(
+            source_obj=source,
+            target_ids=[source.parent_id] if source.parent_id else [],
+            assignment_model=DepartmentUser,
+            relation_field="department",
+        )
+        return Response(result)
+
+    @extend_schema(
+        summary="Скопіювати користувачів у дочірні підрозділи",
+        description="Копіює користувачів поточного підрозділу в усі дочірні підрозділи без дублювання.",
+    )
+    @action(detail=False, methods=["post"], url_path="copy-descendants")
+    def copy_descendants(self, request):
+        department_id = request.data.get("department")
+        if not department_id:
+            return Response({"error": "Параметр department обов'язковий"}, status=400)
+
+        user = request.user
+        if user.is_superuser:
+            source = Department.objects.filter(id=department_id).first()
+        else:
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            source = Department.objects.filter(
+                id=department_id, branch__company_id__in=user_companies
+            ).first()
+        if source is None:
+            return Response({"error": "Підрозділ не знайдено"}, status=404)
+
+        target_ids = _expand_tree_ids_with_descendants(Department, {source.id}) - {source.id}
+        result = _copy_tree_user_assignments(
+            source_obj=source,
+            target_ids=target_ids,
+            assignment_model=DepartmentUser,
+            relation_field="department",
+        )
+        return Response(result)
+
+    @extend_schema(
         summary="Видалити користувача з підрозділу",
         description="Видалити користувача з підрозділу.",
     )
@@ -4127,12 +4327,34 @@ class CategoryViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filter by user's companies."""
         user = self.request.user
+        self._allowed_tree_ids = None
+        self._directly_assigned_ids = None
         if user.is_superuser:
             return Category.objects.all().select_related("parent", "company")
         user_companies = CompanyUser.objects.filter(
             user=user, status=CompanyUser.Status.APPROVED
         ).values_list("company_id", flat=True)
-        return Category.objects.filter(company_id__in=user_companies).select_related("parent", "company")
+        queryset = Category.objects.filter(company_id__in=user_companies)
+
+        if _is_truthy_query_param(self.request.query_params.get("assigned_only")):
+            assigned_ids = set(queryset.filter(users__user=user).values_list("id", flat=True))
+            self._directly_assigned_ids = assigned_ids
+            if not assigned_ids:
+                self._allowed_tree_ids = set()
+                return queryset.none().select_related("parent", "company")
+            allowed_ids = _expand_tree_ids_with_ancestors(Category, assigned_ids)
+            self._allowed_tree_ids = allowed_ids
+            queryset = queryset.filter(id__in=allowed_ids).distinct()
+
+        return queryset.select_related("parent", "company")
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        if getattr(self, "_allowed_tree_ids", None) is not None:
+            context["allowed_ids"] = self._allowed_tree_ids
+        if getattr(self, "_directly_assigned_ids", None) is not None:
+            context["directly_assigned_ids"] = self._directly_assigned_ids
+        return context
 
     @extend_schema(
         summary="Список категорій",
@@ -4222,6 +4444,65 @@ class CategoryUserViewSet(viewsets.ModelViewSet):
                 if created_flag:
                     result.append(CategoryUserSerializer(instance).data)
         return Response(result, status=201)
+
+    @extend_schema(
+        summary="Скопіювати користувачів у батьківську категорію",
+        description="Копіює користувачів поточної категорії в її батьківську категорію без дублювання.",
+    )
+    @action(detail=False, methods=["post"], url_path="copy-parent")
+    def copy_parent(self, request):
+        category_id = request.data.get("category")
+        if not category_id:
+            return Response({"error": "Параметр category обов'язковий"}, status=400)
+
+        user = request.user
+        if user.is_superuser:
+            source = Category.objects.filter(id=category_id).first()
+        else:
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            source = Category.objects.filter(id=category_id, company_id__in=user_companies).first()
+        if source is None:
+            return Response({"error": "Категорію не знайдено"}, status=404)
+
+        result = _copy_tree_user_assignments(
+            source_obj=source,
+            target_ids=[source.parent_id] if source.parent_id else [],
+            assignment_model=CategoryUser,
+            relation_field="category",
+        )
+        return Response(result)
+
+    @extend_schema(
+        summary="Скопіювати користувачів у дочірні категорії",
+        description="Копіює користувачів поточної категорії в усі дочірні категорії без дублювання.",
+    )
+    @action(detail=False, methods=["post"], url_path="copy-descendants")
+    def copy_descendants(self, request):
+        category_id = request.data.get("category")
+        if not category_id:
+            return Response({"error": "Параметр category обов'язковий"}, status=400)
+
+        user = request.user
+        if user.is_superuser:
+            source = Category.objects.filter(id=category_id).first()
+        else:
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            source = Category.objects.filter(id=category_id, company_id__in=user_companies).first()
+        if source is None:
+            return Response({"error": "Категорію не знайдено"}, status=404)
+
+        target_ids = _expand_tree_ids_with_descendants(Category, {source.id}) - {source.id}
+        result = _copy_tree_user_assignments(
+            source_obj=source,
+            target_ids=target_ids,
+            assignment_model=CategoryUser,
+            relation_field="category",
+        )
+        return Response(result)
 
     @extend_schema(
         summary="Видалити користувача з категорії",
@@ -4471,6 +4752,7 @@ class ExpenseArticleViewSet(viewsets.ModelViewSet):
         """Filter by user's companies and optionally by user's assignments."""
         user = self.request.user
         self._allowed_tree_ids = None
+        self._directly_assigned_ids = None
         if user.is_superuser:
             return ExpenseArticle.objects.all().select_related("parent", "company")
         user_companies = CompanyUser.objects.filter(
@@ -4480,6 +4762,7 @@ class ExpenseArticleViewSet(viewsets.ModelViewSet):
 
         if _is_truthy_query_param(self.request.query_params.get("assigned_only")):
             assigned_ids = set(queryset.filter(users__user=user).values_list("id", flat=True))
+            self._directly_assigned_ids = assigned_ids
             if not assigned_ids:
                 self._allowed_tree_ids = set()
                 return queryset.none().select_related("parent", "company")
@@ -4493,6 +4776,8 @@ class ExpenseArticleViewSet(viewsets.ModelViewSet):
         context = super().get_serializer_context()
         if getattr(self, "_allowed_tree_ids", None) is not None:
             context["allowed_ids"] = self._allowed_tree_ids
+        if getattr(self, "_directly_assigned_ids", None) is not None:
+            context["directly_assigned_ids"] = self._directly_assigned_ids
         return context
 
     @extend_schema(
@@ -4581,6 +4866,71 @@ class ExpenseArticleUserViewSet(viewsets.ModelViewSet):
                 if created_flag:
                     result.append(ExpenseArticleUserSerializer(instance).data)
         return Response(result, status=201)
+
+    @extend_schema(
+        summary="Скопіювати користувачів у батьківську статтю бюджету",
+        description="Копіює користувачів поточної статті бюджету в її батьківську статтю без дублювання.",
+    )
+    @action(detail=False, methods=["post"], url_path="copy-parent")
+    def copy_parent(self, request):
+        expense_id = request.data.get("expense")
+        if not expense_id:
+            return Response({"error": "Параметр expense обов'язковий"}, status=400)
+
+        user = request.user
+        if user.is_superuser:
+            source = ExpenseArticle.objects.filter(id=expense_id).first()
+        else:
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            source = ExpenseArticle.objects.filter(
+                id=expense_id, company_id__in=user_companies
+            ).first()
+        if source is None:
+            return Response({"error": "Статтю бюджету не знайдено"}, status=404)
+
+        result = _copy_tree_user_assignments(
+            source_obj=source,
+            target_ids=[source.parent_id] if source.parent_id else [],
+            assignment_model=ExpenseArticleUser,
+            relation_field="expense",
+        )
+        return Response(result)
+
+    @extend_schema(
+        summary="Скопіювати користувачів у дочірні статті бюджету",
+        description="Копіює користувачів поточної статті бюджету в усі дочірні статті без дублювання.",
+    )
+    @action(detail=False, methods=["post"], url_path="copy-descendants")
+    def copy_descendants(self, request):
+        expense_id = request.data.get("expense")
+        if not expense_id:
+            return Response({"error": "Параметр expense обов'язковий"}, status=400)
+
+        user = request.user
+        if user.is_superuser:
+            source = ExpenseArticle.objects.filter(id=expense_id).first()
+        else:
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            source = ExpenseArticle.objects.filter(
+                id=expense_id, company_id__in=user_companies
+            ).first()
+        if source is None:
+            return Response({"error": "Статтю бюджету не знайдено"}, status=404)
+
+        target_ids = _expand_tree_ids_with_descendants(ExpenseArticle, {source.id}) - {
+            source.id
+        }
+        result = _copy_tree_user_assignments(
+            source_obj=source,
+            target_ids=target_ids,
+            assignment_model=ExpenseArticleUser,
+            relation_field="expense",
+        )
+        return Response(result)
 
     @extend_schema(
         summary="Видалити користувача зі статті витрат",

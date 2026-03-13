@@ -153,6 +153,123 @@ def _validate_required_org_fields_for_user(*, attrs, instance, request):
         raise serializers.ValidationError(errors)
 
 
+def _restrict_org_field_querysets_for_user(serializer, request):
+    if not request or not getattr(request, "user", None):
+        return
+    user = request.user
+    if not getattr(user, "is_authenticated", False) or user.is_superuser:
+        return
+
+    company_ids = CompanyUser.objects.filter(
+        user=user,
+        status=CompanyUser.Status.APPROVED,
+    ).values_list("company_id", flat=True)
+
+    queryset_by_field = {
+        "category": Category.objects.filter(company_id__in=company_ids),
+        "expense_article": ExpenseArticle.objects.filter(company_id__in=company_ids),
+        "branch": Branch.objects.filter(company_id__in=company_ids),
+        "department": Department.objects.filter(branch__company_id__in=company_ids),
+    }
+    for field_name, queryset in queryset_by_field.items():
+        field = serializer.fields.get(field_name)
+        if field is not None and hasattr(field, "queryset"):
+            field.queryset = queryset
+
+
+def _validate_assigned_org_entities_for_user(*, attrs, instance, request):
+    if not request or not getattr(request, "user", None):
+        return
+    user = request.user
+    if not getattr(user, "is_authenticated", False) or user.is_superuser:
+        return
+
+    company = attrs.get("company") or (instance.company if instance else None)
+    company_id = getattr(company, "id", None)
+    if not company_id:
+        return
+
+    direct_ids_by_field = {
+        "category": set(
+            CategoryUser.objects.filter(
+                user=user,
+                category__company_id=company_id,
+            ).values_list("category_id", flat=True)
+        ),
+        "expense_article": set(
+            ExpenseArticleUser.objects.filter(
+                user=user,
+                expense__company_id=company_id,
+            ).values_list("expense_id", flat=True)
+        ),
+        "branch": set(
+            BranchUser.objects.filter(
+                user=user,
+                branch__company_id=company_id,
+            ).values_list("branch_id", flat=True)
+        ),
+        "department": set(
+            DepartmentUser.objects.filter(
+                user=user,
+                department__branch__company_id=company_id,
+            ).values_list("department_id", flat=True)
+        ),
+    }
+
+    field_config = {
+        "category": {
+            "company_id": lambda obj: getattr(obj, "company_id", None),
+            "label": "категорію",
+        },
+        "expense_article": {
+            "company_id": lambda obj: getattr(obj, "company_id", None),
+            "label": "статтю бюджету",
+        },
+        "branch": {
+            "company_id": lambda obj: getattr(obj, "company_id", None),
+            "label": "філіал",
+        },
+        "department": {
+            "company_id": lambda obj: getattr(getattr(obj, "branch", None), "company_id", None),
+            "label": "підрозділ",
+        },
+    }
+
+    errors = {}
+    for field_name, config in field_config.items():
+        selected = attrs.get(field_name, getattr(instance, field_name, None) if instance else None)
+        if not selected:
+            continue
+
+        selected_id = getattr(selected, "id", None)
+        if not selected_id:
+            continue
+
+        current_selected = getattr(instance, field_name, None) if instance else None
+        current_id = getattr(current_selected, "id", None)
+        selected_company_id = config["company_id"](selected)
+
+        if selected_company_id != company_id:
+            errors[field_name] = "Обрана сутність не належить компанії тендера."
+            continue
+
+        if selected_id == current_id:
+            continue
+
+        if selected_id not in direct_ids_by_field[field_name]:
+            errors[field_name] = (
+                f"Ви можете обрати лише {config['label']}, за якою закріплені."
+            )
+
+    department = attrs.get("department", getattr(instance, "department", None) if instance else None)
+    branch = attrs.get("branch", getattr(instance, "branch", None) if instance else None)
+    if department and branch and getattr(department, "branch_id", None) != getattr(branch, "id", None):
+        errors["department"] = "Підрозділ має належати обраному філіалу."
+
+    if errors:
+        raise serializers.ValidationError(errors)
+
+
 class UserSerializer(serializers.ModelSerializer):
     """User serializer for read operations."""
 
@@ -716,10 +833,22 @@ class BranchSerializer(serializers.ModelSerializer):
 
     children = serializers.SerializerMethodField()
     user_count = serializers.SerializerMethodField()
+    is_directly_assigned = serializers.SerializerMethodField()
 
     class Meta:
         model = Branch
-        fields = ("id", "company", "parent", "name", "code", "children", "user_count", "created_at", "updated_at")
+        fields = (
+            "id",
+            "company",
+            "parent",
+            "name",
+            "code",
+            "children",
+            "user_count",
+            "is_directly_assigned",
+            "created_at",
+            "updated_at",
+        )
         read_only_fields = ("id", "created_at", "updated_at")
 
     def get_children(self, obj):
@@ -734,16 +863,33 @@ class BranchSerializer(serializers.ModelSerializer):
         """Get count of users in branch."""
         return obj.users.count()
 
+    def get_is_directly_assigned(self, obj):
+        direct_ids = self.context.get("directly_assigned_ids")
+        if direct_ids is None:
+            return True
+        return obj.id in direct_ids
+
 
 class DepartmentSerializer(serializers.ModelSerializer):
     """Department serializer with tree structure."""
 
     children = serializers.SerializerMethodField()
     user_count = serializers.SerializerMethodField()
+    is_directly_assigned = serializers.SerializerMethodField()
 
     class Meta:
         model = Department
-        fields = ("id", "branch", "parent", "name", "children", "user_count", "created_at", "updated_at")
+        fields = (
+            "id",
+            "branch",
+            "parent",
+            "name",
+            "children",
+            "user_count",
+            "is_directly_assigned",
+            "created_at",
+            "updated_at",
+        )
         read_only_fields = ("id", "created_at", "updated_at")
 
     def get_children(self, obj):
@@ -757,6 +903,12 @@ class DepartmentSerializer(serializers.ModelSerializer):
     def get_user_count(self, obj):
         """Get count of users in department."""
         return obj.users.count()
+
+    def get_is_directly_assigned(self, obj):
+        direct_ids = self.context.get("directly_assigned_ids")
+        if direct_ids is None:
+            return True
+        return obj.id in direct_ids
 
 
 class BranchUserSerializer(serializers.ModelSerializer):
@@ -789,6 +941,7 @@ class CategorySerializer(serializers.ModelSerializer):
     children = serializers.SerializerMethodField()
     user_count = serializers.SerializerMethodField()
     cpvs = serializers.SerializerMethodField()
+    is_directly_assigned = serializers.SerializerMethodField()
     cpv_ids = serializers.PrimaryKeyRelatedField(
         many=True,
         write_only=True,
@@ -809,6 +962,7 @@ class CategorySerializer(serializers.ModelSerializer):
             "description",
             "children",
             "user_count",
+            "is_directly_assigned",
             "cpvs",
             "cpv_ids",
             "created_at",
@@ -819,10 +973,19 @@ class CategorySerializer(serializers.ModelSerializer):
     def get_children(self, obj):
         """Get direct children categories."""
         children = obj.children.all()
-        return CategorySerializer(children, many=True).data
+        allowed_ids = self.context.get("allowed_ids")
+        if allowed_ids is not None:
+            children = children.filter(id__in=allowed_ids)
+        return CategorySerializer(children, many=True, context=self.context).data
 
     def get_user_count(self, obj):
         return obj.users.count()
+
+    def get_is_directly_assigned(self, obj):
+        direct_ids = self.context.get("directly_assigned_ids")
+        if direct_ids is None:
+            return True
+        return obj.id in direct_ids
 
     def get_cpvs(self, obj):
         """Return short CPV info for UI."""
@@ -855,6 +1018,7 @@ class ExpenseArticleSerializer(serializers.ModelSerializer):
 
     children = serializers.SerializerMethodField()
     user_count = serializers.SerializerMethodField()
+    is_directly_assigned = serializers.SerializerMethodField()
 
     class Meta:
         model = ExpenseArticle
@@ -869,6 +1033,7 @@ class ExpenseArticleSerializer(serializers.ModelSerializer):
             "description",
             "children",
             "user_count",
+            "is_directly_assigned",
             "created_at",
             "updated_at",
         )
@@ -883,6 +1048,12 @@ class ExpenseArticleSerializer(serializers.ModelSerializer):
 
     def get_user_count(self, obj):
         return obj.users.count()
+
+    def get_is_directly_assigned(self, obj):
+        direct_ids = self.context.get("directly_assigned_ids")
+        if direct_ids is None:
+            return True
+        return obj.id in direct_ids
 
 
 class ExpenseArticleUserSerializer(serializers.ModelSerializer):
@@ -1507,6 +1678,11 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             instance=self.instance,
             request=self.context.get("request"),
         )
+        _validate_assigned_org_entities_for_user(
+            attrs=attrs,
+            instance=self.instance,
+            request=self.context.get("request"),
+        )
         return attrs
 
     criterion_ids = serializers.PrimaryKeyRelatedField(
@@ -1522,6 +1698,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        _restrict_org_field_querysets_for_user(self, self.context.get("request"))
         qs = TenderCriterion.objects.filter(tender_type="procurement")
         self.fields["criterion_ids"].queryset = qs
         if hasattr(self.fields["criterion_ids"], "child_relation"):
@@ -2341,6 +2518,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        _restrict_org_field_querysets_for_user(self, self.context.get("request"))
         qs = TenderCriterion.objects.filter(tender_type="sales")
         self.fields["criterion_ids"].queryset = qs
         if hasattr(self.fields["criterion_ids"], "child_relation"):
@@ -2497,6 +2675,11 @@ class SalesTenderSerializer(serializers.ModelSerializer):
                         {"approval_model_id": "РћР±СЂР°РЅР° РјРѕРґРµР»СЊ РЅРµ РІС–РґРїРѕРІС–РґР°С” РїР°СЂР°РјРµС‚СЂР°Рј Р·Р°СЃС‚РѕСЃСѓРІР°РЅРЅСЏ."}
                     )
         _validate_required_org_fields_for_user(
+            attrs=attrs,
+            instance=self.instance,
+            request=self.context.get("request"),
+        )
+        _validate_assigned_org_entities_for_user(
             attrs=attrs,
             instance=self.instance,
             request=self.context.get("request"),

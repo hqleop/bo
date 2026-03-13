@@ -3,11 +3,15 @@
     <li class="w-full">
       <div
         class="relative group w-full flex items-center gap-2 py-1.5 px-2.5 text-sm rounded-md select-none cursor-pointer min-h-9 hover:bg-gray-50 dark:hover:bg-gray-800/50"
+        :class="{
+          'cursor-not-allowed opacity-60': isDisabled,
+        }"
         @click.stop="toggleSelf"
       >
         <!-- Чекбокс -->
         <UCheckbox
           :model-value="isChecked"
+          :disabled="isDisabled"
           @update:model-value="toggleSelf"
           class="shrink-0"
         />
@@ -40,6 +44,7 @@
           :key="child.id"
           :item="child"
           :selected-ids="selectedIds"
+          :disabled-ids="disabledIds"
           @toggle="$emit('toggle', $event)"
         />
       </div>
@@ -51,6 +56,7 @@
 const props = defineProps<{
   item: any
   selectedIds: number[]
+  disabledIds?: number[]
 }>()
 
 const emit = defineEmits<{
@@ -62,8 +68,10 @@ const hasChildren = computed(
 )
 const isExpanded = ref(true)
 const isChecked = computed(() => props.selectedIds.includes(props.item.id))
+const isDisabled = computed(() => (props.disabledIds || []).includes(props.item.id))
 
 const toggleSelf = () => {
+  if (isDisabled.value) return
   emit('toggle', props.item.id)
 }
 </script>

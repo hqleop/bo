@@ -99,6 +99,7 @@
                         :tree="categoryTree"
                         :selected-ids="selectedCategoryIds"
                         :search-term="categorySearch"
+                        :disabled-ids="categoryDisabledIds"
                         @toggle="toggleCategory"
                         @update:search-term="categorySearch = $event"
                       />
@@ -117,20 +118,18 @@
 
                   <div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <UFormField
+                      <ContentSearch
                         label="Стаття бюджету"
-                        :required="isExpenseArticleRequired"
-                      >
-                        <USelectMenu
-                          v-model="form.expense_article"
-                          :items="expenseOptions"
-                          value-key="value"
-                          placeholder="Оберіть статтю"
-                          size="sm"
-                          class="w-full"
-                          :disabled="isViewingPreviousTour"
-                        />
-                      </UFormField>
+                        placeholder="Оберіть статтю"
+                        search-placeholder="Пошук статті бюджету"
+                        :disabled="isViewingPreviousTour"
+                        :tree="expenseTree"
+                        :selected-ids="selectedExpenseIds"
+                        :search-term="expenseSearch"
+                        :disabled-ids="expenseDisabledIds"
+                        @toggle="toggleExpense"
+                        @update:search-term="expenseSearch = $event"
+                      />
                       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <UFormField label="Орієнтовний бюджет">
                           <UInput
@@ -160,32 +159,30 @@
 
                   <div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <UFormField label="Філіал" :required="isBranchRequired">
-                        <USelectMenu
-                          v-model="form.branch"
-                          :items="branchOptions"
-                          value-key="value"
-                          placeholder="Оберіть філіал"
-                          size="sm"
-                          class="w-full"
-                          :disabled="isViewingPreviousTour"
-                          @update:model-value="onBranchChange"
-                        />
-                      </UFormField>
-                      <UFormField
+                      <ContentSearch
+                        label="Філіал"
+                        placeholder="Оберіть філіал"
+                        search-placeholder="Пошук філіалу"
+                        :disabled="isViewingPreviousTour"
+                        :tree="branchTree"
+                        :selected-ids="selectedBranchIds"
+                        :search-term="branchSearch"
+                        :disabled-ids="branchDisabledIds"
+                        @toggle="toggleBranch"
+                        @update:search-term="branchSearch = $event"
+                      />
+                      <ContentSearch
                         label="Підрозділ"
-                        :required="isDepartmentRequired"
-                      >
-                        <USelectMenu
-                          v-model="form.department"
-                          :items="departmentOptions"
-                          value-key="value"
-                          placeholder="Оберіть підрозділ"
-                          size="sm"
-                          class="w-full"
-                          :disabled="isViewingPreviousTour"
-                        />
-                      </UFormField>
+                        placeholder="Оберіть підрозділ"
+                        search-placeholder="Пошук підрозділу"
+                        :disabled="isViewingPreviousTour"
+                        :tree="departmentTree"
+                        :selected-ids="selectedDepartmentIds"
+                        :search-term="departmentSearch"
+                        :disabled-ids="departmentDisabledIds"
+                        @toggle="toggleDepartment"
+                        @update:search-term="departmentSearch = $event"
+                      />
                     </div>
                   </div>
 
@@ -3195,6 +3192,9 @@ const tenderAttributes = ref<any[]>([]);
 const criteriaSearch = ref("");
 const attributeSearch = ref("");
 const categorySearch = ref("");
+const expenseSearch = ref("");
+const branchSearch = ref("");
+const departmentSearch = ref("");
 const nomenclatureSearch = ref("");
 const selectedNomenclatureId = ref<number | null>(null);
 const selectedAttributeId = ref<number | null>(null);
@@ -4024,6 +4024,13 @@ const form = reactive({
 const selectedCategoryIds = computed(() =>
   form.category ? [form.category] : [],
 );
+const selectedExpenseIds = computed(() =>
+  form.expense_article ? [form.expense_article] : [],
+);
+const selectedBranchIds = computed(() => (form.branch ? [form.branch] : []));
+const selectedDepartmentIds = computed(() =>
+  form.department ? [form.department] : [],
+);
 
 const conductTypeOptions = computed(() => {
   // Для тендерів з типом "Реєстрація" завжди показуємо лише цей варіант
@@ -4059,15 +4066,23 @@ const auctionModelOptions = [
 ];
 
 const categoryTree = ref<any[]>([]);
-const expenseOptions = ref<{ value: number; label: string }[]>([]);
-const branchOptions = ref<{ value: number; label: string }[]>([]);
-const departmentOptions = ref<{ value: number; label: string }[]>([]);
+const expenseTree = ref<any[]>([]);
+const branchTree = ref<any[]>([]);
+const departmentTree = ref<any[]>([]);
 const currencyOptions = ref<{ value: number; label: string }[]>([]);
-const isExpenseArticleRequired = computed(
-  () => expenseOptions.value.length > 0,
+const categoryDisabledIds = computed(() => collectDisabledTreeIds(categoryTree.value));
+const expenseDisabledIds = computed(() => collectDisabledTreeIds(expenseTree.value));
+const branchDisabledIds = computed(() => collectDisabledTreeIds(branchTree.value));
+const departmentDisabledIds = computed(() =>
+  collectDisabledTreeIds(departmentTree.value),
 );
-const isBranchRequired = computed(() => branchOptions.value.length > 0);
-const isDepartmentRequired = computed(() => departmentOptions.value.length > 0);
+const isExpenseArticleRequired = computed(
+  () => countSelectableTreeNodes(expenseTree.value) > 0,
+);
+const isBranchRequired = computed(() => countSelectableTreeNodes(branchTree.value) > 0);
+const isDepartmentRequired = computed(
+  () => countSelectableTreeNodes(departmentTree.value) > 0,
+);
 const availableApprovalModels = ref<any[]>([]);
 let approvalModelsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const approvalModelOptions = computed(() =>
@@ -5494,15 +5509,43 @@ function flattenTree(
   return out;
 }
 
-function findCategoryById(tree: any[], id: number): any | null {
+function findTreeNodeById(tree: any[], id: number): any | null {
   for (const node of tree || []) {
     if (Number(node?.id) === Number(id)) return node;
     if (node?.children?.length) {
-      const found = findCategoryById(node.children, id);
+      const found = findTreeNodeById(node.children, id);
       if (found) return found;
     }
   }
   return null;
+}
+
+function collectDisabledTreeIds(items: any[]): number[] {
+  const out: number[] = [];
+  const walk = (nodes: any[]) => {
+    for (const node of nodes || []) {
+      if (node?.is_directly_assigned === false) out.push(Number(node.id));
+      if (node?.children?.length) walk(node.children);
+    }
+  };
+  walk(items);
+  return out;
+}
+
+function countSelectableTreeNodes(items: any[]): number {
+  let count = 0;
+  const walk = (nodes: any[]) => {
+    for (const node of nodes || []) {
+      if (node?.is_directly_assigned !== false) count += 1;
+      if (node?.children?.length) walk(node.children);
+    }
+  };
+  walk(items);
+  return count;
+}
+
+function findCategoryById(tree: any[], id: number): any | null {
+  return findTreeNodeById(tree, id);
 }
 
 function applyCategoryCpvs(categoryId: number | null) {
@@ -5524,6 +5567,32 @@ function toggleCategory(id: number) {
   form.category = form.category === id ? null : id;
   if (form.category) {
     applyCategoryCpvs(form.category);
+  }
+}
+
+function toggleExpense(id: number) {
+  form.expense_article = form.expense_article === id ? null : id;
+}
+
+function toggleBranch(id: number) {
+  form.branch = form.branch === id ? null : id;
+  if (!form.branch) return;
+
+  const selectedDepartment = form.department
+    ? findTreeNodeById(departmentTree.value, form.department)
+    : null;
+  if (selectedDepartment && Number(selectedDepartment.branch) !== Number(form.branch)) {
+    form.department = null;
+  }
+}
+
+function toggleDepartment(id: number) {
+  form.department = form.department === id ? null : id;
+  if (!form.department || !form.branch) return;
+
+  const selectedDepartment = findTreeNodeById(departmentTree.value, form.department);
+  if (selectedDepartment && Number(selectedDepartment.branch) !== Number(form.branch)) {
+    form.branch = null;
   }
 }
 
@@ -5998,15 +6067,17 @@ function onTourSelect(value: number | null) {
 }
 
 async function loadOptions() {
-  const [cats, expenses, branches, currencies] = await Promise.all([
+  const [cats, expenses, branches, departments, currencies] = await Promise.all([
     tendersUC.getCategories(),
     tendersUC.getExpenses(),
     tendersUC.getBranches(),
+    tendersUC.getDepartments(),
     tendersUC.getCurrencies(),
   ]);
   categoryTree.value = (cats.data as any[]) || [];
-  expenseOptions.value = flattenTree((expenses.data as any[]) || []);
-  branchOptions.value = flattenTree((branches.data as any[]) || []);
+  expenseTree.value = (expenses.data as any[]) || [];
+  branchTree.value = (branches.data as any[]) || [];
+  departmentTree.value = (departments.data as any[]) || [];
   const rawCurrencies = (currencies.data as any[]) || [];
   currencyOptions.value = rawCurrencies.map((c: any) => ({
     value: c.id,
@@ -6107,20 +6178,6 @@ function removeTenderPositionByRow(row: {
       ? row.index
       : tenderPositions.value.findIndex((p) => p === row.original);
   if (idx >= 0) tenderPositions.value.splice(idx, 1);
-}
-
-async function loadDepartments() {
-  if (!form.branch) {
-    departmentOptions.value = [];
-    return;
-  }
-  const { data } = await tendersUC.getDepartments(form.branch);
-  departmentOptions.value = flattenTree((data as any[]) || []);
-}
-
-function onBranchChange() {
-  form.department = null;
-  loadDepartments();
 }
 
 async function patchTender(payload: Record<string, unknown>) {
@@ -7034,7 +7091,6 @@ onMounted(async () => {
   if (!isParticipant.value) {
     await loadOptions();
     await loadNomenclaturesForPreparation();
-    if (form.branch) await loadDepartments();
   }
   acceptanceTimerNowMs.value = Date.now();
   acceptanceTimerInterval = setInterval(() => {

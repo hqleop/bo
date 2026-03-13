@@ -416,7 +416,7 @@ export async function createNomenclature(
 
 // Reference data used by tender pages
 export async function getCategories(request: RequestFn) {
-  return request<unknown[]>('/categories/', { cacheTtlMs: 5 * 60_000 })
+  return request<unknown[]>('/categories/?assigned_only=1', { cacheTtlMs: 5 * 60_000 })
 }
 
 export async function getTenderConditionTemplates(request: RequestFn, companyId?: number | null) {
@@ -467,8 +467,11 @@ export async function getCurrencies(request: RequestFn) {
   return request<unknown[]>('/currencies/', { cacheTtlMs: 5 * 60_000 })
 }
 
-export async function getDepartments(request: RequestFn, branchId: number) {
-  return request<unknown[]>(`/departments/?branch_id=${branchId}&assigned_only=1`, {
+export async function getDepartments(request: RequestFn, branchId?: number | null) {
+  const params = new URLSearchParams()
+  params.set('assigned_only', '1')
+  if (branchId) params.set('branch_id', String(branchId))
+  return request<unknown[]>(`/departments/?${params.toString()}`, {
     cacheTtlMs: 2 * 60_000,
   })
 }

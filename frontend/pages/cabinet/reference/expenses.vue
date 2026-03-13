@@ -34,6 +34,26 @@
         <h3 class="text-lg font-semibold">Користувачі</h3>
         <div class="flex gap-2">
           <UButton
+            icon="i-heroicons-arrow-up-tray"
+            size="sm"
+            variant="outline"
+            color="neutral"
+            :disabled="!canCopyUsersToParent"
+            title="Скопіювати користувачів у батьківську сутність"
+            aria-label="Скопіювати користувачів у батьківську сутність"
+            @click="copyUsers('parent')"
+          />
+          <UButton
+            icon="i-heroicons-arrow-down-tray"
+            size="sm"
+            variant="outline"
+            color="neutral"
+            :disabled="!canCopyUsersToDescendants"
+            title="Скопіювати користувачів у підлеглі сутності"
+            aria-label="Скопіювати користувачів у підлеглі сутності"
+            @click="copyUsers('descendants')"
+          />
+          <UButton
             icon="i-heroicons-plus"
             size="sm"
             :disabled="!selectedExpense"
@@ -252,6 +272,7 @@ definePageMeta({
 const { getAuthHeaders } = useAuth();
 const { fetch } = useApi();
 const { getCurrentCompanyId } = useCurrentCompanyId();
+const toast = useToast();
 
 const expenses = ref<any[]>([]);
 const currentUsers = ref<any[]>([]);
@@ -284,6 +305,16 @@ const availableCompanyUsers = computed(() => {
   );
   return companyUsers.value.filter((u: any) => !assignedIds.has(u.id));
 });
+
+const canCopyUsersToParent = computed(
+  () => Boolean(selectedExpense.value?.parent) && currentUsers.value.length > 0,
+);
+const canCopyUsersToDescendants = computed(
+  () =>
+    Array.isArray(selectedExpense.value?.children) &&
+    selectedExpense.value.children.length > 0 &&
+    currentUsers.value.length > 0,
+);
 
 const loadExpenses = async () => {
   const { data } = await fetch("/expenses/", {
@@ -482,6 +513,38 @@ const removeUsers = async () => {
   showRemoveUsersModal.value = false;
   selectedUsers.value = [];
   await loadUsers();
+};
+
+const copyUsers = async (direction: "parent" | "descendants") => {
+  if (!selectedExpense.value) return;
+
+  saving.value = true;
+  const endpoint =
+    direction === "parent"
+      ? "/expense-users/copy-parent/"
+      : "/expense-users/copy-descendants/";
+  const { data, error } = await fetch(endpoint, {
+    method: "POST",
+    body: { expense: selectedExpense.value.id },
+    headers: getAuthHeaders(),
+  });
+  saving.value = false;
+
+  if (error) {
+    toast.add({
+      title: getApiErrorMessage(error, "Не вдалося скопіювати користувачів"),
+      color: "error",
+    });
+    return;
+  }
+
+  toast.add({
+    title:
+      Number((data as any)?.created_count || 0) > 0
+        ? `Скопійовано користувачів: ${(data as any)?.created_count || 0}`
+        : "Нових користувачів для копіювання не знайдено",
+    color: "success",
+  });
 };
 
 // Допоміжні: сплощення дерева та збір id нащадків

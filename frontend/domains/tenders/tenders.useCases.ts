@@ -257,7 +257,7 @@ export function useTendersUseCases() {
     return tendersApi.getCurrencies(fetch)
   }
 
-  async function getDepartments(branchId: number) {
+  async function getDepartments(branchId?: number | null) {
     return tendersApi.getDepartments(fetch, branchId)
   }
 
