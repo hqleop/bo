@@ -1959,6 +1959,7 @@ class ProcurementTenderListSerializer(serializers.ModelSerializer):
     decision_label = serializers.SerializerMethodField()
     total_amount = serializers.SerializerMethodField()
     economy_amount = serializers.SerializerMethodField()
+    can_delete = serializers.SerializerMethodField()
 
     class Meta:
         model = ProcurementTender
@@ -1981,6 +1982,7 @@ class ProcurementTenderListSerializer(serializers.ModelSerializer):
             "decision_label",
             "total_amount",
             "economy_amount",
+            "can_delete",
             "created_at",
             "updated_at",
         )
@@ -2045,6 +2047,12 @@ class ProcurementTenderListSerializer(serializers.ModelSerializer):
         if total_amount is None:
             total_amount = Decimal("0")
         return _format_amount(estimated - total_amount)
+
+    def get_can_delete(self, obj):
+        deletable_ids = self.context.get("journal_deletable_ids")
+        if not deletable_ids:
+            return False
+        return int(getattr(obj, "id", 0) or 0) in deletable_ids
 
 
 class ProcurementParticipationTenderListSerializer(serializers.ModelSerializer):
@@ -2787,6 +2795,7 @@ class SalesTenderListSerializer(serializers.ModelSerializer):
     decision_label = serializers.SerializerMethodField()
     total_amount = serializers.SerializerMethodField()
     profit_amount = serializers.SerializerMethodField()
+    can_delete = serializers.SerializerMethodField()
 
     class Meta:
         model = SalesTender
@@ -2809,6 +2818,7 @@ class SalesTenderListSerializer(serializers.ModelSerializer):
             "decision_label",
             "total_amount",
             "profit_amount",
+            "can_delete",
             "created_at",
             "updated_at",
         )
@@ -2873,6 +2883,12 @@ class SalesTenderListSerializer(serializers.ModelSerializer):
         if total_amount is None:
             total_amount = Decimal("0")
         return _format_amount(total_amount - estimated)
+
+    def get_can_delete(self, obj):
+        deletable_ids = self.context.get("journal_deletable_ids")
+        if not deletable_ids:
+            return False
+        return int(getattr(obj, "id", 0) or 0) in deletable_ids
 
 
 class SalesParticipationTenderListSerializer(serializers.ModelSerializer):

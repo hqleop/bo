@@ -21,6 +21,7 @@ export interface TenderListItem {
   total_amount?: string | null
   economy_amount?: string | null
   profit_amount?: string | null
+  can_delete?: boolean
   created_at?: string
   [key: string]: unknown
 }

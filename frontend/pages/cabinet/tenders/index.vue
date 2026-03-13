@@ -1,16 +1,44 @@
 <template>
   <div class="h-full min-h-0 flex flex-col overflow-hidden">
-    <div class="flex-shrink-0 flex justify-between items-center mb-4 gap-3">
+    <div class="flex-shrink-0 flex justify-between items-center mb-4 gap-3 flex-wrap">
       <h2 class="text-2xl font-bold">
         {{ viewType === "purchase" ? "Журнал закупівель" : "Журнал продажів" }}
       </h2>
-      <UButton
-        icon="i-heroicons-plus"
-        type="button"
-        @click="navigateTo(createUrl)"
-      >
-        Створити процедуру
-      </UButton>
+      <div class="flex items-center gap-2 flex-wrap justify-end">
+        <span v-if="selectedTenderIds.length" class="text-sm text-gray-600">
+          {{ `Обрано: ${selectedTenderIds.length}` }}
+        </span>
+        <UButton
+          icon="i-heroicons-trash"
+          type="button"
+          size="sm"
+          color="error"
+          variant="outline"
+          :disabled="deletableSelectedTenderIds.length === 0 || deleteInProgress"
+          :loading="deleteInProgress"
+          @click="deleteSelectedTenders"
+        >
+          Видалити тендери
+        </UButton>
+        <UButton
+          icon="i-heroicons-document-duplicate"
+          type="button"
+          size="sm"
+          variant="outline"
+          :disabled="selectedTenderIds.length === 0 || copyInProgress"
+          :loading="copyInProgress"
+          @click="copySelectedTenders"
+        >
+          {{ selectedTenderIds.length > 1 ? "Копіювати тендери" : "Копіювати тендер" }}
+        </UButton>
+        <UButton
+          icon="i-heroicons-plus"
+          type="button"
+          @click="navigateTo(createUrl)"
+        >
+          Створити процедуру
+        </UButton>
+      </div>
     </div>
 
     <div class="flex-1 min-h-0 overflow-hidden flex gap-4 max-lg:flex-col">
@@ -22,8 +50,27 @@
             <UTable
               :data="tableData"
               :columns="tableColumns"
+              :meta="tableMeta"
               class="w-full tenders-journal-table"
             >
+              <template #select-header>
+                <UCheckbox
+                  :model-value="isAllOnPageSelected"
+                  :indeterminate="isSomeOnPageSelected && !isAllOnPageSelected"
+                  aria-label="Обрати всі тендери на сторінці"
+                  @update:model-value="toggleSelectAllOnPage"
+                />
+              </template>
+
+              <template #select-cell="{ row }">
+                <UCheckbox
+                  :model-value="selectedTenderIds.includes(row.original.id)"
+                  aria-label="Обрати тендер"
+                  @update:model-value="toggleSelectTender(row.original.id)"
+                  @click.stop
+                />
+              </template>
+
               <template #number-cell="{ row }">
                 <NuxtLink
                   :to="
@@ -229,10 +276,14 @@ const viewType = computed<TenderViewType>(() =>
 
 const tendersUC = useTendersUseCases();
 const usersUC = useUsersUseCases();
+const toast = useToast();
 
 const tenders = ref<any[]>([]);
 const totalCount = ref(0);
 const currentPage = ref(1);
+const selectedTenderIds = ref<number[]>([]);
+const deleteInProgress = ref(false);
+const copyInProgress = ref(false);
 
 const searchInput = ref("");
 const searchFilter = ref("");
@@ -315,6 +366,7 @@ const tableColumns = computed(() => {
       : { accessorKey: "total_amount", header: "Сума продажу" };
 
   return [
+    { id: "select", header: "" },
     { accessorKey: "number", header: "Номер тендера" },
     { accessorKey: "name", header: "Назва" },
     { accessorKey: "created_by_display", header: "Автор" },
@@ -332,6 +384,72 @@ const tableColumns = computed(() => {
 });
 
 const tableData = computed(() => tenders.value);
+
+const deletableSelectedTenderIds = computed(() => {
+  const selected = new Set(selectedTenderIds.value);
+  return tableData.value
+    .filter((row: any) => selected.has(Number(row?.id || 0)) && Boolean(row?.can_delete))
+    .map((row: any) => Number(row.id))
+    .filter((id: number) => id > 0);
+});
+
+const ineligibleSelectedDeleteCount = computed(() => {
+  const selected = new Set(selectedTenderIds.value);
+  let count = 0;
+  for (const row of tableData.value) {
+    const rowId = Number((row as any)?.id || 0);
+    if (!rowId || !selected.has(rowId)) continue;
+    if (!(row as any)?.can_delete) count += 1;
+  }
+  return count;
+});
+
+const isAllOnPageSelected = computed(() => {
+  if (!tableData.value.length) return false;
+  const ids = new Set(selectedTenderIds.value);
+  return tableData.value.every((row: any) => ids.has(Number(row?.id || 0)));
+});
+
+const isSomeOnPageSelected = computed(() => {
+  const ids = new Set(selectedTenderIds.value);
+  return tableData.value.some((row: any) => ids.has(Number(row?.id || 0)));
+});
+
+function toggleSelectTender(tenderId: number) {
+  const normalizedId = Number(tenderId || 0);
+  if (!normalizedId) return;
+  const set = new Set(selectedTenderIds.value);
+  if (set.has(normalizedId)) {
+    set.delete(normalizedId);
+  } else {
+    set.add(normalizedId);
+  }
+  selectedTenderIds.value = [...set];
+}
+
+function toggleSelectAllOnPage() {
+  const pageIds = tableData.value
+    .map((row: any) => Number(row?.id || 0))
+    .filter((id: number) => id > 0);
+  if (!pageIds.length) return;
+  const selected = new Set(selectedTenderIds.value);
+  const allSelected = pageIds.every((id) => selected.has(id));
+  if (allSelected) {
+    pageIds.forEach((id) => selected.delete(id));
+  } else {
+    pageIds.forEach((id) => selected.add(id));
+  }
+  selectedTenderIds.value = [...selected];
+}
+
+const tableMeta = computed(() => ({
+  class: {
+    tr: (row: any) =>
+      selectedTenderIds.value.includes(Number(row?.original?.id || 0))
+        ? "bg-blue-50"
+        : "",
+  },
+}));
 
 const createUrl = computed(() => {
   const type = viewType.value === "purchase" ? "purchase" : "sales";
@@ -496,6 +614,109 @@ async function loadTenders() {
   if (totalPages > 0 && currentPage.value > totalPages) {
     currentPage.value = totalPages;
   }
+  const pageIds = new Set(
+    tenders.value
+      .map((row: any) => Number(row?.id || 0))
+      .filter((id: number) => id > 0),
+  );
+  selectedTenderIds.value = selectedTenderIds.value.filter((id) =>
+    pageIds.has(id),
+  );
+}
+
+async function deleteSelectedTenders() {
+  if (deleteInProgress.value) return;
+  const ids = deletableSelectedTenderIds.value;
+  if (!ids.length) {
+    toast.add({
+      title: "Немає доступних для видалення тендерів серед вибраних.",
+      color: "warning",
+    });
+    return;
+  }
+  if (ineligibleSelectedDeleteCount.value > 0) {
+    toast.add({
+      title: "Частина вибраних тендерів недоступна для видалення і буде пропущена.",
+      color: "warning",
+    });
+  }
+
+  deleteInProgress.value = true;
+  try {
+    const { data, error } = await tendersUC.bulkDeleteTenders(
+      viewType.value === "sales",
+      ids,
+    );
+    if (error) {
+      toast.add({ title: error, color: "error" });
+      return;
+    }
+    const payload = (data as any) || {};
+    const deletedIds = Array.isArray(payload.deleted_ids)
+      ? payload.deleted_ids
+          .map((id: unknown) => Number(id))
+          .filter((id: number) => Number.isInteger(id) && id > 0)
+      : [];
+    if (!deletedIds.length) {
+      toast.add({
+        title: "Не вдалося видалити вибрані тендери.",
+        color: "warning",
+      });
+      return;
+    }
+    const selected = new Set(selectedTenderIds.value);
+    deletedIds.forEach((id: number) => selected.delete(id));
+    selectedTenderIds.value = [...selected];
+    toast.add({
+      title: `Видалено тендерів: ${deletedIds.length}`,
+      color: "success",
+    });
+    await loadTenders();
+  } finally {
+    deleteInProgress.value = false;
+  }
+}
+
+async function copySelectedTenders() {
+  if (copyInProgress.value) return;
+  const ids = selectedTenderIds.value.filter((id) => Number(id) > 0);
+  if (!ids.length) {
+    toast.add({ title: "Спочатку оберіть тендери для копіювання.", color: "warning" });
+    return;
+  }
+
+  copyInProgress.value = true;
+  try {
+    const { data, error } = await tendersUC.bulkCopyTenders(
+      viewType.value === "sales",
+      ids,
+    );
+    if (error) {
+      toast.add({ title: error, color: "error" });
+      return;
+    }
+    const payload = (data as any) || {};
+    const copiedCount = Number(payload.copied_count || 0);
+    if (copiedCount <= 0) {
+      toast.add({
+        title: "Не вдалося створити копію тендера.",
+        color: "warning",
+      });
+      return;
+    }
+    toast.add({
+      title: `Скопійовано тендерів: ${copiedCount}`,
+      color: "success",
+    });
+    selectedTenderIds.value = [];
+    if (currentPage.value !== 1) {
+      currentPage.value = 1;
+    } else {
+      await loadTenders();
+    }
+  } finally {
+    copyInProgress.value = false;
+  }
 }
 
 function clearFilters() {
@@ -512,6 +733,7 @@ function clearFilters() {
   departmentSearch.value = "";
   expenseSearch.value = "";
   currentPage.value = 1;
+  selectedTenderIds.value = [];
 }
 
 onMounted(async () => {
@@ -590,6 +812,7 @@ const filterState = computed(() => [
 watch(
   filterState,
   () => {
+    selectedTenderIds.value = [];
     if (currentPage.value !== 1) {
       currentPage.value = 1;
       return;

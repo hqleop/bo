@@ -97,6 +97,14 @@ export function useTendersUseCases() {
     return tendersApi.createTender(fetch, isSales, body)
   }
 
+  async function bulkDeleteTenders(isSales: boolean, ids: number[]) {
+    return tendersApi.bulkDeleteTenders(fetch, isSales, ids)
+  }
+
+  async function bulkCopyTenders(isSales: boolean, ids: number[]) {
+    return tendersApi.bulkCopyTenders(fetch, isSales, ids)
+  }
+
   async function getTenderTours(id: number, isSales: boolean) {
     return tendersApi.getTenderTours(fetch, id, isSales)
   }
@@ -368,6 +376,8 @@ export function useTendersUseCases() {
     getTender,
     patchTender,
     createTender,
+    bulkDeleteTenders,
+    bulkCopyTenders,
     getTenderTours,
     getDecisionMarketReference,
     getTenderProposals,

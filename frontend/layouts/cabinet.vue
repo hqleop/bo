@@ -23,21 +23,27 @@
                 icon="i-heroicons-clipboard-document-list"
                 variant="ghost"
                 color="neutral"
+                size="sm"
                 :chip="hasUnseenActiveTasks ? { inset: true } : undefined"
                 title="Завдання користувача"
                 @click="openTasksPage"
-              />
+              >
+                {{ `Завдання (${activeTasksCount})` }}
+              </UButton>
               <UButton
                 icon="i-heroicons-bell"
                 variant="ghost"
                 color="neutral"
+                size="sm"
                 :badge="
                   unreadNotificationsCount > 0
                     ? unreadNotificationsCount
                     : undefined
                 "
                 @click="showNotifications = !showNotifications"
-              />
+              >
+                {{ `Сповіщення (${unreadNotificationsCount})` }}
+              </UButton>
               <NuxtLink
                 to="/cabinet/profile"
                 class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-gray-100 ring-1 ring-transparent hover:ring-gray-200 transition shrink-0"

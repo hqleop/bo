@@ -1,4 +1,5 @@
 import base64
+import copy as pycopy
 import hashlib
 import json
 import logging
@@ -244,6 +245,21 @@ def _parse_int_list_param(raw_values):
     return list(dict.fromkeys(out))
 
 
+def _extract_requested_ids(request):
+    raw_ids = None
+    data = getattr(request, "data", None)
+    if data is None:
+        return []
+    if hasattr(data, "getlist"):
+        raw_ids = data.getlist("ids")
+        if not raw_ids:
+            raw_ids = data.get("ids")
+    elif isinstance(data, dict):
+        raw_ids = data.get("ids")
+    requested_ids = [item for item in _parse_int_list_param(raw_ids) if item > 0]
+    return requested_ids
+
+
 def _is_truthy_query_param(raw_value):
     return str(raw_value or "").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -312,6 +328,71 @@ def _filter_owner_tenders_qs_by_search(qs, search_value):
     if number_tokens:
         filters |= Q(number__in=list(dict.fromkeys(number_tokens)))
     return qs.filter(filters)
+
+
+def _resolve_preparation_stage_deletable_ids(*, candidate_ids, is_sales):
+    candidate_ids = [int(item) for item in candidate_ids if int(item or 0) > 0]
+    if not candidate_ids:
+        return set()
+    state_kwargs = {
+        "stage": TenderApprovalStageState.Stage.PREPARATION,
+    }
+    tender_key = "sales_tender_id" if is_sales else "procurement_tender_id"
+    state_kwargs[f"{tender_key}__in"] = candidate_ids
+    stage_states = (
+        TenderApprovalStageState.objects.filter(**state_kwargs)
+        .annotate(
+            has_steps=Exists(
+                TenderApprovalStageStep.objects.filter(stage_state_id=OuterRef("pk"))
+            )
+        )
+        .values(tender_key, "status", "has_steps")
+    )
+    state_by_tender_id = {
+        int(item[tender_key]): {
+            "status": str(item.get("status") or ""),
+            "has_steps": bool(item.get("has_steps")),
+        }
+        for item in stage_states
+        if item.get(tender_key)
+    }
+
+    deletable_ids = set()
+    for tender_id in candidate_ids:
+        stage_state = state_by_tender_id.get(tender_id)
+        if not stage_state:
+            deletable_ids.add(tender_id)
+            continue
+        if not stage_state["has_steps"]:
+            deletable_ids.add(tender_id)
+            continue
+        if stage_state["status"] == TenderApprovalStageState.Status.WAITING_AUTHOR:
+            deletable_ids.add(tender_id)
+
+    return deletable_ids
+
+
+def _resolve_journal_deletable_ids(*, request, rows, is_sales):
+    if not request or not getattr(request, "user", None):
+        return set()
+    user = request.user
+    if not getattr(user, "is_authenticated", False):
+        return set()
+
+    candidate_ids = []
+    for tender in rows:
+        if int(getattr(tender, "tour_number", 0) or 0) != 1:
+            continue
+        if str(getattr(tender, "stage", "") or "") != TenderApprovalStageState.Stage.PREPARATION:
+            continue
+        if int(getattr(tender, "created_by_id", 0) or 0) != int(user.id):
+            continue
+        candidate_ids.append(int(getattr(tender, "id", 0) or 0))
+
+    return _resolve_preparation_stage_deletable_ids(
+        candidate_ids=candidate_ids,
+        is_sales=is_sales,
+    )
 
 
 def _build_owner_tender_journal_response(
@@ -458,9 +539,20 @@ def _build_owner_tender_journal_response(
 
     start = (page - 1) * page_size
     end = start + page_size
-    rows = qs[start:end]
-
-    serializer = serializer_cls(rows, many=True, context={"request": request})
+    rows = list(qs[start:end])
+    journal_deletable_ids = _resolve_journal_deletable_ids(
+        request=request,
+        rows=rows,
+        is_sales=qs.model is SalesTender,
+    )
+    serializer = serializer_cls(
+        rows,
+        many=True,
+        context={
+            "request": request,
+            "journal_deletable_ids": journal_deletable_ids,
+        },
+    )
     return Response(
         {
             "count": total,
@@ -1780,6 +1872,151 @@ def _ensure_user_can_edit_tender(*, user, tender, is_sales):
         return
     if _user_is_tender_approver(user=user, tender=tender, is_sales=is_sales):
         raise PermissionDenied("Approver has read-only access to this tender.")
+
+
+def _can_user_delete_tender(*, user, tender, is_sales):
+    if not _is_tender_author(user=user, tender=tender):
+        return False
+    stage = str(getattr(tender, "stage", "") or "").strip()
+    if stage != TenderApprovalStageState.Stage.PREPARATION:
+        return False
+    if int(getattr(tender, "tour_number", 0) or 0) != 1:
+        return False
+    tender_id = int(getattr(tender, "id", 0) or 0)
+    if tender_id <= 0:
+        return False
+    deletable_ids = _resolve_preparation_stage_deletable_ids(
+        candidate_ids=[tender_id],
+        is_sales=is_sales,
+    )
+    return tender_id in deletable_ids
+
+
+def _ensure_user_can_delete_tender(*, user, tender, is_sales):
+    if _can_user_delete_tender(user=user, tender=tender, is_sales=is_sales):
+        return
+    raise PermissionDenied(
+        "Tender can be deleted only by author on round 1 in preparation stage "
+        "before approval route starts."
+    )
+
+
+def _copy_tender_to_first_round(*, source_tender, actor, is_sales):
+    tender_model = SalesTender if is_sales else ProcurementTender
+    criteria_snapshot_model = SalesTenderCriterion if is_sales else ProcurementTenderCriterion
+    position_model = SalesTenderPosition if is_sales else ProcurementTenderPosition
+
+    with transaction.atomic():
+        copied_tender = tender_model.objects.create(
+            company=source_tender.company,
+            parent=None,
+            tour_number=1,
+            name=source_tender.name,
+            stage=TenderApprovalStageState.Stage.PREPARATION,
+            category=source_tender.category,
+            cpv_category=getattr(source_tender, "cpv_category", None),
+            expense_article=source_tender.expense_article,
+            estimated_budget=source_tender.estimated_budget,
+            branch=source_tender.branch,
+            department=source_tender.department,
+            conduct_type=source_tender.conduct_type,
+            auction_model=getattr(
+                source_tender,
+                "auction_model",
+                tender_model.AuctionModel.CLASSIC_AUCTION,
+            ),
+            publication_type=source_tender.publication_type,
+            currency=source_tender.currency,
+            general_terms=source_tender.general_terms or "",
+            start_at=getattr(source_tender, "start_at", None),
+            end_at=getattr(source_tender, "end_at", None),
+            planned_start_at=getattr(source_tender, "planned_start_at", None),
+            planned_end_at=getattr(source_tender, "planned_end_at", None),
+            price_criterion_vat=source_tender.price_criterion_vat or "",
+            price_criterion_vat_percent=source_tender.price_criterion_vat_percent,
+            price_criterion_delivery=source_tender.price_criterion_delivery or "",
+            approval_model=source_tender.approval_model,
+            created_by=actor,
+        )
+        copied_tender.cpv_categories.set(source_tender.cpv_categories.all())
+        copied_tender.tender_criteria.set(source_tender.tender_criteria.all())
+        copied_tender.tender_attributes.set(source_tender.tender_attributes.all())
+
+        criteria_to_create = []
+        source_criteria_items = list(
+            source_tender.criteria_items.select_related("reference_criterion").all()
+        )
+        if source_criteria_items:
+            for criterion in source_criteria_items:
+                options = criterion.options if isinstance(criterion.options, dict) else {}
+                criteria_to_create.append(
+                    criteria_snapshot_model(
+                        tender=copied_tender,
+                        reference_criterion=criterion.reference_criterion,
+                        name=criterion.name,
+                        type=criterion.type,
+                        application=criterion.application,
+                        is_required=bool(criterion.is_required),
+                        options=pycopy.deepcopy(options),
+                    )
+                )
+        else:
+            for criterion in source_tender.tender_criteria.all():
+                options = getattr(criterion, "options", {}) or {}
+                if not isinstance(options, dict):
+                    options = {}
+                criteria_to_create.append(
+                    criteria_snapshot_model(
+                        tender=copied_tender,
+                        reference_criterion=criterion,
+                        name=criterion.name,
+                        type=criterion.type,
+                        application=getattr(
+                            criterion,
+                            "application",
+                            TenderCriterion.Application.INDIVIDUAL,
+                        ),
+                        is_required=bool(getattr(criterion, "is_required", False)),
+                        options=pycopy.deepcopy(options),
+                    )
+                )
+        if criteria_to_create:
+            criteria_snapshot_model.objects.bulk_create(criteria_to_create)
+
+        source_positions = list(
+            source_tender.positions.select_related("nomenclature").all()
+        )
+        positions_to_create = []
+        for position in source_positions:
+            attribute_values = (
+                position.attribute_values
+                if isinstance(position.attribute_values, dict)
+                else {}
+            )
+            positions_to_create.append(
+                position_model(
+                    tender=copied_tender,
+                    nomenclature=position.nomenclature,
+                    name=position.name or "",
+                    unit_name=position.unit_name or "",
+                    quantity=position.quantity,
+                    description=position.description or "",
+                    attribute_values=pycopy.deepcopy(attribute_values),
+                    start_price=position.start_price,
+                    min_bid_step=position.min_bid_step,
+                    max_bid_step=position.max_bid_step,
+                )
+            )
+        if positions_to_create:
+            position_model.objects.bulk_create(positions_to_create)
+
+        _ensure_stage_state_snapshot(
+            tender=copied_tender,
+            is_sales=is_sales,
+            stage=TenderApprovalStageState.Stage.PREPARATION,
+            rebuild=True,
+        )
+    return copied_tender
 
 
 def _validate_preparation_readiness_before_publish(*, tender):
@@ -4818,6 +5055,124 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             serializer_cls=self.get_serializer_class(),
         )
 
+    def destroy(self, request, *args, **kwargs):
+        tender = self.get_object()
+        _ensure_user_can_delete_tender(
+            user=request.user,
+            tender=tender,
+            is_sales=False,
+        )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        requested_ids = _extract_requested_ids(request)
+        if not requested_ids:
+            return Response(
+                {"detail": "Передайте непорожній масив ids."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        qs = self.get_queryset().filter(id__in=requested_ids)
+        existing_ids = set(qs.values_list("id", flat=True))
+        candidate_ids = list(
+            qs.filter(
+                created_by_id=request.user.id,
+                tour_number=1,
+                stage=TenderApprovalStageState.Stage.PREPARATION,
+            ).values_list("id", flat=True)
+        )
+        deletable_ids = _resolve_preparation_stage_deletable_ids(
+            candidate_ids=candidate_ids,
+            is_sales=False,
+        )
+        deleted_ids = list(
+            ProcurementTender.objects.filter(id__in=deletable_ids).values_list("id", flat=True)
+        )
+        if deleted_ids:
+            ProcurementTender.objects.filter(id__in=deleted_ids).delete()
+
+        missing_ids = [item_id for item_id in requested_ids if item_id not in existing_ids]
+        ineligible_ids = [
+            item_id
+            for item_id in requested_ids
+            if item_id in existing_ids and item_id not in deletable_ids
+        ]
+        return Response(
+            {
+                "requested_ids": requested_ids,
+                "deleted_ids": deleted_ids,
+                "deleted_count": len(deleted_ids),
+                "missing_ids": missing_ids,
+                "ineligible_ids": ineligible_ids,
+            }
+        )
+
+    @action(detail=False, methods=["post"], url_path="bulk-copy")
+    def bulk_copy(self, request):
+        requested_ids = _extract_requested_ids(request)
+        if not requested_ids:
+            return Response(
+                {"detail": "Передайте непорожній масив ids."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        source_rows = list(
+            self.get_queryset()
+            .filter(id__in=requested_ids)
+            .select_related(
+                "company",
+                "category",
+                "cpv_category",
+                "expense_article",
+                "branch",
+                "department",
+                "currency",
+                "approval_model",
+            )
+            .prefetch_related(
+                "cpv_categories",
+                "tender_criteria",
+                "tender_attributes",
+                "criteria_items__reference_criterion",
+                "positions__nomenclature",
+            )
+        )
+        source_by_id = {int(item.id): item for item in source_rows}
+        copied_rows = []
+        copied_ids = []
+        for source_id in requested_ids:
+            source_tender = source_by_id.get(int(source_id))
+            if not source_tender:
+                continue
+            copied_tender = _copy_tender_to_first_round(
+                source_tender=source_tender,
+                actor=request.user,
+                is_sales=False,
+            )
+            copied_rows.append(
+                {
+                    "source_id": int(source_id),
+                    "id": int(copied_tender.id),
+                    "stage": copied_tender.stage,
+                    "tour_number": copied_tender.tour_number,
+                }
+            )
+            copied_ids.append(int(copied_tender.id))
+
+        available_source_ids = set(source_by_id.keys())
+        missing_ids = [item_id for item_id in requested_ids if item_id not in available_source_ids]
+        return Response(
+            {
+                "requested_ids": requested_ids,
+                "copied_ids": copied_ids,
+                "copied_count": len(copied_ids),
+                "copied": copied_rows,
+                "missing_ids": missing_ids,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
@@ -6021,6 +6376,124 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             request,
             qs=qs,
             serializer_cls=self.get_serializer_class(),
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        tender = self.get_object()
+        _ensure_user_can_delete_tender(
+            user=request.user,
+            tender=tender,
+            is_sales=True,
+        )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        requested_ids = _extract_requested_ids(request)
+        if not requested_ids:
+            return Response(
+                {"detail": "Передайте непорожній масив ids."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        qs = self.get_queryset().filter(id__in=requested_ids)
+        existing_ids = set(qs.values_list("id", flat=True))
+        candidate_ids = list(
+            qs.filter(
+                created_by_id=request.user.id,
+                tour_number=1,
+                stage=TenderApprovalStageState.Stage.PREPARATION,
+            ).values_list("id", flat=True)
+        )
+        deletable_ids = _resolve_preparation_stage_deletable_ids(
+            candidate_ids=candidate_ids,
+            is_sales=True,
+        )
+        deleted_ids = list(
+            SalesTender.objects.filter(id__in=deletable_ids).values_list("id", flat=True)
+        )
+        if deleted_ids:
+            SalesTender.objects.filter(id__in=deleted_ids).delete()
+
+        missing_ids = [item_id for item_id in requested_ids if item_id not in existing_ids]
+        ineligible_ids = [
+            item_id
+            for item_id in requested_ids
+            if item_id in existing_ids and item_id not in deletable_ids
+        ]
+        return Response(
+            {
+                "requested_ids": requested_ids,
+                "deleted_ids": deleted_ids,
+                "deleted_count": len(deleted_ids),
+                "missing_ids": missing_ids,
+                "ineligible_ids": ineligible_ids,
+            }
+        )
+
+    @action(detail=False, methods=["post"], url_path="bulk-copy")
+    def bulk_copy(self, request):
+        requested_ids = _extract_requested_ids(request)
+        if not requested_ids:
+            return Response(
+                {"detail": "Передайте непорожній масив ids."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        source_rows = list(
+            self.get_queryset()
+            .filter(id__in=requested_ids)
+            .select_related(
+                "company",
+                "category",
+                "cpv_category",
+                "expense_article",
+                "branch",
+                "department",
+                "currency",
+                "approval_model",
+            )
+            .prefetch_related(
+                "cpv_categories",
+                "tender_criteria",
+                "tender_attributes",
+                "criteria_items__reference_criterion",
+                "positions__nomenclature",
+            )
+        )
+        source_by_id = {int(item.id): item for item in source_rows}
+        copied_rows = []
+        copied_ids = []
+        for source_id in requested_ids:
+            source_tender = source_by_id.get(int(source_id))
+            if not source_tender:
+                continue
+            copied_tender = _copy_tender_to_first_round(
+                source_tender=source_tender,
+                actor=request.user,
+                is_sales=True,
+            )
+            copied_rows.append(
+                {
+                    "source_id": int(source_id),
+                    "id": int(copied_tender.id),
+                    "stage": copied_tender.stage,
+                    "tour_number": copied_tender.tour_number,
+                }
+            )
+            copied_ids.append(int(copied_tender.id))
+
+        available_source_ids = set(source_by_id.keys())
+        missing_ids = [item_id for item_id in requested_ids if item_id not in available_source_ids]
+        return Response(
+            {
+                "requested_ids": requested_ids,
+                "copied_ids": copied_ids,
+                "copied_count": len(copied_ids),
+                "copied": copied_rows,
+                "missing_ids": missing_ids,
+            },
+            status=status.HTTP_201_CREATED,
         )
 
     def get_object(self):

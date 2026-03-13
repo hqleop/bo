@@ -185,6 +185,47 @@ export async function createTender(
   return request<TenderDetail>(listEndpoint(isSales), { method: 'POST', body })
 }
 
+export async function bulkDeleteTenders(
+  request: RequestFn,
+  isSales: boolean,
+  ids: number[]
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<{
+    requested_ids: number[]
+    deleted_ids: number[]
+    deleted_count: number
+    missing_ids: number[]
+    ineligible_ids: number[]
+  }>(`${prefix}/bulk-delete/`, {
+    method: 'POST',
+    body: { ids },
+  })
+}
+
+export async function bulkCopyTenders(
+  request: RequestFn,
+  isSales: boolean,
+  ids: number[]
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<{
+    requested_ids: number[]
+    copied_ids: number[]
+    copied_count: number
+    copied: Array<{
+      source_id: number
+      id: number
+      stage?: string
+      tour_number?: number
+    }>
+    missing_ids: number[]
+  }>(`${prefix}/bulk-copy/`, {
+    method: 'POST',
+    body: { ids },
+  })
+}
+
 export async function getTenderTours(request: RequestFn, id: number, isSales: boolean) {
   const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
   return request<unknown[]>(`${prefix}/${id}/tours/`)
