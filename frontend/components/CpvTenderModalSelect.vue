@@ -36,11 +36,23 @@
         </template>
 
         <div class="space-y-4 overflow-y-auto flex-1 min-h-0">
-          <UInput
-            v-model="search"
-            icon="i-heroicons-magnifying-glass"
-            placeholder="Пошук CPV за кодом або назвою"
-          />
+          <form class="flex items-center gap-2" @submit.prevent="submitSearch">
+            <UInput
+              v-model="searchInput"
+              icon="i-heroicons-magnifying-glass"
+              class="flex-1"
+              placeholder="Пошук CPV за кодом або назвою"
+            />
+            <UButton
+              type="submit"
+              color="primary"
+              icon="i-heroicons-magnifying-glass"
+              :loading="loadingSearch"
+              :disabled="!canSearch"
+            >
+              Пошук
+            </UButton>
+          </form>
 
           <div
             class="border border-gray-200 rounded-md p-2 h-[34vh] sm:h-[38vh] overflow-y-auto overflow-x-auto"
@@ -175,8 +187,9 @@ const emit = defineEmits<{
 const tendersUC = useTendersUseCases();
 
 const isOpen = ref(false);
-const search = ref("");
-const searchMode = computed(() => Boolean(search.value.trim()));
+const searchInput = ref("");
+const searchQuery = ref("");
+const searchMode = computed(() => Boolean(searchQuery.value.trim()));
 
 const loadingRoot = ref(false);
 const rootNodes = ref<CpvNode[]>([]);
@@ -186,7 +199,6 @@ const loadingChildren = ref<Set<number>>(new Set());
 const loadingSearch = ref(false);
 const searchResults = ref<CpvNode[]>([]);
 const emptyLoadingChildren = ref<Set<number>>(new Set());
-let searchTimer: ReturnType<typeof setTimeout> | null = null;
 let searchRequestId = 0;
 
 const draftSelectedMap = ref<Record<number, { label: string }>>({});
@@ -223,6 +235,8 @@ const selectedItems = computed(() => {
 const loadedSelectedIds = computed(() => {
   return new Set<number>(Object.keys(draftSelectedMap.value).map(Number));
 });
+
+const canSearch = computed(() => Boolean(searchInput.value.trim()));
 
 const searchTree = computed<CpvNode[]>(() => {
   const roots: CpvNode[] = [];
@@ -424,7 +438,8 @@ async function openModal() {
   if (props.disabled) return;
 
   bootstrapDraft();
-  search.value = "";
+  searchInput.value = "";
+  searchQuery.value = "";
   searchResults.value = [];
   loadingSearch.value = false;
   searchRequestId += 1;
@@ -449,34 +464,30 @@ async function loadSearchResults(term: string) {
   loadingSearch.value = false;
 }
 
+async function submitSearch() {
+  const term = searchInput.value.trim();
+  searchQuery.value = term;
+
+  if (!term) {
+    searchRequestId += 1;
+    loadingSearch.value = false;
+    searchResults.value = [];
+    return;
+  }
+
+  await loadSearchResults(term);
+}
+
 watch(
-  () => search.value,
+  () => searchInput.value,
   (value) => {
-    if (searchTimer) {
-      clearTimeout(searchTimer);
-      searchTimer = null;
-    }
-
-    const term = value.trim();
-    if (!term) {
-      searchRequestId += 1;
-      loadingSearch.value = false;
-      searchResults.value = [];
-      return;
-    }
-
-    searchTimer = setTimeout(() => {
-      void loadSearchResults(term);
-    }, 250);
+    if (value.trim()) return;
+    searchQuery.value = "";
+    searchRequestId += 1;
+    loadingSearch.value = false;
+    searchResults.value = [];
   },
 );
-
-onBeforeUnmount(() => {
-  if (searchTimer) {
-    clearTimeout(searchTimer);
-    searchTimer = null;
-  }
-});
 
 function applySelection() {
   const ids = selectedItems.value.map((item) => item.id);
