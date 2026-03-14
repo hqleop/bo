@@ -23,7 +23,22 @@ function boolEnv(name: string, fallback: boolean) {
 
 export default defineNuxtConfig({
   compatibilityDate: "2024-04-03",
-  devtools: { enabled: true },
+  devtools: {
+    enabled: boolEnv(
+      "NUXT_DEVTOOLS_ENABLED",
+      process.env.NODE_ENV === "development",
+    ),
+  },
+  sourcemap: {
+    server: boolEnv(
+      "NUXT_SOURCEMAP_SERVER",
+      process.env.NODE_ENV === "development",
+    ),
+    client: boolEnv(
+      "NUXT_SOURCEMAP_CLIENT",
+      process.env.NODE_ENV === "development",
+    ),
+  },
   modules: ["@nuxt/ui"],
   runtimeConfig: {
     public: {
