@@ -1285,7 +1285,8 @@
             >
               <table
                 v-if="
-                  proposalComparisonPositions.length && submittedDecisionProposals.length
+                  proposalComparisonPositions.length &&
+                  submittedDecisionProposals.length
                 "
                 class="w-full text-sm border-collapse"
               >
@@ -1360,7 +1361,9 @@
                     :key="pos.id"
                     class="border-b border-gray-200 hover:bg-gray-50/50"
                   >
-                    <td class="p-2 bg-white whitespace-nowrap">{{ pos.name }}</td>
+                    <td class="p-2 bg-white whitespace-nowrap">
+                      {{ pos.name }}
+                    </td>
                     <td class="p-2 bg-white whitespace-nowrap">
                       {{ formatDecimalDisplay(pos.quantity) }}
                       {{ pos.unit_name || "" }}
@@ -1393,7 +1396,8 @@
                         class="p-2 border-l border-gray-200"
                       >
                         {{
-                          getProposalCriterionValue(proposal, pos.id, c.id) ?? "—"
+                          getProposalCriterionValue(proposal, pos.id, c.id) ??
+                          "—"
                         }}
                       </td>
                     </template>
@@ -1438,7 +1442,9 @@
                       :key="item.id"
                       class="border-b border-gray-200 hover:bg-gray-50/50"
                     >
-                      <td class="p-2">{{ item.supplier_company_name || "—" }}</td>
+                      <td class="p-2">
+                        {{ item.supplier_company_name || "—" }}
+                      </td>
                       <td class="p-2">{{ formatNumericOrDash(item.price) }}</td>
                       <td class="p-2">{{ item.created_by_display || "—" }}</td>
                       <td class="p-2">{{ formatDateTime(item.created_at) }}</td>
@@ -1795,7 +1801,11 @@
                 {{ tender?.organizer_contact?.email || "—" }}
               </p>
             </div>
-            <UButton class="w-full" variant="outline" @click="openParticipantChatModal">
+            <UButton
+              class="w-full"
+              variant="outline"
+              @click="openParticipantChatModal"
+            >
               Чат із організатором
             </UButton>
           </div>
@@ -2825,7 +2835,9 @@
         <UCard class="min-w-0 max-h-[88vh] overflow-hidden">
           <template #header><h3>Чат із організатором</h3></template>
           <div class="flex max-h-[calc(88vh-5rem)] flex-col space-y-4">
-            <div class="min-h-0 flex-1 overflow-auto rounded border border-gray-200 p-3">
+            <div
+              class="min-h-0 flex-1 overflow-auto rounded border border-gray-200 p-3"
+            >
               <div v-if="chatMessages.length" class="space-y-3">
                 <div
                   v-for="message in chatMessages"
@@ -2853,8 +2865,13 @@
               placeholder="Введіть текст повідомлення"
             />
             <div class="flex justify-end gap-2">
-              <UButton variant="outline" @click="closeChatModals">Скасувати</UButton>
-              <UButton :loading="chatSending" @click="submitParticipantChatMessage">
+              <UButton variant="outline" @click="closeChatModals"
+                >Скасувати</UButton
+              >
+              <UButton
+                :loading="chatSending"
+                @click="submitParticipantChatMessage"
+              >
                 Надіслати
               </UButton>
             </div>
@@ -2869,7 +2886,9 @@
       <template #content>
         <UCard class="min-w-0 max-h-[88vh] overflow-hidden">
           <template #header><h3>Чат із контрагентами</h3></template>
-          <div class="grid max-h-[calc(88vh-5rem)] gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+          <div
+            class="grid max-h-[calc(88vh-5rem)] gap-4 md:grid-cols-[220px_minmax(0,1fr)]"
+          >
             <div class="rounded border border-gray-200">
               <div class="max-h-[72vh] overflow-auto p-2">
                 <button
@@ -2904,7 +2923,9 @@
               </div>
             </div>
             <div class="flex min-h-0 flex-col space-y-4">
-              <div class="min-h-0 flex-1 overflow-auto rounded border border-gray-200 p-3">
+              <div
+                class="min-h-0 flex-1 overflow-auto rounded border border-gray-200 p-3"
+              >
                 <div v-if="chatMessages.length" class="space-y-3">
                   <div
                     v-for="message in chatMessages"
@@ -2933,7 +2954,9 @@
                 placeholder="Введіть текст відповіді"
               />
               <div class="flex justify-end gap-2">
-                <UButton variant="outline" @click="closeChatModals">Скасувати</UButton>
+                <UButton variant="outline" @click="closeChatModals"
+                  >Скасувати</UButton
+                >
                 <UButton
                   :loading="chatSending"
                   :disabled="!selectedChatSupplierId"
@@ -2977,15 +3000,23 @@
                   <td class="p-2">{{ item.supplier_company_name || "—" }}</td>
                   <td class="p-2">{{ item.position_name || "—" }}</td>
                   <td class="p-2">
-                    <div>Ціна: {{ formatNumericOrDash(item.original_price) }}</div>
+                    <div>
+                      Ціна: {{ formatNumericOrDash(item.original_price) }}
+                    </div>
                     <div class="mt-1 text-xs text-gray-500">
-                      {{ formatCriterionSummary(item.original_criterion_values) }}
+                      {{
+                        formatCriterionSummary(item.original_criterion_values)
+                      }}
                     </div>
                   </td>
                   <td class="p-2">
-                    <div>Ціна: {{ formatNumericOrDash(item.current_price) }}</div>
+                    <div>
+                      Ціна: {{ formatNumericOrDash(item.current_price) }}
+                    </div>
                     <div class="mt-1 text-xs text-gray-500">
-                      {{ formatCriterionSummary(item.current_criterion_values) }}
+                      {{
+                        formatCriterionSummary(item.current_criterion_values)
+                      }}
                     </div>
                   </td>
                   <td class="p-2">
@@ -3019,11 +3050,7 @@
               class="rounded border border-gray-200 p-3"
             >
               <label class="flex items-start gap-3">
-                <input
-                  v-model="row.disqualify"
-                  type="checkbox"
-                  class="mt-1"
-                />
+                <input v-model="row.disqualify" type="checkbox" class="mt-1" />
                 <span class="font-medium text-gray-900">
                   {{ row.supplier_name }}
                 </span>
@@ -3037,10 +3064,16 @@
               />
             </div>
             <div class="flex justify-end gap-2">
-              <UButton variant="outline" @click="showDisqualificationModal = false">
+              <UButton
+                variant="outline"
+                @click="showDisqualificationModal = false"
+              >
                 Скасувати
               </UButton>
-              <UButton :loading="disqualificationSaving" @click="submitDisqualifications">
+              <UButton
+                :loading="disqualificationSaving"
+                @click="submitDisqualifications"
+              >
                 Зберегти
               </UButton>
             </div>
@@ -4579,16 +4612,24 @@ const expenseTree = ref<any[]>([]);
 const branchTree = ref<any[]>([]);
 const departmentTree = ref<any[]>([]);
 const currencyOptions = ref<{ value: number; label: string }[]>([]);
-const categoryDisabledIds = computed(() => collectDisabledTreeIds(categoryTree.value));
-const expenseDisabledIds = computed(() => collectDisabledTreeIds(expenseTree.value));
-const branchDisabledIds = computed(() => collectDisabledTreeIds(branchTree.value));
+const categoryDisabledIds = computed(() =>
+  collectDisabledTreeIds(categoryTree.value),
+);
+const expenseDisabledIds = computed(() =>
+  collectDisabledTreeIds(expenseTree.value),
+);
+const branchDisabledIds = computed(() =>
+  collectDisabledTreeIds(branchTree.value),
+);
 const departmentDisabledIds = computed(() =>
   collectDisabledTreeIds(departmentTree.value),
 );
 const isExpenseArticleRequired = computed(
   () => countSelectableTreeNodes(expenseTree.value) > 0,
 );
-const isBranchRequired = computed(() => countSelectableTreeNodes(branchTree.value) > 0);
+const isBranchRequired = computed(
+  () => countSelectableTreeNodes(branchTree.value) > 0,
+);
 const isDepartmentRequired = computed(
   () => countSelectableTreeNodes(departmentTree.value) > 0,
 );
@@ -6090,7 +6131,10 @@ function toggleBranch(id: number) {
   const selectedDepartment = form.department
     ? findTreeNodeById(departmentTree.value, form.department)
     : null;
-  if (selectedDepartment && Number(selectedDepartment.branch) !== Number(form.branch)) {
+  if (
+    selectedDepartment &&
+    Number(selectedDepartment.branch) !== Number(form.branch)
+  ) {
     form.department = null;
   }
 }
@@ -6099,8 +6143,14 @@ function toggleDepartment(id: number) {
   form.department = form.department === id ? null : id;
   if (!form.department || !form.branch) return;
 
-  const selectedDepartment = findTreeNodeById(departmentTree.value, form.department);
-  if (selectedDepartment && Number(selectedDepartment.branch) !== Number(form.branch)) {
+  const selectedDepartment = findTreeNodeById(
+    departmentTree.value,
+    form.department,
+  );
+  if (
+    selectedDepartment &&
+    Number(selectedDepartment.branch) !== Number(form.branch)
+  ) {
     form.branch = null;
   }
 }
@@ -6576,13 +6626,15 @@ function onTourSelect(value: number | null) {
 }
 
 async function loadOptions() {
-  const [cats, expenses, branches, departments, currencies] = await Promise.all([
-    tendersUC.getCategories(),
-    tendersUC.getExpenses(),
-    tendersUC.getBranches(),
-    tendersUC.getDepartments(),
-    tendersUC.getCurrencies(),
-  ]);
+  const [cats, expenses, branches, departments, currencies] = await Promise.all(
+    [
+      tendersUC.getCategories(),
+      tendersUC.getExpenses(),
+      tendersUC.getBranches(),
+      tendersUC.getDepartments(),
+      tendersUC.getCurrencies(),
+    ],
+  );
   categoryTree.value = (cats.data as any[]) || [];
   expenseTree.value = (expenses.data as any[]) || [];
   branchTree.value = (branches.data as any[]) || [];
@@ -7636,14 +7688,18 @@ function startChatPolling() {
 }
 
 async function loadChatThreads(resetSelection = true) {
-  const { data } = await tendersUC.getTenderChatThreads(tenderId.value, isSales);
+  const { data } = await tendersUC.getTenderChatThreads(
+    tenderId.value,
+    isSales,
+  );
   chatThreads.value = Array.isArray(data) ? data : [];
   if (!resetSelection) return;
   if (!chatThreads.value.length) {
     selectedChatSupplierId.value = null;
     return;
   }
-  const firstThreadSupplierId = Number(chatThreads.value[0]?.supplier_company || 0) || null;
+  const firstThreadSupplierId =
+    Number(chatThreads.value[0]?.supplier_company || 0) || null;
   selectedChatSupplierId.value = firstThreadSupplierId;
 }
 
@@ -7725,11 +7781,16 @@ async function submitOrganizerChatMessage() {
   }
 }
 
-function formatCriterionSummary(values: Record<string, unknown> | null | undefined) {
+function formatCriterionSummary(
+  values: Record<string, unknown> | null | undefined,
+) {
   if (!values || typeof values !== "object") return "—";
   const entries = Object.entries(values)
     .filter(([, value]) => value != null && value !== "")
-    .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`);
+    .map(
+      ([key, value]) =>
+        `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`,
+    );
   return entries.length ? entries.join("; ") : "—";
 }
 
@@ -7748,13 +7809,15 @@ async function openProposalChangeReportModal() {
 }
 
 function openDisqualificationModal() {
-  disqualificationRows.value = submittedDecisionProposalsAll.value.map((proposal: any) => ({
-    proposal_id: Number(proposal.id),
-    supplier_name:
-      proposal.supplier_company?.name || proposal.supplier_name || "—",
-    disqualify: Boolean(proposal.disqualified_at),
-    comment: String(proposal.disqualification_comment || ""),
-  }));
+  disqualificationRows.value = submittedDecisionProposalsAll.value.map(
+    (proposal: any) => ({
+      proposal_id: Number(proposal.id),
+      supplier_name:
+        proposal.supplier_company?.name || proposal.supplier_name || "—",
+      disqualify: Boolean(proposal.disqualified_at),
+      comment: String(proposal.disqualification_comment || ""),
+    }),
+  );
   showDisqualificationModal.value = true;
 }
 

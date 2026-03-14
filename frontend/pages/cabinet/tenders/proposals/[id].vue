@@ -529,7 +529,12 @@
                     {{ tender?.organizer_contact?.email || "—" }}
                   </p>
                 </div>
-                <UButton class="w-full" variant="outline" @click="openParticipantChatModal">
+                <UButton
+                  class="w-full"
+                  variant="outline"
+                  :disabled="isParticipationLockedForCurrentUser"
+                  @click="openParticipantChatModal"
+                >
                   Чат із організатором
                 </UButton>
               </div>
@@ -602,7 +607,7 @@
           <UCard class="min-w-0 max-h-[88vh] overflow-hidden">
             <template #header><h3>Чат із організатором</h3></template>
             <div class="flex max-h-[calc(88vh-5rem)] flex-col space-y-4">
-              <div class="min-h-0 flex-1 overflow-auto rounded border border-gray-200 p-3">
+              <div class="min-h-0 flex-1 overflow-y-auto rounded border border-gray-200 p-3 pr-2">
                 <div v-if="chatMessages.length" class="space-y-3">
                   <div
                     v-for="message in chatMessages"
@@ -633,8 +638,37 @@
                 <UButton variant="outline" @click="closeParticipantChatModal">
                   Скасувати
                 </UButton>
-                <UButton :loading="chatSending" @click="submitParticipantChatMessage">
+                <UButton
+                  :loading="chatSending"
+                  :disabled="isParticipationLockedForCurrentUser"
+                  @click="submitParticipantChatMessage"
+                >
                   Надіслати
+                </UButton>
+              </div>
+            </div>
+          </UCard>
+        </template>
+      </UModal>
+      <UModal v-model:open="showParticipationLockedModal" :dismissible="false">
+        <template #content>
+          <UCard>
+            <template #header><h3>Участь вже підтверджена</h3></template>
+            <div class="space-y-3 text-sm text-gray-700">
+              <p>
+                Представник вашої компанії вже підтвердив участь в тендері.
+              </p>
+              <div class="rounded-lg border border-gray-200 p-3">
+                <p class="font-medium text-gray-900">
+                  {{ participationLockRepresentative?.full_name || "—" }}
+                </p>
+                <p class="mt-1 break-all text-gray-600">
+                  {{ participationLockRepresentative?.email || "—" }}
+                </p>
+              </div>
+              <div class="flex justify-end">
+                <UButton @click="showParticipationLockedModal = false">
+                  Закрити
                 </UButton>
               </div>
             </div>
@@ -864,6 +898,7 @@ const positionRows = ref<any[]>([]);
 const showCheckModal = ref(false);
 const showFilesModal = ref(false);
 const showParticipantChatModal = ref(false);
+const showParticipationLockedModal = ref(false);
 const tenderFiles = ref<any[]>([]);
 const tenderFilesLoading = ref(false);
 const tenderFilesError = ref("");
@@ -1018,6 +1053,7 @@ const timerText = computed(() => {
 });
 const participantCanManageProposal = computed(() => {
   if (!tender.value || tender.value.stage !== "acceptance") return false;
+  if (isParticipationLockedForCurrentUser.value) return false;
   const n = now.value.getTime();
   const start = acceptanceStartAt.value;
   const end = acceptanceEndAt.value;
@@ -1025,6 +1061,15 @@ const participantCanManageProposal = computed(() => {
   if (end != null && n > end) return false;
   return true;
 });
+const participationLock = computed(
+  () => tender.value?.company_participation_lock || null,
+);
+const isParticipationLockedForCurrentUser = computed(
+  () => !!participationLock.value?.is_locked_for_current_user,
+);
+const participationLockRepresentative = computed(
+  () => participationLock.value?.representative || null,
+);
 const myProposal = computed(() =>
   proposals.value.find(
     (p: any) =>
@@ -1482,6 +1527,10 @@ async function loadChatMessages(clearDraft = false) {
 }
 
 async function openParticipantChatModal() {
+  if (isParticipationLockedForCurrentUser.value) {
+    showParticipationLockedModal.value = true;
+    return;
+  }
   showParticipantChatModal.value = true;
   await loadChatMessages(true);
   startChatPolling();
@@ -1494,6 +1543,10 @@ function closeParticipantChatModal() {
 }
 
 async function submitParticipantChatMessage() {
+  if (isParticipationLockedForCurrentUser.value) {
+    showParticipationLockedModal.value = true;
+    return;
+  }
   const body = chatDraft.value.trim();
   if (!body) return;
   chatSending.value = true;
@@ -1773,5 +1826,15 @@ watch(showParticipantChatModal, (open) => {
   }
   stopChatPolling();
 });
+
+watch(
+  () => isParticipationLockedForCurrentUser.value,
+  (locked) => {
+    if (locked) {
+      showParticipationLockedModal.value = true;
+    }
+  },
+  { immediate: true },
+);
 </script>
 

@@ -118,7 +118,11 @@
                   >
                     Подія: {{ getNotificationEventLabel(notification) }}
                   </p>
-                  <p v-if="notification.body" class="mt-1 text-sm text-gray-600">
+                  <p
+                    v-if="notification.body"
+                    class="mt-1 text-sm text-gray-600 overflow-hidden"
+                    style="display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;"
+                  >
                     {{ notification.body }}
                   </p>
                   <NuxtLink

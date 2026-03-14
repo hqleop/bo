@@ -1293,6 +1293,13 @@ class TenderProposal(models.Model):
         on_delete=models.CASCADE,
         related_name="tender_proposals_as_supplier",
     )
+    created_by = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_tender_proposals",
+    )
     created_at = models.DateTimeField(
         auto_now_add=True,
         null=True,
@@ -1702,6 +1709,13 @@ class SalesTenderProposal(models.Model):
         Company,
         on_delete=models.CASCADE,
         related_name="sales_tender_proposals_as_supplier",
+    )
+    created_by = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_sales_tender_proposals",
     )
     created_at = models.DateTimeField(
         auto_now_add=True,

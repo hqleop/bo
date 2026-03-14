@@ -138,6 +138,52 @@ def _serialize_organizer_contact(user):
     }
 
 
+def _serialize_participation_representative(user):
+    if not user:
+        return {"full_name": "", "email": ""}
+    full_name = (user.get_full_name() or "").strip()
+    return {
+        "full_name": full_name or getattr(user, "email", "") or "",
+        "email": getattr(user, "email", "") or "",
+    }
+
+
+def _serialize_company_participation_lock(*, tender, request_user, is_sales):
+    if not request_user or not getattr(request_user, "is_authenticated", False):
+        return None
+    user_company_ids = list(
+        CompanyUser.objects.filter(
+            user=request_user,
+            status=CompanyUser.Status.APPROVED,
+        ).values_list("company_id", flat=True)
+    )
+    if not user_company_ids:
+        return None
+    proposal_model = SalesTenderProposal if is_sales else TenderProposal
+    proposal = (
+        proposal_model.objects.filter(
+            tender=tender,
+            supplier_company_id__in=user_company_ids,
+        )
+        .select_related("created_by", "supplier_company")
+        .order_by("id")
+        .first()
+    )
+    if not proposal:
+        return None
+    representative = getattr(proposal, "created_by", None)
+    representative_id = getattr(representative, "id", None)
+    current_user_id = getattr(request_user, "id", None)
+    is_current_user = bool(representative_id and current_user_id and int(representative_id) == int(current_user_id))
+    return {
+        "supplier_company_id": proposal.supplier_company_id,
+        "supplier_company_name": getattr(proposal.supplier_company, "name", "") or "",
+        "representative": _serialize_participation_representative(representative),
+        "is_current_user": is_current_user,
+        "is_locked_for_current_user": bool(representative_id and not is_current_user),
+    }
+
+
 def _validate_required_org_fields_for_user(*, attrs, instance, request):
     if not request or not getattr(request, "user", None):
         return
@@ -1713,6 +1759,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
     department_name = serializers.SerializerMethodField()
     created_by_display = serializers.SerializerMethodField()
     organizer_contact = serializers.SerializerMethodField()
+    company_participation_lock = serializers.SerializerMethodField()
     positions = ProcurementTenderPositionSerializer(many=True, required=False)
     approval_model_id = serializers.PrimaryKeyRelatedField(
         queryset=ApprovalModel.objects.none(),
@@ -1937,6 +1984,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             "created_by",
             "created_by_display",
             "organizer_contact",
+            "company_participation_lock",
             "start_at",
             "end_at",
             "planned_start_at",
@@ -1974,6 +2022,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             "branch_name",
             "department_name",
             "created_by_display",
+            "company_participation_lock",
             "is_latest_tour",
             "current_user_has_proposal",
         )
@@ -2042,6 +2091,14 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
 
     def get_organizer_contact(self, obj):
         return _serialize_organizer_contact(getattr(obj, "created_by", None))
+
+    def get_company_participation_lock(self, obj):
+        request = self.context.get("request")
+        return _serialize_company_participation_lock(
+            tender=obj,
+            request_user=getattr(request, "user", None),
+            is_sales=False,
+        )
 
     def get_criteria(self, obj):
         snapshots = list(obj.criteria_items.all())
@@ -2640,6 +2697,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
     department_name = serializers.SerializerMethodField()
     created_by_display = serializers.SerializerMethodField()
     organizer_contact = serializers.SerializerMethodField()
+    company_participation_lock = serializers.SerializerMethodField()
     positions = SalesTenderPositionSerializer(many=True, required=False)
     approval_model_id = serializers.PrimaryKeyRelatedField(
         queryset=ApprovalModel.objects.none(),
@@ -2863,6 +2921,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             "created_by",
             "created_by_display",
             "organizer_contact",
+            "company_participation_lock",
             "start_at",
             "end_at",
             "planned_start_at",
@@ -2900,6 +2959,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             "branch_name",
             "department_name",
             "created_by_display",
+            "company_participation_lock",
             "is_latest_tour",
             "current_user_has_proposal",
         )
@@ -2968,6 +3028,14 @@ class SalesTenderSerializer(serializers.ModelSerializer):
 
     def get_organizer_contact(self, obj):
         return _serialize_organizer_contact(getattr(obj, "created_by", None))
+
+    def get_company_participation_lock(self, obj):
+        request = self.context.get("request")
+        return _serialize_company_participation_lock(
+            tender=obj,
+            request_user=getattr(request, "user", None),
+            is_sales=True,
+        )
 
     def get_criteria(self, obj):
         snapshots = list(obj.criteria_items.all())
