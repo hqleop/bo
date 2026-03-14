@@ -85,6 +85,10 @@ export function useTendersUseCases() {
     return tendersApi.getTender(fetch, id, isSales)
   }
 
+  async function getTenderParticipantView(id: number, isSales: boolean) {
+    return tendersApi.getTenderParticipantView(fetch, id, isSales)
+  }
+
   async function patchTender(
     id: number,
     isSales: boolean,
@@ -427,6 +431,7 @@ export function useTendersUseCases() {
     getTendersForParticipation,
     confirmParticipation,
     getTender,
+    getTenderParticipantView,
     patchTender,
     createTender,
     bulkDeleteTenders,

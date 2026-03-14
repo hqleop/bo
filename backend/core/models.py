@@ -238,6 +238,8 @@ class TenderChatThread(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     last_message_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    owner_last_read_at = models.DateTimeField(null=True, blank=True)
+    supplier_last_read_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Чат тендера"

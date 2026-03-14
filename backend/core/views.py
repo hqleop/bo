@@ -1948,6 +1948,68 @@ def _tender_kind(is_sales):
     return "sales" if is_sales else "procurement"
 
 
+def _tender_detail_queryset(*, is_sales):
+    tender_model = SalesTender if is_sales else ProcurementTender
+    return tender_model.objects.select_related(
+        "company", "category", "cpv_category", "expense_article",
+        "branch", "department", "currency", "created_by", "parent",
+    ).prefetch_related(
+        "positions__nomenclature__unit",
+        "tender_criteria",
+        "criteria_items__reference_criterion",
+    )
+
+
+def _get_tender_for_owner_or_approver(*, user, tender_id, is_sales, base_queryset=None):
+    queryset = base_queryset if base_queryset is not None else _tender_detail_queryset(is_sales=is_sales)
+    tender = queryset.filter(pk=tender_id).first()
+    if tender:
+        if getattr(user, "is_superuser", False):
+            return tender
+        user_company_ids = {int(item_id) for item_id in _user_company_ids(user)}
+        if int(tender.company_id) in user_company_ids:
+            return tender
+        if _user_is_tender_approver(
+            user=user,
+            tender=tender,
+            is_sales=is_sales,
+        ):
+            return tender
+    approver_tender = _tender_detail_queryset(is_sales=is_sales).filter(pk=tender_id).first()
+    if approver_tender and _user_is_tender_approver(
+        user=user,
+        tender=approver_tender,
+        is_sales=is_sales,
+    ):
+        return approver_tender
+    return None
+
+
+def _get_tender_for_owner_or_participant(*, user, tender_id, is_sales):
+    tender = _tender_detail_queryset(is_sales=is_sales).filter(pk=tender_id).first()
+    if not tender:
+        return None
+    user_company_ids = set(_user_company_ids(user))
+    if not user_company_ids:
+        return None
+    if int(tender.company_id) in user_company_ids:
+        return tender
+    proposal_model = _get_tender_proposal_model(is_sales=is_sales)
+    has_proposal = proposal_model.objects.filter(
+        tender_id=int(tender.id),
+        supplier_company_id__in=user_company_ids,
+    ).exists()
+    return tender if has_proposal else None
+
+
+def _filter_tender_proposals_for_user(*, qs, tender, user):
+    user_company_ids = set(_user_company_ids(user))
+    is_owner = int(tender.company_id) in user_company_ids
+    if is_owner:
+        return qs, True
+    return qs.filter(supplier_company_id__in=user_company_ids), False
+
+
 def _tender_document_meta(*, tender, is_sales):
     kind = _tender_kind(is_sales)
     document_name = f"Тендер №{getattr(tender, 'number', None) or getattr(tender, 'id', '')}"
@@ -1996,8 +2058,85 @@ def _get_or_create_tender_chat_thread(*, tender, is_sales, supplier_company_id):
         tender_type=_tender_kind(is_sales),
         tender_id=int(tender.id),
         supplier_company_id=supplier_company_id,
-        defaults={"last_message_at": timezone.now()},
+        defaults={},
     )
+
+
+def _get_tender_proposal_model(*, is_sales):
+    return SalesTenderProposal if is_sales else TenderProposal
+
+
+def _ensure_tender_chat_threads_for_submitted_participants(*, tender, is_sales):
+    proposal_model = _get_tender_proposal_model(is_sales=is_sales)
+    supplier_company_ids = list(
+        proposal_model.objects.filter(
+            tender=tender,
+            submitted_at__isnull=False,
+        )
+        .exclude(supplier_company_id=tender.company_id)
+        .values_list("supplier_company_id", flat=True)
+        .distinct()
+    )
+    if not supplier_company_ids:
+        return
+
+    existing_company_ids = set(
+        TenderChatThread.objects.filter(
+            tender_type=_tender_kind(is_sales),
+            tender_id=int(tender.id),
+            supplier_company_id__in=supplier_company_ids,
+        ).values_list("supplier_company_id", flat=True)
+    )
+    to_create = [
+        TenderChatThread(
+            tender_type=_tender_kind(is_sales),
+            tender_id=int(tender.id),
+            supplier_company_id=company_id,
+        )
+        for company_id in supplier_company_ids
+        if int(company_id) not in existing_company_ids
+    ]
+    if to_create:
+        TenderChatThread.objects.bulk_create(to_create, ignore_conflicts=True)
+
+
+def _resolve_tender_chat_participant_company_ids(*, tender, is_sales, user_company_ids):
+    user_company_ids = {int(item_id) for item_id in user_company_ids if int(item_id) != int(tender.company_id)}
+    if not user_company_ids:
+        return []
+
+    proposal_model = _get_tender_proposal_model(is_sales=is_sales)
+    proposal_company_ids = list(
+        proposal_model.objects.filter(
+            tender=tender,
+            supplier_company_id__in=user_company_ids,
+        )
+        .values_list("supplier_company_id", flat=True)
+        .distinct()
+    )
+    if proposal_company_ids:
+        return [int(item_id) for item_id in proposal_company_ids]
+    return sorted(user_company_ids)
+
+
+def _annotate_tender_chat_threads_unread(*, qs, tender, is_owner):
+    if is_owner:
+        unread_filter = Q(messages__author_company_id=F("supplier_company_id")) & (
+            Q(owner_last_read_at__isnull=True)
+            | Q(messages__created_at__gt=F("owner_last_read_at"))
+        )
+    else:
+        unread_filter = Q(messages__author_company_id=int(tender.company_id)) & (
+            Q(supplier_last_read_at__isnull=True)
+            | Q(messages__created_at__gt=F("supplier_last_read_at"))
+        )
+    return qs.annotate(unread_count=Count("messages", filter=unread_filter, distinct=True))
+
+
+def _mark_tender_chat_thread_read(*, thread, is_owner):
+    field_name = "owner_last_read_at" if is_owner else "supplier_last_read_at"
+    setattr(thread, field_name, timezone.now())
+    thread.save(update_fields=[field_name])
 
 
 def _record_tender_bid_history(
@@ -2097,12 +2236,26 @@ def _notify_tender_chat_message(*, tender, is_sales, thread, message, actor):
             recipients = [type("Recipient", (), {"user": author})()]
 
     for membership in recipients:
+        recipient_meta = _tender_document_meta(tender=tender, is_sales=is_sales)
+        if _user_represents_company(user=membership.user, company_id=thread.supplier_company_id):
+            recipient_meta["document_url"] = (
+                f"/cabinet/tenders/sales/proposals/{int(tender.id)}"
+                if is_sales
+                else f"/cabinet/tenders/proposals/{int(tender.id)}"
+            )
+        recipient_meta.update(
+            {
+                "event": Notification.Type.CHAT_MESSAGE,
+                "chat_thread_id": int(thread.id),
+                "supplier_company_id": int(thread.supplier_company_id),
+            }
+        )
         _create_notification(
             user=membership.user,
             notification_type=Notification.Type.CHAT_MESSAGE,
             title=title,
             body=body,
-            meta=meta,
+            meta=recipient_meta,
         )
 
 
@@ -5871,65 +6024,31 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         )
 
     def get_object(self):
-        """Дозволити доступ до тендера організатора або до тендера, де компанія користувача має пропозицію (учасник)."""
+        """Access to tender detail is limited to tender owners and approvers."""
         queryset = self.filter_queryset(self.get_queryset())
         pk = self.kwargs.get("pk")
-        obj = queryset.filter(pk=pk).first()
+        obj = _get_tender_for_owner_or_approver(
+            user=self.request.user,
+            tender_id=pk,
+            is_sales=False,
+            base_queryset=queryset,
+        )
         if obj:
             return obj
         from django.http import Http404
-        user_company_ids = list(
-            CompanyUser.objects.filter(
-                user=self.request.user, status=CompanyUser.Status.APPROVED
-            ).values_list("company_id", flat=True)
-        )
-        if user_company_ids:
-            obj = ProcurementTender.objects.filter(
-                pk=pk,
-                proposals__supplier_company_id__in=user_company_ids,
-            ).select_related(
-                "company", "category", "cpv_category", "expense_article",
-                "branch", "department", "currency", "created_by", "parent",
-            ).prefetch_related(
-                "positions__nomenclature__unit",
-                "tender_criteria",
-                "criteria_items__reference_criterion",
-            ).first()
-            if obj:
-                return obj
-            # Дозволяємо перегляд деталей тендера, доступного для участі, ще до підтвердження участі.
-            obj = ProcurementTender.objects.filter(
-                ~Q(company_id__in=user_company_ids),
-                pk=pk,
-                conduct_type__in=["rfx", "online_auction"],
-                stage__in=["acceptance", "decision", "approval", "completed", "preparation"],
-            ).select_related(
-                "company", "category", "cpv_category", "expense_article",
-                "branch", "department", "currency", "created_by", "parent",
-            ).prefetch_related(
-                "positions__nomenclature__unit",
-                "tender_criteria",
-                "criteria_items__reference_criterion",
-            ).first()
-            if obj:
-                return obj
-        approver_obj = ProcurementTender.objects.filter(
-            pk=pk,
-        ).select_related(
-            "company", "category", "cpv_category", "expense_article",
-            "branch", "department", "currency", "created_by", "parent",
-        ).prefetch_related(
-            "positions__nomenclature__unit",
-            "tender_criteria",
-            "criteria_items__reference_criterion",
-        ).first()
-        if approver_obj and _user_is_tender_approver(
-            user=self.request.user,
-            tender=approver_obj,
+        raise Http404("Tender not found.")
+
+    @action(detail=True, methods=["get"], url_path="participant-view")
+    def participant_view(self, request, pk=None):
+        tender = _get_tender_for_owner_or_participant(
+            user=request.user,
+            tender_id=pk,
             is_sales=False,
-        ):
-            return approver_obj
-        raise Http404("Тендер не знайдено.")
+        )
+        if not tender:
+            return Response({"detail": "Tender not found."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = ProcurementTenderSerializer(tender, context={"request": request})
+        return Response(serializer.data)
 
     @extend_schema(
         parameters=[
@@ -6497,9 +6616,20 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="chat/threads")
     def chat_threads(self, request, pk=None):
-        tender = self.get_object()
+        tender = _get_tender_for_owner_or_participant(
+            user=request.user,
+            tender_id=pk,
+            is_sales=False,
+        )
+        if not tender:
+            return Response({"detail": "РўРµРЅРґРµСЂ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
         user_company_ids = set(_user_company_ids(request.user))
         is_owner = int(tender.company_id) in user_company_ids
+        if is_owner:
+            _ensure_tender_chat_threads_for_submitted_participants(
+                tender=tender,
+                is_sales=False,
+            )
         qs = TenderChatThread.objects.filter(
             tender_type="procurement",
             tender_id=int(tender.id),
@@ -6508,12 +6638,26 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             qs = qs.filter(supplier_company_id__in=user_company_ids).exclude(
                 supplier_company_id=tender.company_id
             )
-        serializer = TenderChatThreadSerializer(qs.order_by("-last_message_at", "-updated_at"), many=True)
+        qs = _annotate_tender_chat_threads_unread(
+            qs=qs,
+            tender=tender,
+            is_owner=is_owner,
+        )
+        serializer = TenderChatThreadSerializer(
+            qs.order_by("-last_message_at", "-updated_at"),
+            many=True,
+        )
         return Response(serializer.data)
 
     @action(detail=True, methods=["get", "post"], url_path="chat/messages")
     def chat_messages(self, request, pk=None):
-        tender = self.get_object()
+        tender = _get_tender_for_owner_or_participant(
+            user=request.user,
+            tender_id=pk,
+            is_sales=False,
+        )
+        if not tender:
+            return Response({"detail": "РўРµРЅРґРµСЂ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
         user_company_ids = set(_user_company_ids(request.user))
         is_owner = int(tender.company_id) in user_company_ids
         supplier_company_id_raw = (
@@ -6530,7 +6674,11 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
         else:
-            participant_company_ids = [int(item_id) for item_id in user_company_ids if int(item_id) != int(tender.company_id)]
+            participant_company_ids = _resolve_tender_chat_participant_company_ids(
+                tender=tender,
+                is_sales=False,
+                user_company_ids=user_company_ids,
+            )
             if not participant_company_ids:
                 return Response({"detail": "Компанію учасника не визначено."}, status=status.HTTP_403_FORBIDDEN)
             requested_company_id = _parse_int_param(supplier_company_id_raw, min_value=1)
@@ -6545,6 +6693,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         )
         if request.method == "GET":
             qs = thread.messages.select_related("author_user", "author_company").all()
+            _mark_tender_chat_thread_read(thread=thread, is_owner=is_owner)
             serializer = TenderChatMessageSerializer(qs, many=True)
             return Response(serializer.data)
 
@@ -6779,7 +6928,13 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="proposals")
     def proposals_list(self, request, pk=None):
         """Список пропозицій по тендеру."""
-        tender = self.get_object()
+        tender = _get_tender_for_owner_or_participant(
+            user=request.user,
+            tender_id=pk,
+            is_sales=False,
+        )
+        if not tender:
+            return Response({"detail": "Tender not found."}, status=status.HTTP_404_NOT_FOUND)
         view_mode = str(request.query_params.get("view") or "").strip().lower()
         updated_since = _parse_iso_datetime_param(
             request.query_params.get("updated_since")
@@ -6833,6 +6988,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(id__in=proposal_ids)
             elif "ids" in request.query_params:
                 return Response([])
+            qs, _ = _filter_tender_proposals_for_user(qs=qs, tender=tender, user=request.user)
             serializer = TenderProposalStatusSerializer(qs, many=True)
             data = list(serializer.data)
             if cache_key:
@@ -6879,6 +7035,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             qs = qs.filter(id__in=proposal_ids)
         elif "ids" in request.query_params:
             return Response([])
+        qs, _ = _filter_tender_proposals_for_user(qs=qs, tender=tender, user=request.user)
         serializer = TenderProposalSerializer(qs, many=True)
         return Response(serializer.data)
 
@@ -6909,15 +7066,23 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post", "patch"], url_path=r"proposals/(?P<proposal_id>[^/.]+)/position-values")
     def proposal_position_values(self, request, pk=None, proposal_id=None):
         """Оновити значення по позиціях пропозиції (ціна + критерії)."""
-        tender = self.get_object()
-        _ensure_user_can_edit_tender(
+        tender = _get_tender_for_owner_or_participant(
             user=request.user,
-            tender=tender,
+            tender_id=pk,
             is_sales=False,
         )
-        proposal = TenderProposal.objects.filter(
-            tender=tender, id=proposal_id
-        ).prefetch_related("position_values__tender_position").first()
+        if not tender:
+            return Response({"detail": "РўРµРЅРґРµСЂ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
+        proposal_qs = TenderProposal.objects.filter(
+            tender=tender,
+            id=proposal_id,
+        ).prefetch_related("position_values__tender_position")
+        proposal_qs, actor_represents_owner = _filter_tender_proposals_for_user(
+            qs=proposal_qs,
+            tender=tender,
+            user=request.user,
+        )
+        proposal = proposal_qs.first()
         if not proposal:
             return Response({"detail": "Пропозицію не знайдено."}, status=status.HTTP_404_NOT_FOUND)
         payload = TenderProposalPositionUpdateSerializer(data=request.data)
@@ -6925,10 +7090,6 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             return Response(payload.errors, status=status.HTTP_400_BAD_REQUEST)
         position_values_data = payload.validated_data.get("position_values") or []
         changed_position_ids: set[int] = set()
-        actor_represents_owner = _user_represents_company(
-            user=request.user,
-            company_id=tender.company_id,
-        )
         for item in position_values_data:
             tp_id = item.get("tender_position_id")
             if not tp_id:
@@ -7016,12 +7177,24 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path=r"proposals/(?P<proposal_id>[^/.]+)")
     def proposal_detail(self, request, pk=None, proposal_id=None):
         """Деталі пропозиції (з позиціями та значеннями)."""
-        tender = self.get_object()
-        proposal = TenderProposal.objects.filter(
+        tender = _get_tender_for_owner_or_participant(
+            user=request.user,
+            tender_id=pk,
+            is_sales=False,
+        )
+        if not tender:
+            return Response({"detail": "РўРµРЅРґРµСЂ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
+        proposal_qs = TenderProposal.objects.filter(
             tender=tender, id=proposal_id
         ).select_related("supplier_company", "disqualified_by").prefetch_related(
             "position_values__tender_position__nomenclature__unit",
-        ).first()
+        )
+        proposal_qs, _ = _filter_tender_proposals_for_user(
+            qs=proposal_qs,
+            tender=tender,
+            user=request.user,
+        )
+        proposal = proposal_qs.first()
         if not proposal:
             return Response({"detail": "Пропозицію не знайдено."}, status=status.HTTP_404_NOT_FOUND)
         serializer = TenderProposalSerializer(proposal)
@@ -7031,7 +7204,13 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="files")
     def files_list(self, request, pk=None):
         """Список прикріплених файлів."""
-        tender = self.get_object()
+        tender = _get_tender_for_owner_or_participant(
+            user=request.user,
+            tender_id=pk,
+            is_sales=False,
+        )
+        if not tender:
+            return Response({"detail": "РўРµРЅРґРµСЂ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
         qs = ProcurementTenderFile.objects.filter(tender=tender)
         user_company_ids = list(
             CompanyUser.objects.filter(
@@ -7334,65 +7513,30 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
         )
 
     def get_object(self):
-        """Дозволити доступ до тендера організатора або до тендера, де компанія користувача має пропозицію (учасник)."""
         queryset = self.filter_queryset(self.get_queryset())
         pk = self.kwargs.get("pk")
-        obj = queryset.filter(pk=pk).first()
+        obj = _get_tender_for_owner_or_approver(
+            user=self.request.user,
+            tender_id=pk,
+            is_sales=True,
+            base_queryset=queryset,
+        )
         if obj:
             return obj
         from django.http import Http404
-        user_company_ids = list(
-            CompanyUser.objects.filter(
-                user=self.request.user, status=CompanyUser.Status.APPROVED
-            ).values_list("company_id", flat=True)
-        )
-        if user_company_ids:
-            obj = SalesTender.objects.filter(
-                pk=pk,
-                proposals__supplier_company_id__in=user_company_ids,
-            ).select_related(
-                "company", "category", "cpv_category", "expense_article",
-                "branch", "department", "currency", "created_by", "parent",
-            ).prefetch_related(
-                "positions__nomenclature__unit",
-                "tender_criteria",
-                "criteria_items__reference_criterion",
-            ).first()
-            if obj:
-                return obj
-            # Дозволяємо перегляд деталей тендера, доступного для участі, ще до підтвердження участі.
-            obj = SalesTender.objects.filter(
-                ~Q(company_id__in=user_company_ids),
-                pk=pk,
-                conduct_type__in=["rfx", "online_auction"],
-                stage__in=["acceptance", "decision", "approval", "completed", "preparation"],
-            ).select_related(
-                "company", "category", "cpv_category", "expense_article",
-                "branch", "department", "currency", "created_by", "parent",
-            ).prefetch_related(
-                "positions__nomenclature__unit",
-                "tender_criteria",
-                "criteria_items__reference_criterion",
-            ).first()
-            if obj:
-                return obj
-        approver_obj = SalesTender.objects.filter(
-            pk=pk,
-        ).select_related(
-            "company", "category", "cpv_category", "expense_article",
-            "branch", "department", "currency", "created_by", "parent",
-        ).prefetch_related(
-            "positions__nomenclature__unit",
-            "tender_criteria",
-            "criteria_items__reference_criterion",
-        ).first()
-        if approver_obj and _user_is_tender_approver(
-            user=self.request.user,
-            tender=approver_obj,
+        raise Http404("Tender not found.")
+
+    @action(detail=True, methods=["get"], url_path="participant-view")
+    def participant_view(self, request, pk=None):
+        tender = _get_tender_for_owner_or_participant(
+            user=request.user,
+            tender_id=pk,
             is_sales=True,
-        ):
-            return approver_obj
-        raise Http404("Тендер не знайдено.")
+        )
+        if not tender:
+            return Response({"detail": "Tender not found."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = SalesTenderSerializer(tender, context={"request": request})
+        return Response(serializer.data)
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -8036,9 +8180,20 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="chat/threads")
     def chat_threads(self, request, pk=None):
-        tender = self.get_object()
+        tender = _get_tender_for_owner_or_participant(
+            user=request.user,
+            tender_id=pk,
+            is_sales=True,
+        )
+        if not tender:
+            return Response({"detail": "РўРµРЅРґРµСЂ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
         user_company_ids = set(_user_company_ids(request.user))
         is_owner = int(tender.company_id) in user_company_ids
+        if is_owner:
+            _ensure_tender_chat_threads_for_submitted_participants(
+                tender=tender,
+                is_sales=True,
+            )
         qs = TenderChatThread.objects.filter(
             tender_type="sales",
             tender_id=int(tender.id),
@@ -8047,12 +8202,26 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             qs = qs.filter(supplier_company_id__in=user_company_ids).exclude(
                 supplier_company_id=tender.company_id
             )
-        serializer = TenderChatThreadSerializer(qs.order_by("-last_message_at", "-updated_at"), many=True)
+        qs = _annotate_tender_chat_threads_unread(
+            qs=qs,
+            tender=tender,
+            is_owner=is_owner,
+        )
+        serializer = TenderChatThreadSerializer(
+            qs.order_by("-last_message_at", "-updated_at"),
+            many=True,
+        )
         return Response(serializer.data)
 
     @action(detail=True, methods=["get", "post"], url_path="chat/messages")
     def chat_messages(self, request, pk=None):
-        tender = self.get_object()
+        tender = _get_tender_for_owner_or_participant(
+            user=request.user,
+            tender_id=pk,
+            is_sales=True,
+        )
+        if not tender:
+            return Response({"detail": "РўРµРЅРґРµСЂ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
         user_company_ids = set(_user_company_ids(request.user))
         is_owner = int(tender.company_id) in user_company_ids
         supplier_company_id_raw = (
@@ -8069,7 +8238,11 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
         else:
-            participant_company_ids = [int(item_id) for item_id in user_company_ids if int(item_id) != int(tender.company_id)]
+            participant_company_ids = _resolve_tender_chat_participant_company_ids(
+                tender=tender,
+                is_sales=True,
+                user_company_ids=user_company_ids,
+            )
             if not participant_company_ids:
                 return Response({"detail": "Компанію учасника не визначено."}, status=status.HTTP_403_FORBIDDEN)
             requested_company_id = _parse_int_param(supplier_company_id_raw, min_value=1)
@@ -8084,6 +8257,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
         )
         if request.method == "GET":
             qs = thread.messages.select_related("author_user", "author_company").all()
+            _mark_tender_chat_thread_read(thread=thread, is_owner=is_owner)
             serializer = TenderChatMessageSerializer(qs, many=True)
             return Response(serializer.data)
 
@@ -8329,7 +8503,13 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="proposals")
     def proposals_list(self, request, pk=None):
         """Список пропозицій по тендеру на продаж."""
-        tender = self.get_object()
+        tender = _get_tender_for_owner_or_participant(
+            user=request.user,
+            tender_id=pk,
+            is_sales=True,
+        )
+        if not tender:
+            return Response({"detail": "Tender not found."}, status=status.HTTP_404_NOT_FOUND)
         view_mode = str(request.query_params.get("view") or "").strip().lower()
         updated_since = _parse_iso_datetime_param(
             request.query_params.get("updated_since")
@@ -8383,6 +8563,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(id__in=proposal_ids)
             elif "ids" in request.query_params:
                 return Response([])
+            qs, _ = _filter_tender_proposals_for_user(qs=qs, tender=tender, user=request.user)
             serializer = SalesTenderProposalStatusSerializer(qs, many=True)
             data = list(serializer.data)
             if cache_key:
@@ -8429,6 +8610,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             qs = qs.filter(id__in=proposal_ids)
         elif "ids" in request.query_params:
             return Response([])
+        qs, _ = _filter_tender_proposals_for_user(qs=qs, tender=tender, user=request.user)
         serializer = SalesTenderProposalSerializer(qs, many=True)
         return Response(serializer.data)
 
@@ -8459,15 +8641,23 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post", "patch"], url_path=r"proposals/(?P<proposal_id>[^/.]+)/position-values")
     def proposal_position_values(self, request, pk=None, proposal_id=None):
         """Оновити значення по позиціях пропозиції."""
-        tender = self.get_object()
-        _ensure_user_can_edit_tender(
+        tender = _get_tender_for_owner_or_participant(
             user=request.user,
-            tender=tender,
+            tender_id=pk,
             is_sales=True,
         )
-        proposal = SalesTenderProposal.objects.filter(
-            tender=tender, id=proposal_id
-        ).prefetch_related("position_values__tender_position").first()
+        if not tender:
+            return Response({"detail": "РўРµРЅРґРµСЂ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
+        proposal_qs = SalesTenderProposal.objects.filter(
+            tender=tender,
+            id=proposal_id,
+        ).prefetch_related("position_values__tender_position")
+        proposal_qs, actor_represents_owner = _filter_tender_proposals_for_user(
+            qs=proposal_qs,
+            tender=tender,
+            user=request.user,
+        )
+        proposal = proposal_qs.first()
         if not proposal:
             return Response({"detail": "Пропозицію не знайдено."}, status=status.HTTP_404_NOT_FOUND)
         payload = TenderProposalPositionUpdateSerializer(data=request.data)
@@ -8475,10 +8665,6 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             return Response(payload.errors, status=status.HTTP_400_BAD_REQUEST)
         position_values_data = payload.validated_data.get("position_values") or []
         changed_position_ids: set[int] = set()
-        actor_represents_owner = _user_represents_company(
-            user=request.user,
-            company_id=tender.company_id,
-        )
         for item in position_values_data:
             tp_id = item.get("tender_position_id")
             if not tp_id:
@@ -8564,12 +8750,24 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path=r"proposals/(?P<proposal_id>[^/.]+)")
     def proposal_detail(self, request, pk=None, proposal_id=None):
         """Деталі пропозиції."""
-        tender = self.get_object()
-        proposal = SalesTenderProposal.objects.filter(
+        tender = _get_tender_for_owner_or_participant(
+            user=request.user,
+            tender_id=pk,
+            is_sales=True,
+        )
+        if not tender:
+            return Response({"detail": "РўРµРЅРґРµСЂ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
+        proposal_qs = SalesTenderProposal.objects.filter(
             tender=tender, id=proposal_id
         ).select_related("supplier_company", "disqualified_by").prefetch_related(
             "position_values__tender_position__nomenclature__unit",
-        ).first()
+        )
+        proposal_qs, _ = _filter_tender_proposals_for_user(
+            qs=proposal_qs,
+            tender=tender,
+            user=request.user,
+        )
+        proposal = proposal_qs.first()
         if not proposal:
             return Response({"detail": "Пропозицію не знайдено."}, status=status.HTTP_404_NOT_FOUND)
         serializer = SalesTenderProposalSerializer(proposal)
@@ -8579,7 +8777,13 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="files")
     def files_list(self, request, pk=None):
         """Список прикріплених файлів."""
-        tender = self.get_object()
+        tender = _get_tender_for_owner_or_participant(
+            user=request.user,
+            tender_id=pk,
+            is_sales=True,
+        )
+        if not tender:
+            return Response({"detail": "РўРµРЅРґРµСЂ РЅРµ Р·РЅР°Р№РґРµРЅРѕ."}, status=status.HTTP_404_NOT_FOUND)
         qs = SalesTenderFile.objects.filter(tender=tender)
         user_company_ids = list(
             CompanyUser.objects.filter(

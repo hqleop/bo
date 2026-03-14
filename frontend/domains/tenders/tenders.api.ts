@@ -168,6 +168,15 @@ export async function getTender(request: RequestFn, id: number, isSales: boolean
   return request<TenderDetail>(detailEndpoint(isSales, id))
 }
 
+export async function getTenderParticipantView(
+  request: RequestFn,
+  id: number,
+  isSales: boolean
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<TenderDetail>(`${prefix}/${id}/participant-view/`)
+}
+
 export async function patchTender(
   request: RequestFn,
   id: number,

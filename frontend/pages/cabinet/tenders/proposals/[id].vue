@@ -488,33 +488,52 @@
             </p>
           </div>
           <template v-if="isParticipant">
-            <UButton
-              v-if="!isProposalSubmitted && !isOnlineAuction"
-              class="w-full"
-              :loading="submitWithdrawLoading"
-              :disabled="!participantCanEdit"
-              @click="onSubmitProposal"
-            >
-              Подати пропозицію
-            </UButton>
-            <UButton
-              v-else-if="isProposalSubmitted"
-              class="w-full"
-              color="error"
-              variant="solid"
-              :loading="submitWithdrawLoading"
-              :disabled="!participantCanWithdraw"
-              @click="onWithdrawProposal"
-            >
-              Відкликати пропозицію
-            </UButton>
-            <UButton
-              class="w-full"
-              variant="outline"
-              @click="showFilesModal = true"
-            >
-              Прикріплені файли
-            </UButton>
+            <div class="space-y-3">
+              <UButton
+                v-if="!isProposalSubmitted && !isOnlineAuction"
+                class="w-full"
+                :loading="submitWithdrawLoading"
+                :disabled="!participantCanEdit"
+                @click="onSubmitProposal"
+              >
+                Подати пропозицію
+              </UButton>
+              <UButton
+                v-else-if="isProposalSubmitted"
+                class="w-full"
+                color="error"
+                variant="solid"
+                :loading="submitWithdrawLoading"
+                :disabled="!participantCanWithdraw"
+                @click="onWithdrawProposal"
+              >
+                Відкликати пропозицію
+              </UButton>
+              <UButton
+                class="w-full"
+                variant="outline"
+                @click="showFilesModal = true"
+              >
+                Прикріплені файли
+              </UButton>
+              <div class="rounded-lg border border-gray-200 p-4 text-sm space-y-3">
+                <div>
+                  <p class="font-semibold text-gray-900">Організатор тендера</p>
+                  <p class="mt-2 text-gray-800">
+                    {{ tender?.organizer_contact?.full_name || "—" }}
+                  </p>
+                  <p class="text-gray-600">
+                    {{ tender?.organizer_contact?.phone || "—" }}
+                  </p>
+                  <p class="text-gray-600 break-all">
+                    {{ tender?.organizer_contact?.email || "—" }}
+                  </p>
+                </div>
+                <UButton class="w-full" variant="outline" @click="openParticipantChatModal">
+                  Чат із організатором
+                </UButton>
+              </div>
+            </div>
           </template>
           <template v-else>
             <div class="space-y-3">
@@ -571,6 +590,53 @@
                 Нічого не знайдено. Змініть пошук або додайте контрагента в
                 розділі «Контрагенти».
               </p>
+            </div>
+          </UCard>
+        </template>
+      </UModal>
+      <UModal
+        v-model:open="showParticipantChatModal"
+        :ui="{ content: 'w-[calc(100vw-2rem)] !max-w-2xl' }"
+      >
+        <template #content>
+          <UCard class="min-w-0 max-h-[88vh] overflow-hidden">
+            <template #header><h3>Чат із організатором</h3></template>
+            <div class="flex max-h-[calc(88vh-5rem)] flex-col space-y-4">
+              <div class="min-h-0 flex-1 overflow-auto rounded border border-gray-200 p-3">
+                <div v-if="chatMessages.length" class="space-y-3">
+                  <div
+                    v-for="message in chatMessages"
+                    :key="message.id"
+                    class="rounded border border-gray-100 p-3"
+                  >
+                    <p class="font-medium text-gray-900">
+                      {{ message.author_display || "—" }}
+                    </p>
+                    <p class="text-xs text-gray-500">
+                      {{ formatDateTime(message.created_at) }}
+                    </p>
+                    <p class="mt-2 whitespace-pre-wrap text-sm text-gray-700">
+                      {{ message.body }}
+                    </p>
+                  </div>
+                </div>
+                <p v-else class="py-6 text-center text-gray-500">
+                  Історія повідомлень порожня.
+                </p>
+              </div>
+              <UTextarea
+                v-model="chatDraft"
+                :rows="4"
+                placeholder="Введіть текст повідомлення"
+              />
+              <div class="flex justify-end gap-2">
+                <UButton variant="outline" @click="closeParticipantChatModal">
+                  Скасувати
+                </UButton>
+                <UButton :loading="chatSending" @click="submitParticipantChatMessage">
+                  Надіслати
+                </UButton>
+              </div>
             </div>
           </UCard>
         </template>
@@ -797,12 +863,17 @@ const currentProposal = ref<any | null>(null);
 const positionRows = ref<any[]>([]);
 const showCheckModal = ref(false);
 const showFilesModal = ref(false);
+const showParticipantChatModal = ref(false);
 const tenderFiles = ref<any[]>([]);
 const tenderFilesLoading = ref(false);
 const tenderFilesError = ref("");
 const savingPositions = ref(false);
 const submitWithdrawLoading = ref(false);
 const submittingPositionId = ref<number | null>(null);
+const chatMessages = ref<any[]>([]);
+const chatDraft = ref("");
+const chatSending = ref(false);
+let chatPollInterval: ReturnType<typeof setInterval> | null = null;
 const now = ref(new Date());
 let nowInterval: ReturnType<typeof setInterval> | null = null;
 const {
@@ -1238,7 +1309,7 @@ const canGoToDecision = computed(() => {
 });
 
 async function loadTender() {
-  const { data } = await tendersUC.getTender(tenderId.value, isSales);
+  const { data } = await tendersUC.getTenderParticipantView(tenderId.value, isSales);
   if (data) {
     tender.value = data;
     buildPositionRowsFromTender();
@@ -1384,6 +1455,63 @@ function formatDateTime(value?: string | null) {
   if (Number.isNaN(dt.getTime())) return "—";
   return dt.toLocaleString("uk-UA");
 }
+
+function stopChatPolling() {
+  if (chatPollInterval) {
+    clearInterval(chatPollInterval);
+    chatPollInterval = null;
+  }
+}
+
+function startChatPolling() {
+  stopChatPolling();
+  if (!showParticipantChatModal.value) return;
+  chatPollInterval = setInterval(() => {
+    void loadChatMessages(false);
+  }, 15000);
+}
+
+async function loadChatMessages(clearDraft = false) {
+  const { data } = await tendersUC.getTenderChatMessages(
+    tenderId.value,
+    isSales,
+    myCompanyId.value ?? undefined,
+  );
+  chatMessages.value = Array.isArray(data) ? data : [];
+  if (clearDraft) chatDraft.value = "";
+}
+
+async function openParticipantChatModal() {
+  showParticipantChatModal.value = true;
+  await loadChatMessages(true);
+  startChatPolling();
+}
+
+function closeParticipantChatModal() {
+  showParticipantChatModal.value = false;
+  chatDraft.value = "";
+  stopChatPolling();
+}
+
+async function submitParticipantChatMessage() {
+  const body = chatDraft.value.trim();
+  if (!body) return;
+  chatSending.value = true;
+  try {
+    const { error } = await tendersUC.sendTenderChatMessage(tenderId.value, isSales, {
+      body,
+      supplier_company_id: myCompanyId.value ?? undefined,
+    });
+    if (error) {
+      alert(getApiErrorMessage(error));
+      return;
+    }
+    await loadChatMessages(true);
+  } finally {
+    chatSending.value = false;
+  }
+}
+
 async function onSupplierSelect(id: number | null) {
   if (!id) {
     currentProposal.value = null;
@@ -1579,11 +1707,20 @@ async function onWithdrawProposal() {
 }
 
 function goBack() {
-  navigateTo(`/cabinet/tenders/${tenderId.value}`);
+  navigateTo(
+    isParticipant.value
+      ? "/cabinet/participation?type=purchase"
+      : `/cabinet/tenders/${tenderId.value}`,
+  );
 }
 
 function onStageClick(stageValue: string) {
-  navigateTo(`/cabinet/tenders/${tenderId.value}`);
+  void stageValue;
+  navigateTo(
+    isParticipant.value
+      ? "/cabinet/participation?type=purchase"
+      : `/cabinet/tenders/${tenderId.value}`,
+  );
 }
 
 onMounted(async () => {
@@ -1613,6 +1750,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (nowInterval) clearInterval(nowInterval);
+  stopChatPolling();
   stopProposalsRefresh();
 });
 
@@ -1626,6 +1764,14 @@ watch(
 watch(showFilesModal, async (open) => {
   if (!open) return;
   await loadTenderFiles();
+});
+
+watch(showParticipantChatModal, (open) => {
+  if (open) {
+    startChatPolling();
+    return;
+  }
+  stopChatPolling();
 });
 </script>
 

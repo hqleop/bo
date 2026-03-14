@@ -1759,33 +1759,33 @@
             Усі пропозиції
           </UButton>
           <UButton
-            v-if="isParticipant"
-            class="w-full"
-            variant="outline"
-            @click="openParticipantChatModal"
-          >
-            Задати питання
-          </UButton>
-          <UButton
-            v-else
+            v-if="!isParticipant"
             class="w-full"
             variant="outline"
             :disabled="isViewingPreviousTour"
             @click="openOrganizerChatModal"
           >
-            Питання учасників
+            Чат із контрагентами
           </UButton>
-          <div class="rounded-lg border border-gray-200 p-3 text-sm">
-            <p class="font-semibold text-gray-900">Організатор тендера</p>
-            <p class="mt-2 text-gray-800">
-              {{ tender?.organizer_contact?.full_name || "—" }}
-            </p>
-            <p class="text-gray-600">
-              {{ tender?.organizer_contact?.phone || "—" }}
-            </p>
-            <p class="text-gray-600 break-all">
-              {{ tender?.organizer_contact?.email || "—" }}
-            </p>
+          <div
+            v-if="isParticipant"
+            class="rounded-lg border border-gray-200 p-4 text-sm space-y-3"
+          >
+            <div>
+              <p class="font-semibold text-gray-900">Організатор тендера</p>
+              <p class="mt-2 text-gray-800">
+                {{ tender?.organizer_contact?.full_name || "—" }}
+              </p>
+              <p class="text-gray-600">
+                {{ tender?.organizer_contact?.phone || "—" }}
+              </p>
+              <p class="text-gray-600 break-all">
+                {{ tender?.organizer_contact?.email || "—" }}
+              </p>
+            </div>
+            <UButton class="w-full" variant="outline" @click="openParticipantChatModal">
+              Чат із організатором
+            </UButton>
           </div>
         </template>
         <template v-else-if="displayStage === 'decision'">
@@ -2816,13 +2816,13 @@
     </UModal>
     <UModal
       v-model:open="showParticipantChatModal"
-      :ui="{ content: 'w-[calc(100vw-2rem)] !max-w-3xl' }"
+      :ui="{ content: 'w-[calc(100vw-2rem)] !max-w-2xl' }"
     >
       <template #content>
-        <UCard class="min-w-0">
-          <template #header><h3>Звернення до організатора</h3></template>
-          <div class="space-y-4">
-            <div class="max-h-[45vh] overflow-auto rounded border border-gray-200 p-3">
+        <UCard class="min-w-0 max-h-[88vh] overflow-hidden">
+          <template #header><h3>Чат із організатором</h3></template>
+          <div class="flex max-h-[calc(88vh-5rem)] flex-col space-y-4">
+            <div class="min-h-0 flex-1 overflow-auto rounded border border-gray-200 p-3">
               <div v-if="chatMessages.length" class="space-y-3">
                 <div
                   v-for="message in chatMessages"
@@ -2861,14 +2861,14 @@
     </UModal>
     <UModal
       v-model:open="showOrganizerChatModal"
-      :ui="{ content: 'w-[calc(100vw-2rem)] !max-w-6xl' }"
+      :ui="{ content: 'w-[calc(100vw-2rem)] !max-w-3xl' }"
     >
       <template #content>
-        <UCard class="min-w-0">
-          <template #header><h3>Питання учасників</h3></template>
-          <div class="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <UCard class="min-w-0 max-h-[88vh] overflow-hidden">
+          <template #header><h3>Чат із контрагентами</h3></template>
+          <div class="grid max-h-[calc(88vh-5rem)] gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
             <div class="rounded border border-gray-200">
-              <div class="max-h-[60vh] overflow-auto p-2">
+              <div class="max-h-[72vh] overflow-auto p-2">
                 <button
                   v-for="thread in chatThreads"
                   :key="thread.id"
@@ -2881,8 +2881,15 @@
                   "
                   @click="selectOrganizerChatThread(thread.supplier_company)"
                 >
-                  <div class="font-medium">
-                    {{ thread.supplier_company_name || "—" }}
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="font-medium">
+                      {{ thread.supplier_company_name || "—" }}
+                    </div>
+                    <span
+                      v-if="Number(thread.unread_count || 0) > 0"
+                      class="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-warning"
+                      aria-label="Є непрочитані повідомлення"
+                    />
                   </div>
                   <div class="text-xs text-gray-500">
                     {{ thread.supplier_company_edrpou || "—" }}
@@ -2893,8 +2900,8 @@
                 </p>
               </div>
             </div>
-            <div class="space-y-4">
-              <div class="max-h-[50vh] overflow-auto rounded border border-gray-200 p-3">
+            <div class="flex min-h-0 flex-col space-y-4">
+              <div class="min-h-0 flex-1 overflow-auto rounded border border-gray-200 p-3">
                 <div v-if="chatMessages.length" class="space-y-3">
                   <div
                     v-for="message in chatMessages"
@@ -7310,7 +7317,7 @@ async function loadChatMessages(
   const { data } = await tendersUC.getTenderChatMessages(
     tenderId.value,
     isSales,
-    supplierCompanyId ?? undefined,
+    supplierCompanyId ?? myCompanyId.value ?? undefined,
   );
   chatMessages.value = Array.isArray(data) ? data : [];
   if (clearDraft) chatDraft.value = "";
@@ -7329,6 +7336,7 @@ async function openOrganizerChatModal() {
   await loadChatThreads(true);
   if (selectedChatSupplierId.value) {
     await loadChatMessages(selectedChatSupplierId.value, true);
+    await loadChatThreads(false);
   } else {
     chatMessages.value = [];
     chatDraft.value = "";
@@ -7339,6 +7347,7 @@ async function openOrganizerChatModal() {
 async function selectOrganizerChatThread(supplierCompanyId: number) {
   selectedChatSupplierId.value = Number(supplierCompanyId) || null;
   await loadChatMessages(selectedChatSupplierId.value, true);
+  await loadChatThreads(false);
 }
 
 function closeChatModals() {
@@ -7353,7 +7362,10 @@ async function submitParticipantChatMessage() {
   if (!body) return;
   chatSending.value = true;
   try {
-    await tendersUC.sendTenderChatMessage(tenderId.value, isSales, { body });
+    await tendersUC.sendTenderChatMessage(tenderId.value, isSales, {
+      body,
+      supplier_company_id: myCompanyId.value ?? undefined,
+    });
     await loadChatMessages(null, true);
   } finally {
     chatSending.value = false;
