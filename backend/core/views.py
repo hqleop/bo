@@ -1,12 +1,16 @@
 import base64
 import copy as pycopy
 import hashlib
+import io
 import json
 import logging
+import os
 import re
-import time
 import textwrap
+import time
 from datetime import datetime
+from html import unescape
+from xml.sax.saxutils import escape as xml_escape
 
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action, api_view, permission_classes
@@ -47,6 +51,32 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from drf_spectacular.types import OpenApiTypes
+
+try:
+    from bs4 import BeautifulSoup
+except ImportError:  # pragma: no cover
+    BeautifulSoup = None
+
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.platypus import (
+        PageBreak,
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
+
+    REPORTLAB_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    REPORTLAB_AVAILABLE = False
 
 from .models import (
     Company,
@@ -796,7 +826,7 @@ def _latinize_for_pdf(value):
     return "".join(chars)
 
 
-def _format_protocol_datetime(value):
+def _format_protocol_datetime(value, fmt="%Y-%m-%d %H:%M:%S"):
     if value in (None, ""):
         return "-"
     if isinstance(value, datetime):
@@ -807,7 +837,7 @@ def _format_protocol_datetime(value):
             return str(value)
     if timezone.is_naive(dt_value):
         dt_value = timezone.make_aware(dt_value, timezone.get_current_timezone())
-    return timezone.localtime(dt_value).strftime("%Y-%m-%d %H:%M:%S")
+    return timezone.localtime(dt_value).strftime(fmt)
 
 
 def _format_protocol_number(value):
@@ -930,7 +960,17 @@ def _collect_tour_chain_until_current(tender):
             number=number,
             tour_number__lte=current_tour_number,
         )
-        .only("id", "tour_number", "start_at", "end_at", "stage")
+        .only(
+            "id",
+            "tour_number",
+            "conduct_type",
+            "planned_start_at",
+            "planned_end_at",
+            "start_at",
+            "end_at",
+            "updated_at",
+            "stage",
+        )
         .order_by("tour_number", "id")
     )
     tours = list(qs)
@@ -948,6 +988,875 @@ def _resolve_tender_decision_mode(*, tender, positions):
         return "cancel"
     return "pending"
 
+
+_PROTOCOL_REPORTLAB_FONTS = None
+
+
+def _format_protocol_display_number(value):
+    if value in (None, ""):
+        return "-"
+    try:
+        dec_value = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return str(value)
+    normalized = format(dec_value.normalize(), "f")
+    if "." in normalized:
+        normalized = normalized.rstrip("0").rstrip(".")
+    if not normalized:
+        return "0"
+    sign = ""
+    if normalized.startswith("-"):
+        sign = "-"
+        normalized = normalized[1:]
+    integer_part, dot, fraction_part = normalized.partition(".")
+    try:
+        integer_grouped = f"{int(integer_part):,}".replace(",", " ")
+    except ValueError:
+        integer_grouped = integer_part
+    if dot and fraction_part:
+        return f"{sign}{integer_grouped},{fraction_part}"
+    return f"{sign}{integer_grouped}"
+
+
+def _format_protocol_person(user):
+    if user is None:
+        return "-"
+    parts = [
+        getattr(user, "last_name", ""),
+        getattr(user, "first_name", ""),
+        getattr(user, "middle_name", ""),
+    ]
+    full_name = " ".join(part for part in parts if part).strip()
+    if full_name:
+        return full_name
+    return getattr(user, "email", "") or "-"
+
+
+def _protocol_text(value):
+    text = str(value or "").strip()
+    return text or "-"
+
+
+def _protocol_decimal(value):
+    if value in (None, ""):
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
+def _protocol_html_to_lines(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return []
+    if BeautifulSoup is not None:
+        soup = BeautifulSoup(raw, "html.parser")
+        for br in soup.find_all("br"):
+            br.replace_with("\n")
+        lines = []
+        for element in soup.find_all(
+            ["p", "li", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote"]
+        ):
+            text = element.get_text(" ", strip=True)
+            if not text:
+                continue
+            prefix = "• " if element.name == "li" else ""
+            lines.append(f"{prefix}{text}")
+        if lines:
+            return lines
+        text = soup.get_text("\n", strip=True)
+    else:
+        text = re.sub(r"<br\s*/?>", "\n", raw, flags=re.IGNORECASE)
+        text = re.sub(r"</(p|div|li|h[1-6])>", "\n", text, flags=re.IGNORECASE)
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = unescape(text)
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+def _protocol_criterion_options_display(options):
+    if not options:
+        return "-"
+    if isinstance(options, dict):
+        choices = (
+            options.get("choices")
+            or options.get("values")
+            or options.get("text_choices")
+            or options.get("numeric_choices")
+        )
+        if isinstance(choices, (list, tuple)):
+            rendered = [str(item).strip() for item in choices if str(item).strip()]
+            if rendered:
+                return "; ".join(rendered)
+        range_min = options.get("range_min")
+        range_max = options.get("range_max")
+        if range_min not in (None, "") or range_max not in (None, ""):
+            return f"від {_protocol_text(range_min)} до {_protocol_text(range_max)}"
+        flattened = []
+        for key, value in options.items():
+            if value in (None, "", [], {}, ()):
+                continue
+            if isinstance(value, (list, tuple)):
+                value_text = ", ".join(
+                    str(item).strip() for item in value if str(item).strip()
+                )
+            else:
+                value_text = str(value).strip()
+            if not value_text:
+                continue
+            flattened.append(f"{key}: {value_text}")
+        if flattened:
+            return "; ".join(flattened)
+    if isinstance(options, (list, tuple)):
+        rendered = [str(item).strip() for item in options if str(item).strip()]
+        return "; ".join(rendered) or "-"
+    return str(options).strip() or "-"
+
+
+def _build_protocol_price_criterion_label(tender):
+    vat_value = str(getattr(tender, "price_criterion_vat", "") or "").strip()
+    vat_percent = getattr(tender, "price_criterion_vat_percent", None)
+    delivery_value = str(getattr(tender, "price_criterion_delivery", "") or "").strip()
+    vat_labels = {
+        "with_vat": "з ПДВ",
+        "without_vat": "без ПДВ",
+    }
+    delivery_labels = {
+        "with_delivery": "з урахуванням доставки",
+        "without_delivery": "без урахування доставки",
+    }
+    parts = []
+    if vat_value:
+        vat_label = vat_labels.get(vat_value, vat_value)
+        if vat_value == "with_vat" and vat_percent not in (None, ""):
+            vat_label = f"{vat_label} ({_format_protocol_display_number(vat_percent)}%)"
+        parts.append(vat_label)
+    if delivery_value:
+        parts.append(delivery_labels.get(delivery_value, delivery_value))
+    return "; ".join(parts) or "-"
+
+
+def _build_tender_protocol_payload(*, tender, is_sales):
+    position_model = SalesTenderPosition if is_sales else ProcurementTenderPosition
+    proposal_model = SalesTenderProposal if is_sales else TenderProposal
+    proposal_position_model = (
+        SalesTenderProposalPosition if is_sales else TenderProposalPosition
+    )
+    invitation_model = SalesTenderInvitation if is_sales else ProcurementTenderInvitation
+
+    positions = list(
+        position_model.objects.filter(tender=tender)
+        .select_related("winner_proposal__supplier_company", "nomenclature")
+        .order_by("id")
+    )
+    proposals = list(
+        proposal_model.objects.filter(tender=tender)
+        .select_related("supplier_company")
+        .order_by("supplier_company__name", "id")
+    )
+    proposal_prices = proposal_position_model.objects.filter(
+        proposal__tender=tender,
+        tender_position__tender=tender,
+    ).values("proposal_id", "tender_position_id", "price")
+    price_by_pair = {
+        (int(row["proposal_id"]), int(row["tender_position_id"])): row.get("price")
+        for row in proposal_prices
+    }
+    invitation_rows = list(
+        invitation_model.objects.filter(tender=tender)
+        .select_related("supplier_company")
+        .order_by("created_at", "id")
+    )
+
+    journal_entries = list(
+        (
+            TenderApprovalJournal.objects.filter(sales_tender=tender)
+            if is_sales
+            else TenderApprovalJournal.objects.filter(procurement_tender=tender)
+        )
+        .select_related("actor")
+        .order_by("created_at", "id")
+    )
+    decision_entry = next(
+        (
+            entry
+            for entry in journal_entries
+            if entry.action == TenderApprovalJournal.Action.SAVED
+            and entry.stage == "approval"
+        ),
+        None,
+    )
+    if decision_entry is None and journal_entries:
+        decision_entry = journal_entries[-1]
+
+    criteria_items_manager = getattr(tender, "criteria_items", None)
+    criteria_items = (
+        list(criteria_items_manager.all()) if criteria_items_manager is not None else []
+    )
+    if not criteria_items:
+        criteria_items = list(tender.tender_criteria.all())
+
+    company_ids = {
+        int(company_id)
+        for company_id in (
+            [getattr(item, "supplier_company_id", None) for item in proposals]
+            + [getattr(item, "supplier_company_id", None) for item in invitation_rows]
+        )
+        if company_id
+    }
+    company_contacts = {}
+    if company_ids:
+        memberships = list(
+            CompanyUser.objects.filter(
+                company_id__in=company_ids,
+                status=CompanyUser.Status.APPROVED,
+            )
+            .select_related("user", "role", "company")
+            .order_by("company_id", "user__last_name", "user__first_name", "user__id")
+        )
+        for membership in memberships:
+            user = getattr(membership, "user", None)
+            if user is None:
+                continue
+            contact_parts = [_format_protocol_person(user)]
+            if getattr(user, "email", ""):
+                contact_parts.append(user.email)
+            if getattr(user, "phone", ""):
+                contact_parts.append(user.phone)
+            company_contacts.setdefault(membership.company_id, []).append(
+                " | ".join(part for part in contact_parts if part)
+            )
+
+    tours_payload = []
+    for tour in _collect_tour_chain_until_current(tender):
+        planned_start = _format_protocol_datetime(
+            getattr(tour, "planned_start_at", None), "%d.%m.%Y %H:%M"
+        )
+        planned_end = _format_protocol_datetime(
+            getattr(tour, "planned_end_at", None), "%d.%m.%Y %H:%M"
+        )
+        actual_start = _format_protocol_datetime(
+            getattr(tour, "start_at", None), "%d.%m.%Y %H:%M"
+        )
+        actual_end = _format_protocol_datetime(
+            getattr(tour, "end_at", None), "%d.%m.%Y %H:%M"
+        )
+        timing_changed = "-"
+        if (
+            planned_start != "-"
+            and actual_start != "-"
+            and planned_start != actual_start
+        ) or (
+            planned_end != "-"
+            and actual_end != "-"
+            and planned_end != actual_end
+        ):
+            timing_changed = _format_protocol_datetime(
+                getattr(tour, "updated_at", None), "%d.%m.%Y %H:%M"
+            )
+        tours_payload.append(
+            {
+                "tour_number": getattr(tour, "tour_number", 1) or 1,
+                "conduct_type_label": getattr(
+                    tour,
+                    "get_conduct_type_display",
+                    lambda: getattr(tour, "conduct_type", "-"),
+                )(),
+                "planned_start_at": planned_start,
+                "planned_end_at": planned_end,
+                "start_at": actual_start if actual_start != "-" else planned_start,
+                "end_at": actual_end if actual_end != "-" else planned_end,
+                "timing_changed_at": timing_changed,
+            }
+        )
+
+    criteria_type_labels = dict(TenderCriterion.Type.choices)
+    criteria_application_labels = dict(TenderCriterion.Application.choices)
+    criteria_payload = [
+        {
+            "name": getattr(item, "name", "") or "-",
+            "type_label": criteria_type_labels.get(
+                getattr(item, "type", ""), getattr(item, "type", "-")
+            ),
+            "value_display": _protocol_criterion_options_display(
+                getattr(item, "options", {}) or {}
+            ),
+            "application_label": criteria_application_labels.get(
+                getattr(item, "application", ""), getattr(item, "application", "-")
+            ),
+        }
+        for item in criteria_items
+    ]
+
+    decision_mode = _resolve_tender_decision_mode(tender=tender, positions=positions)
+    decision_labels = {
+        "winner": "Переможця визначено",
+        "cancel": "Завершено без переможця",
+        "next_round": "Переведено в наступний тур",
+        "pending": "Рішення не зафіксовано",
+    }
+
+    winners = []
+    winners_total = Decimal("0")
+    for position in positions:
+        winner = getattr(position, "winner_proposal", None)
+        if winner is None:
+            continue
+        raw_price = price_by_pair.get((int(winner.id), int(position.id)))
+        price_dec = _protocol_decimal(raw_price)
+        qty_dec = _protocol_decimal(getattr(position, "quantity", None))
+        total_dec = (
+            (price_dec * qty_dec)
+            if price_dec is not None and qty_dec is not None
+            else None
+        )
+        if total_dec is not None:
+            winners_total += total_dec
+        winners.append(
+            {
+                "supplier_name": getattr(
+                    getattr(winner, "supplier_company", None), "name", "-"
+                )
+                or "-",
+                "position_name": getattr(position, "name", "") or "-",
+                "unit_name": getattr(position, "unit_name", "") or "-",
+                "quantity": _format_protocol_display_number(
+                    getattr(position, "quantity", None)
+                ),
+                "price": _format_protocol_display_number(raw_price),
+                "total": _format_protocol_display_number(total_dec),
+            }
+        )
+
+    estimated_budget_dec = _protocol_decimal(getattr(tender, "estimated_budget", None))
+    effect_label = "Вигода" if is_sales else "Економія"
+    effect_amount = "-"
+    if estimated_budget_dec is not None:
+        effect_value = (
+            winners_total - estimated_budget_dec
+            if is_sales
+            else estimated_budget_dec - winners_total
+        )
+        effect_amount = _format_protocol_display_number(effect_value)
+
+    invited_rows = invitation_rows or proposals
+    invited_payload = []
+    for item in invited_rows:
+        supplier_company = getattr(item, "supplier_company", None)
+        contacts = company_contacts.get(getattr(item, "supplier_company_id", None), [])
+        invited_payload.append(
+            {
+                "company_name": getattr(supplier_company, "name", "-") or "-",
+                "contacts": "\n".join(contacts) if contacts else "-",
+                "invited_at": _format_protocol_datetime(
+                    getattr(item, "created_at", None)
+                    or getattr(item, "submitted_at", None),
+                    "%d.%m.%Y %H:%M",
+                ),
+            }
+        )
+
+    journal_payload = [
+        {
+            "created_at": _format_protocol_datetime(
+                getattr(entry, "created_at", None), "%d.%m.%Y %H:%M"
+            ),
+            "action_label": getattr(entry, "get_action_display", lambda: entry.action)(),
+            "actor_name": _format_protocol_person(getattr(entry, "actor", None)),
+            "comment": _protocol_text(getattr(entry, "comment", "")),
+        }
+        for entry in journal_entries
+    ]
+
+    company = getattr(tender, "company", None)
+    return {
+        "generated_at": _format_protocol_datetime(timezone.now(), "%d.%m.%Y %H:%M"),
+        "company_name": getattr(company, "name", "-") or "-",
+        "company_code": getattr(company, "edrpou", "-") or "-",
+        "tender_kind_label": "Продаж" if is_sales else "Закупівля",
+        "tender_number": str(
+            getattr(tender, "number", "") or getattr(tender, "id", "-")
+        ),
+        "tender_name": getattr(tender, "name", "-") or "-",
+        "decision_label": decision_labels.get(decision_mode, decision_mode),
+        "decision_comment": _protocol_text(getattr(decision_entry, "comment", "")),
+        "author_name": _format_protocol_person(getattr(tender, "created_by", None)),
+        "budget_amount": _format_protocol_display_number(
+            getattr(tender, "estimated_budget", None)
+        ),
+        "currency_code": getattr(getattr(tender, "currency", None), "code", "-") or "-",
+        "expense_article_name": getattr(
+            getattr(tender, "expense_article", None), "name", "-"
+        )
+        or "-",
+        "branch_name": getattr(getattr(tender, "branch", None), "name", "-") or "-",
+        "department_name": getattr(
+            getattr(tender, "department", None), "name", "-"
+        )
+        or "-",
+        "created_at": _format_protocol_datetime(
+            getattr(tender, "created_at", None), "%d.%m.%Y %H:%M"
+        ),
+        "completed_at": _format_protocol_datetime(
+            getattr(tender, "end_at", None) or getattr(tender, "updated_at", None),
+            "%d.%m.%Y %H:%M",
+        ),
+        "decision_at": _format_protocol_datetime(
+            getattr(decision_entry, "created_at", None)
+            or getattr(tender, "updated_at", None),
+            "%d.%m.%Y %H:%M",
+        ),
+        "conduct_type_label": getattr(
+            tender,
+            "get_conduct_type_display",
+            lambda: getattr(tender, "conduct_type", "-"),
+        )(),
+        "publication_type_label": getattr(
+            tender,
+            "get_publication_type_display",
+            lambda: getattr(tender, "publication_type", "-"),
+        )(),
+        "price_criterion_label": _build_protocol_price_criterion_label(tender),
+        "winners_total": _format_protocol_display_number(winners_total),
+        "effect_label": effect_label,
+        "effect_amount": effect_amount,
+        "general_terms_lines": _protocol_html_to_lines(
+            getattr(tender, "general_terms", "")
+        ),
+        "tours": tours_payload,
+        "winners": winners,
+        "criteria": criteria_payload,
+        "invited_participants": invited_payload,
+        "approval_journal": journal_payload,
+    }
+
+
+def _get_protocol_reportlab_fonts():
+    global _PROTOCOL_REPORTLAB_FONTS
+    if _PROTOCOL_REPORTLAB_FONTS is not None:
+        return _PROTOCOL_REPORTLAB_FONTS
+    fonts = {"regular": "Helvetica", "bold": "Helvetica-Bold"}
+    if not REPORTLAB_AVAILABLE:
+        _PROTOCOL_REPORTLAB_FONTS = fonts
+        return fonts
+    font_pairs = [
+        (r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\arialbd.ttf"),
+        (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        ),
+        (
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+        ),
+    ]
+    for regular_path, bold_path in font_pairs:
+        if not (os.path.exists(regular_path) and os.path.exists(bold_path)):
+            continue
+        try:
+            pdfmetrics.registerFont(TTFont("ProtocolRegular", regular_path))
+            pdfmetrics.registerFont(TTFont("ProtocolBold", bold_path))
+            fonts = {"regular": "ProtocolRegular", "bold": "ProtocolBold"}
+            break
+        except Exception:
+            continue
+    _PROTOCOL_REPORTLAB_FONTS = fonts
+    return fonts
+
+
+def _protocol_pdf_paragraph(text, style):
+    prepared = xml_escape(str(text or "-")).replace("\n", "<br/>")
+    return Paragraph(prepared, style)
+
+
+def _build_tender_protocol_pdf_content(payload):
+    if not REPORTLAB_AVAILABLE:
+        return None
+
+    fonts = _get_protocol_reportlab_fonts()
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=16 * mm,
+        rightMargin=16 * mm,
+        topMargin=16 * mm,
+        bottomMargin=18 * mm,
+        title=f"Протокол тендера № {payload['tender_number']}",
+    )
+
+    sample_styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "ProtocolTitle",
+        parent=sample_styles["Title"],
+        fontName=fonts["bold"],
+        fontSize=15,
+        leading=18,
+        alignment=TA_CENTER,
+        textColor=colors.black,
+        spaceAfter=12,
+    )
+    heading_style = ParagraphStyle(
+        "ProtocolHeading",
+        parent=sample_styles["Heading2"],
+        fontName=fonts["bold"],
+        fontSize=11,
+        leading=14,
+        textColor=colors.black,
+        spaceBefore=0,
+        spaceAfter=6,
+    )
+    body_style = ParagraphStyle(
+        "ProtocolBody",
+        parent=sample_styles["Normal"],
+        fontName=fonts["regular"],
+        fontSize=9,
+        leading=12,
+        textColor=colors.black,
+        spaceAfter=0,
+    )
+    body_bold_style = ParagraphStyle(
+        "ProtocolBodyBold",
+        parent=body_style,
+        fontName=fonts["bold"],
+    )
+    body_right_style = ParagraphStyle(
+        "ProtocolBodyRight",
+        parent=body_style,
+        alignment=TA_RIGHT,
+    )
+    body_center_bold_style = ParagraphStyle(
+        "ProtocolBodyCenterBold",
+        parent=body_bold_style,
+        alignment=TA_CENTER,
+    )
+
+    def _display(value):
+        prepared = str(value or "").strip()
+        return prepared if prepared and prepared != "-" else "—"
+
+    def build_plain_header():
+        top_table = Table(
+            [
+                [
+                    _protocol_pdf_paragraph(_display(payload["company_name"]), body_bold_style),
+                    _protocol_pdf_paragraph(_display(payload["generated_at"]), body_right_style),
+                ],
+                [
+                    _protocol_pdf_paragraph(_display(payload["company_code"]), body_style),
+                    _protocol_pdf_paragraph("", body_style),
+                ],
+            ],
+            colWidths=[110 * mm, 56 * mm],
+            hAlign="LEFT",
+        )
+        top_table.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                    ("LINEBELOW", (0, 1), (0, 1), 0.8, colors.black),
+                ]
+            )
+        )
+        return top_table
+
+    def build_detail_table(rows):
+        prepared_rows = [
+            [
+                _protocol_pdf_paragraph(_display(row["label"]), body_bold_style),
+                _protocol_pdf_paragraph(_display(row["value"]), body_style),
+            ]
+            for row in rows
+        ]
+        table = Table(prepared_rows, colWidths=[56 * mm, 110 * mm], hAlign="LEFT")
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BOX", (0, 0), (-1, -1), 0.8, colors.black),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.6, colors.black),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ]
+            )
+        )
+        return table
+
+    def build_schedule_table():
+        rows = [
+            [
+                _protocol_pdf_paragraph("Створення тендера", body_bold_style),
+                _protocol_pdf_paragraph(_display(payload["created_at"]), body_style),
+            ]
+        ]
+        styles = [
+            ("BOX", (0, 0), (-1, -1), 0.8, colors.black),
+            ("INNERGRID", (0, 0), (-1, -1), 0.6, colors.black),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]
+        current_row = 1
+        for item in payload["tours"] or []:
+            rows.append(
+                [
+                    _protocol_pdf_paragraph(
+                        f"Тур {_display(item['tour_number'])} {_display(item['conduct_type_label'])}",
+                        body_center_bold_style,
+                    ),
+                    _protocol_pdf_paragraph("", body_style),
+                ]
+            )
+            styles.extend(
+                [
+                    ("SPAN", (0, current_row), (1, current_row)),
+                    ("BACKGROUND", (0, current_row), (1, current_row), colors.HexColor("#f1f1f1")),
+                ]
+            )
+            current_row += 1
+            rows.append(
+                [
+                    _protocol_pdf_paragraph("Початок прийому пропозицій", body_bold_style),
+                    _protocol_pdf_paragraph(_display(item["start_at"]), body_style),
+                ]
+            )
+            current_row += 1
+            if _display(item["timing_changed_at"]) != "—":
+                rows.append(
+                    [
+                        _protocol_pdf_paragraph("Зміна часу проведення тендера", body_bold_style),
+                        _protocol_pdf_paragraph(
+                            _display(item["timing_changed_at"]), body_style
+                        ),
+                    ]
+                )
+                current_row += 1
+            rows.append(
+                [
+                    _protocol_pdf_paragraph("Завершення прийому пропозицій", body_bold_style),
+                    _protocol_pdf_paragraph(_display(item["end_at"]), body_style),
+                ]
+            )
+            current_row += 1
+
+        rows.append(
+            [
+                _protocol_pdf_paragraph("Завершення тендера", body_bold_style),
+                _protocol_pdf_paragraph(_display(payload["completed_at"]), body_style),
+            ]
+        )
+        table = Table(rows, colWidths=[56 * mm, 110 * mm], hAlign="LEFT")
+        table.setStyle(TableStyle(styles))
+        return table
+
+    def build_grid_table(headers, rows, col_widths):
+        prepared_rows = [
+            [_protocol_pdf_paragraph(_display(header), body_bold_style) for header in headers]
+        ]
+        for row in rows or [["—"] * len(headers)]:
+            prepared_rows.append(
+                [_protocol_pdf_paragraph(_display(cell), body_style) for cell in row]
+            )
+        table = Table(
+            prepared_rows,
+            colWidths=col_widths,
+            hAlign="LEFT",
+            repeatRows=1,
+        )
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BOX", (0, 0), (-1, -1), 0.8, colors.black),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.6, colors.black),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f1f1f1")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
+        return table
+
+    branch_department_parts = [
+        _display(payload["branch_name"]),
+        _display(payload["department_name"]),
+    ]
+    branch_department = " / ".join(
+        item for item in branch_department_parts if item != "—"
+    ) or "—"
+
+    story = [
+        build_plain_header(),
+        Spacer(1, 12),
+        _protocol_pdf_paragraph("Протокол проведення процедури", title_style),
+        _protocol_pdf_paragraph(
+            f"Тендер № {_display(payload['tender_number'])} {_display(payload['tender_name'])}",
+            body_style,
+        ),
+        Spacer(1, 3),
+        _protocol_pdf_paragraph(
+            f"Рішення: {_display(payload['decision_label'])}", body_style
+        ),
+        _protocol_pdf_paragraph(
+            f"Виконавець: {_display(payload['author_name'])}", body_style
+        ),
+        _protocol_pdf_paragraph(
+            f"Бюджет: {_display(payload['budget_amount'])}    Валюта: {_display(payload['currency_code'])}",
+            body_style,
+        ),
+        _protocol_pdf_paragraph(
+            f"Стаття бюджету: {_display(payload['expense_article_name'])}",
+            body_style,
+        ),
+        _protocol_pdf_paragraph(
+            f"Філіал/Департамент: {branch_department}",
+            body_style,
+        ),
+        _protocol_pdf_paragraph(
+            f"Підрозділ: {_display(payload['department_name'])}",
+            body_style,
+        ),
+        Spacer(1, 10),
+        build_schedule_table(),
+        PageBreak(),
+        build_detail_table(
+            [
+                {"label": "Прийняте рішення", "value": payload["decision_label"]},
+                {"label": "Дата рішення", "value": payload["decision_at"]},
+                {
+                    "label": "Параметри цінового критерію",
+                    "value": payload["price_criterion_label"],
+                },
+            ]
+        ),
+        Spacer(1, 10),
+        _protocol_pdf_paragraph("Переможці", heading_style),
+        build_grid_table(
+            [
+                "Контрагент",
+                "Позиція",
+                "Одиниці виміру",
+                "Кількість",
+                "Ціна",
+                "Вартість",
+            ],
+            [
+                [
+                    item["supplier_name"],
+                    item["position_name"],
+                    item["unit_name"],
+                    item["quantity"],
+                    item["price"],
+                    item["total"],
+                ]
+                for item in payload["winners"]
+            ],
+            [34 * mm, 46 * mm, 24 * mm, 18 * mm, 20 * mm, 24 * mm],
+        ),
+        Spacer(1, 5),
+        _protocol_pdf_paragraph(
+            f"Разом: {_display(payload['winners_total'])}", body_bold_style
+        ),
+        _protocol_pdf_paragraph(
+            f"{_display(payload['effect_label'])}: {_display(payload['effect_amount'])}",
+            body_bold_style,
+        ),
+        Spacer(1, 10),
+        _protocol_pdf_paragraph("Критерії тендера", heading_style),
+        build_grid_table(
+            ["Назва критерію", "Тип", "Значення", "Застосування"],
+            [
+                [
+                    item["name"],
+                    item["type_label"],
+                    item["value_display"],
+                    item["application_label"],
+                ]
+                for item in payload["criteria"]
+            ],
+            [46 * mm, 24 * mm, 58 * mm, 38 * mm],
+        ),
+        Spacer(1, 10),
+        _protocol_pdf_paragraph("Запрошені учасники", heading_style),
+        build_grid_table(
+            ["Контрагенти", "Контактні особи / Агенти", "Дата запрошення"],
+            [
+                [
+                    item["company_name"],
+                    item["contacts"],
+                    item["invited_at"],
+                ]
+                for item in payload["invited_participants"]
+            ],
+            [44 * mm, 84 * mm, 38 * mm],
+        ),
+        Spacer(1, 10),
+        _protocol_pdf_paragraph("Опис умов та вимог", heading_style),
+        Table(
+            [[_protocol_pdf_paragraph(_display("\n".join(payload["general_terms_lines"] or ["—"])), body_style)]],
+            colWidths=[166 * mm],
+            hAlign="LEFT",
+            style=TableStyle(
+                [
+                    ("BOX", (0, 0), (-1, -1), 0.8, colors.black),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ]
+            ),
+        ),
+        Spacer(1, 10),
+        _protocol_pdf_paragraph("Журнал узгодження", heading_style),
+        build_grid_table(
+            ["Дата", "Дія", "Користувач", "Коментар"],
+            [
+                [
+                    item["created_at"],
+                    item["action_label"],
+                    item["actor_name"],
+                    item["comment"],
+                ]
+                for item in payload["approval_journal"]
+            ],
+            [28 * mm, 28 * mm, 42 * mm, 68 * mm],
+        ),
+    ]
+
+    if _display(payload["decision_comment"]) != "—":
+        story.extend(
+            [
+                Spacer(1, 10),
+                _protocol_pdf_paragraph("Коментар до рішення", heading_style),
+                Table(
+                    [[_protocol_pdf_paragraph(_display(payload["decision_comment"]), body_style)]],
+                    colWidths=[166 * mm],
+                    hAlign="LEFT",
+                    style=TableStyle(
+                        [
+                            ("BOX", (0, 0), (-1, -1), 0.8, colors.black),
+                            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                            ("TOPPADDING", (0, 0), (-1, -1), 6),
+                            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                        ]
+                    ),
+                ),
+            ]
+        )
+
+    doc.build(story)
+    return buffer.getvalue()
 
 def _build_tender_protocol_lines(*, tender, is_sales):
     position_model = SalesTenderPosition if is_sales else ProcurementTenderPosition
@@ -1124,15 +2033,19 @@ def _build_tender_protocol_lines(*, tender, is_sales):
     return lines
 
 
-def _build_tender_protocol_pdf_response(*, tender, is_sales):
-    lines = _build_tender_protocol_lines(tender=tender, is_sales=is_sales)
-    pdf_content = _build_simple_pdf(lines)
+def _build_tender_protocol_pdf_response(*, tender, is_sales, download=False):
+    payload = _build_tender_protocol_payload(tender=tender, is_sales=is_sales)
+    pdf_content = _build_tender_protocol_pdf_content(payload)
+    if not pdf_content:
+        lines = _build_tender_protocol_lines(tender=tender, is_sales=is_sales)
+        pdf_content = _build_simple_pdf(lines)
     prefix = "sales" if is_sales else "procurement"
     number_part = getattr(tender, "number", None) or getattr(tender, "id", "x")
     tour_part = getattr(tender, "tour_number", 1) or 1
     filename = f"tender-protocol-{prefix}-{number_part}-tour-{tour_part}.pdf"
     response = HttpResponse(pdf_content, content_type="application/pdf")
-    response["Content-Disposition"] = f'inline; filename="{filename}"'
+    disposition = "attachment" if str(download).lower() in {"1", "true", "yes"} else "inline"
+    response["Content-Disposition"] = f'{disposition}; filename="{filename}"'
     return response
 
 
@@ -6868,6 +7781,16 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         return Response([{"id": t.id, "tour_number": t.tour_number} for t in collected])
 
     @extend_schema(
+        responses=OpenApiTypes.OBJECT,
+        summary="Tender protocol preview",
+        description="Return structured tender protocol payload for modal preview.",
+    )
+    @action(detail=True, methods=["get"], url_path="protocol-preview")
+    def protocol_preview(self, request, pk=None):
+        tender = self.get_object()
+        return Response(_build_tender_protocol_payload(tender=tender, is_sales=False))
+
+    @extend_schema(
         responses={200: OpenApiTypes.BINARY},
         summary="Tender protocol PDF",
         description="Generate tender protocol in PDF format.",
@@ -6875,7 +7798,11 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="protocol-pdf")
     def protocol_pdf(self, request, pk=None):
         tender = self.get_object()
-        return _build_tender_protocol_pdf_response(tender=tender, is_sales=False)
+        return _build_tender_protocol_pdf_response(
+            tender=tender,
+            is_sales=False,
+            download=request.query_params.get("download"),
+        )
 
     @action(detail=True, methods=["get"], url_path="decision-market-reference")
     def decision_market_reference(self, request, pk=None):
@@ -8552,6 +9479,16 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
         return Response([{"id": t.id, "tour_number": t.tour_number} for t in collected])
 
     @extend_schema(
+        responses=OpenApiTypes.OBJECT,
+        summary="Tender protocol preview",
+        description="Return structured tender protocol payload for modal preview.",
+    )
+    @action(detail=True, methods=["get"], url_path="protocol-preview")
+    def protocol_preview(self, request, pk=None):
+        tender = self.get_object()
+        return Response(_build_tender_protocol_payload(tender=tender, is_sales=True))
+
+    @extend_schema(
         responses={200: OpenApiTypes.BINARY},
         summary="Tender protocol PDF",
         description="Generate tender protocol in PDF format.",
@@ -8559,7 +9496,11 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="protocol-pdf")
     def protocol_pdf(self, request, pk=None):
         tender = self.get_object()
-        return _build_tender_protocol_pdf_response(tender=tender, is_sales=True)
+        return _build_tender_protocol_pdf_response(
+            tender=tender,
+            is_sales=True,
+            download=request.query_params.get("download"),
+        )
 
     @action(detail=True, methods=["get"], url_path="decision-market-reference")
     def decision_market_reference(self, request, pk=None):

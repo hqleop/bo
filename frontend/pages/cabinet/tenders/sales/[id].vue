@@ -2115,22 +2115,27 @@
       :ui="{ content: 'w-[calc(100vw-2rem)] !max-w-[96vw]' }"
     >
       <template #content>
-        <UCard class="max-h-[92vh] overflow-hidden flex flex-col">
+        <UCard class="flex max-h-[92vh] flex-col overflow-hidden">
           <template #header>
             <div class="flex items-center justify-between gap-2">
               <h3 class="text-lg font-semibold">Протокол процедури</h3>
               <UButton
-                :to="protocolPdfUrl"
-                target="_blank"
-                rel="noopener"
                 icon="i-heroicons-arrow-down-tray"
                 variant="outline"
+                @click="downloadProtocolPdf"
               >
                 Завантажити PDF
               </UButton>
             </div>
           </template>
-          <div class="flex-1 min-h-[70vh]">
+          <div class="min-h-0 flex-1 overflow-y-auto">
+            <TenderProtocolPreview
+              :protocol="protocolPreview"
+              :loading="protocolPreviewLoading"
+              :error="protocolPreviewError"
+            />
+          </div>
+          <div v-if="false" class="flex-1 min-h-[70vh]">
             <iframe
               :src="protocolPdfUrl"
               title="Протокол тендерної процедури"
@@ -3551,8 +3556,12 @@
 
 <script setup lang="ts">
 import { TextAlign } from "@tiptap/extension-text-align";
+import TenderProtocolPreview from "~/components/tenders/TenderProtocolPreview.vue";
 import { TENDER_STAGE_ITEMS } from "~/domains/tenders/tenders.constants";
-import type { TenderConditionTemplate } from "~/domains/tenders/tenders.types";
+import type {
+  TenderConditionTemplate,
+  TenderProtocolPreviewPayload,
+} from "~/domains/tenders/tenders.types";
 
 definePageMeta({
   layout: "cabinet",
@@ -3565,6 +3574,9 @@ const tenderId = computed(() => Number(route.params.id));
 const isSales = true;
 const protocolPdfUrl = computed(
   () => `/api/sales-tenders/${tenderId.value}/protocol-pdf/`,
+);
+const protocolPdfDownloadUrl = computed(
+  () => `/api/sales-tenders/${tenderId.value}/protocol-pdf/?download=1`,
 );
 const tendersUC = useTendersUseCases();
 const { me } = useMe();
@@ -3737,6 +3749,9 @@ const timingStartTime = ref("");
 const timingEndTime = ref("");
 const timingComment = ref("");
 const showProtocolModal = ref(false);
+const protocolPreview = ref<TenderProtocolPreviewPayload | null>(null);
+const protocolPreviewLoading = ref(false);
+const protocolPreviewError = ref("");
 const showApprovalJournalModal = ref(false);
 const showApprovalActionModal = ref(false);
 const approvalActionSaving = ref(false);
@@ -6859,8 +6874,37 @@ function repeatAcceptanceInvitationNotice() {
   });
 }
 
-function openProtocolModal() {
+async function loadProtocolPreview() {
+  if (!tenderId.value) return;
+  protocolPreviewLoading.value = true;
+  protocolPreviewError.value = "";
+  const { data, error } = await tendersUC.getTenderProtocolPreview(
+    tenderId.value,
+    isSales,
+    {
+      skipLoader: true,
+      cacheTtlMs: 5_000,
+    },
+  );
+  if (error || !data) {
+    protocolPreview.value = null;
+    protocolPreviewError.value = "Не вдалося сформувати протокол.";
+    protocolPreviewLoading.value = false;
+    return;
+  }
+  protocolPreview.value = data as TenderProtocolPreviewPayload;
+  protocolPreviewLoading.value = false;
+}
+
+async function openProtocolModal() {
   showProtocolModal.value = true;
+  await loadProtocolPreview();
+}
+
+function downloadProtocolPdf() {
+  if (import.meta.client) {
+    window.open(protocolPdfDownloadUrl.value, "_blank", "noopener");
+  }
 }
 
 async function savePassport() {
@@ -7534,7 +7578,11 @@ onMounted(async () => {
   startAcceptanceRefresh();
 });
 
-watch(tenderId, () => loadTender());
+watch(tenderId, () => {
+  protocolPreview.value = null;
+  protocolPreviewError.value = "";
+  loadTender();
+});
 watch(
   () => currentUserId.value,
   (next, prev) => {

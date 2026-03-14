@@ -143,6 +143,77 @@ export interface TenderApprovalRoutePayload {
   nodes?: TenderApprovalRouteNode[]
 }
 
+export interface TenderProtocolTourItem {
+  tour_number: number
+  conduct_type_label?: string
+  planned_start_at?: string
+  planned_end_at?: string
+  start_at?: string
+  end_at?: string
+  timing_changed_at?: string
+}
+
+export interface TenderProtocolWinnerItem {
+  supplier_name?: string
+  position_name?: string
+  unit_name?: string
+  quantity?: string
+  price?: string
+  total?: string
+}
+
+export interface TenderProtocolCriterionItem {
+  name?: string
+  type_label?: string
+  value_display?: string
+  application_label?: string
+}
+
+export interface TenderProtocolParticipantItem {
+  company_name?: string
+  contacts?: string
+  invited_at?: string
+}
+
+export interface TenderProtocolJournalItem {
+  created_at?: string
+  action_label?: string
+  actor_name?: string
+  comment?: string
+}
+
+export interface TenderProtocolPreviewPayload {
+  generated_at?: string
+  company_name?: string
+  company_code?: string
+  tender_kind_label?: string
+  tender_number?: string
+  tender_name?: string
+  decision_label?: string
+  decision_comment?: string
+  author_name?: string
+  budget_amount?: string
+  currency_code?: string
+  expense_article_name?: string
+  branch_name?: string
+  department_name?: string
+  created_at?: string
+  completed_at?: string
+  decision_at?: string
+  conduct_type_label?: string
+  publication_type_label?: string
+  price_criterion_label?: string
+  winners_total?: string
+  effect_label?: string
+  effect_amount?: string
+  general_terms_lines?: string[]
+  tours?: TenderProtocolTourItem[]
+  winners?: TenderProtocolWinnerItem[]
+  criteria?: TenderProtocolCriterionItem[]
+  invited_participants?: TenderProtocolParticipantItem[]
+  approval_journal?: TenderProtocolJournalItem[]
+}
+
 export interface DecisionMarketReferenceItem {
   position_id: number
   nomenclature_id: number

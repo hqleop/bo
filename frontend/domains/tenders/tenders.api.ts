@@ -10,7 +10,8 @@ import type {
   TenderAttribute,
   TenderConditionTemplate,
   TenderFile,
-  TenderApprovalRoutePayload
+  TenderApprovalRoutePayload,
+  TenderProtocolPreviewPayload
 } from './tenders.types'
 
 const PROCUREMENT_PREFIX = '/procurement-tenders'
@@ -578,6 +579,19 @@ export async function getTenderApprovalJournal(
 ) {
   const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
   return request<unknown[]>(`${prefix}/${tenderId}/approval-journal/`)
+}
+
+export async function getTenderProtocolPreview(
+  request: RequestFn,
+  tenderId: number,
+  isSales: boolean,
+  options?: { skipLoader?: boolean; cacheTtlMs?: number }
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<TenderProtocolPreviewPayload>(`${prefix}/${tenderId}/protocol-preview/`, {
+    skipLoader: options?.skipLoader,
+    cacheTtlMs: options?.cacheTtlMs
+  })
 }
 
 export async function getTenderApprovalRoute(
