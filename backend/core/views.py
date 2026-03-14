@@ -79,12 +79,14 @@ from .models import (
     ApprovalModel,
     ApprovalModelStep,
     ProcurementTender,
+    ProcurementTenderInvitation,
     ProcurementTenderCriterion,
     ProcurementTenderPosition,
     TenderProposal,
     TenderProposalPosition,
     ProcurementTenderFile,
     SalesTender,
+    SalesTenderInvitation,
     SalesTenderCriterion,
     SalesTenderPosition,
     SalesTenderProposal,
@@ -1180,6 +1182,24 @@ def _approval_stage_label(stage):
     return dict(TenderApprovalStageState.Stage.choices).get(stage, str(stage or ""))
 
 
+def _author_task_action_label(stage):
+    if stage == "preparation":
+        return "Виконати підготовку процедури"
+    if stage == "decision":
+        return "Прийняти рішення"
+    if stage == "approval":
+        return "Затвердити рішення"
+    return "Опрацювати тендер"
+
+
+def _approver_task_action_label(stage):
+    if stage == TenderApprovalStageState.Stage.PREPARATION:
+        return "Погодити підготовку процедури"
+    if stage == TenderApprovalStageState.Stage.APPROVAL:
+        return "Погодити рішення"
+    return "Погодити тендер"
+
+
 def _count_active_approver_tasks(*, user, is_sales):
     filters = {
         "user": user,
@@ -1439,6 +1459,15 @@ def _format_acceptance_period_comment(*, tender):
     return ""
 
 
+def _request_data_value(request_data, key):
+    getter = getattr(request_data, "get", None)
+    if callable(getter):
+        return getter(key)
+    if isinstance(request_data, dict):
+        return request_data.get(key)
+    return None
+
+
 def _log_tender_update_journal(
     *,
     before_stage: str,
@@ -1478,11 +1507,12 @@ def _log_tender_update_journal(
     )
     acceptance_resumed = before_stage == "decision" and after_stage == "acceptance"
     if acceptance_timing_changed or acceptance_resumed:
+        timing_comment = str(_request_data_value(request_data, "timing_comment") or "").strip()
         _create_tender_approval_journal_entry(
             action=TenderApprovalJournal.Action.SAVED,
             actor=actor,
             stage=after_stage,
-            comment=_format_acceptance_period_comment(tender=tender),
+            comment=timing_comment or _format_acceptance_period_comment(tender=tender),
             **target,
         )
         return
@@ -1985,6 +2015,82 @@ def _get_tender_for_owner_or_approver(*, user, tender_id, is_sales, base_queryse
     return None
 
 
+def _get_tender_invitation_model(*, is_sales):
+    return SalesTenderInvitation if is_sales else ProcurementTenderInvitation
+
+
+def _is_company_invited_to_tender(*, tender, supplier_company_id, is_sales):
+    if not supplier_company_id:
+        return False
+    if getattr(tender, "publication_type", "") != "closed":
+        return True
+    invitation_model = _get_tender_invitation_model(is_sales=is_sales)
+    return invitation_model.objects.filter(
+        tender=tender,
+        supplier_company_id=int(supplier_company_id),
+    ).exists()
+
+
+def _is_any_company_invited_to_tender(*, tender, supplier_company_ids, is_sales):
+    normalized_ids = [int(item_id) for item_id in supplier_company_ids or [] if int(item_id) > 0]
+    if not normalized_ids:
+        return False
+    if getattr(tender, "publication_type", "") != "closed":
+        return True
+    invitation_model = _get_tender_invitation_model(is_sales=is_sales)
+    return invitation_model.objects.filter(
+        tender=tender,
+        supplier_company_id__in=normalized_ids,
+    ).exists()
+
+
+def _filter_participation_qs_by_publication_type(*, qs, user_company_ids):
+    return qs.filter(
+        Q(publication_type="open")
+        | Q(invited_supplier_links__supplier_company_id__in=list(user_company_ids))
+    ).distinct()
+
+
+def _sync_tender_invited_suppliers(*, tender, supplier_company_ids, is_sales):
+    invitation_model = _get_tender_invitation_model(is_sales=is_sales)
+    normalized_ids = []
+    seen = set()
+    for item in supplier_company_ids or []:
+        try:
+            company_id = int(item)
+        except (TypeError, ValueError):
+            continue
+        if company_id <= 0 or company_id in seen:
+            continue
+        seen.add(company_id)
+        normalized_ids.append(company_id)
+
+    existing_ids = set(
+        invitation_model.objects.filter(tender=tender).values_list(
+            "supplier_company_id", flat=True
+        )
+    )
+    target_ids = set(normalized_ids)
+    removed_ids = existing_ids - target_ids
+    if removed_ids:
+        invitation_model.objects.filter(
+            tender=tender,
+            supplier_company_id__in=list(removed_ids),
+        ).delete()
+
+    missing_ids = target_ids - existing_ids
+    if not missing_ids:
+        return
+
+    invitation_model.objects.bulk_create(
+        [
+            invitation_model(tender=tender, supplier_company_id=company_id)
+            for company_id in missing_ids
+        ],
+        ignore_conflicts=True,
+    )
+
+
 def _get_tender_for_owner_or_participant(*, user, tender_id, is_sales):
     tender = _tender_detail_queryset(is_sales=is_sales).filter(pk=tender_id).first()
     if not tender:
@@ -1993,6 +2099,12 @@ def _get_tender_for_owner_or_participant(*, user, tender_id, is_sales):
     if not user_company_ids:
         return None
     if int(tender.company_id) in user_company_ids:
+        return tender
+    if _is_any_company_invited_to_tender(
+        tender=tender,
+        supplier_company_ids=user_company_ids,
+        is_sales=is_sales,
+    ):
         return tender
     proposal_model = _get_tender_proposal_model(is_sales=is_sales)
     has_proposal = proposal_model.objects.filter(
@@ -2046,7 +2158,7 @@ def _ensure_user_can_manage_company_proposal(*, proposal, user):
 
 def _tender_document_meta(*, tender, is_sales):
     kind = _tender_kind(is_sales)
-    document_name = f"РўРµРЅРґРµСЂ в„–{getattr(tender, 'number', None) or getattr(tender, 'id', '')}"
+    document_name = f"Тендер №{getattr(tender, 'number', None) or getattr(tender, 'id', '')}"
     route = (
         f"/cabinet/tenders/sales/{int(tender.id)}"
         if is_sales
@@ -2428,6 +2540,7 @@ def _copy_tender_to_first_round(*, source_tender, actor, is_sales):
             publication_type=source_tender.publication_type,
             currency=source_tender.currency,
             general_terms=source_tender.general_terms or "",
+            invited_emails=getattr(source_tender, "invited_emails", []) or [],
             start_at=getattr(source_tender, "start_at", None),
             end_at=getattr(source_tender, "end_at", None),
             planned_start_at=getattr(source_tender, "planned_start_at", None),
@@ -2441,6 +2554,15 @@ def _copy_tender_to_first_round(*, source_tender, actor, is_sales):
         copied_tender.cpv_categories.set(source_tender.cpv_categories.all())
         copied_tender.tender_criteria.set(source_tender.tender_criteria.all())
         copied_tender.tender_attributes.set(source_tender.tender_attributes.all())
+        _sync_tender_invited_suppliers(
+            tender=copied_tender,
+            supplier_company_ids=list(
+                source_tender.invited_supplier_links.values_list(
+                    "supplier_company_id", flat=True
+                )
+            ),
+            is_sales=is_sales,
+        )
 
         criteria_to_create = []
         source_criteria_items = list(
@@ -2693,8 +2815,8 @@ def _apply_tender_approval_action(*, tender, is_sales, actor, action_type, comme
                     tender=tender,
                     is_sales=is_sales,
                     event_type=Notification.Type.TENDER_COMPLETED,
-                    title="РўРµРЅРґРµСЂ Р·Р°РІРµСЂС€РµРЅРѕ",
-                    body="РўРµРЅРґРµСЂ РїРµСЂРµР№С€РѕРІ РЅР° РµС‚Р°Рї В«Р—Р°РІРµСЂС€РµРЅРѕВ».",
+                    title="Тендер завершено",
+                    body='Тендер перейшов на етап "Завершено".',
                 )
         else:
             _reject_active_stage_user(stage_state, active_step_user, comment=comment)
@@ -2740,8 +2862,8 @@ def _apply_tender_approval_action(*, tender, is_sales, actor, action_type, comme
             tender=tender,
             is_sales=is_sales,
             event_type=Notification.Type.TENDER_COMPLETED,
-            title="РўРµРЅРґРµСЂ Р·Р°РІРµСЂС€РµРЅРѕ",
-            body="РўРµРЅРґРµСЂ РїРµСЂРµР№С€РѕРІ РЅР° РµС‚Р°Рї В«Р—Р°РІРµСЂС€РµРЅРѕВ».",
+            title="Тендер завершено",
+            body='Тендер перейшов на етап "Завершено".',
         )
     if action_type != "approved":
         _recalculate_tender_position_values_without_vat(
@@ -6006,6 +6128,17 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             raise DRFValidationError(
                 {"stage": "Transition requires completed approval route."}
             )
+        acceptance_timing_changed = (
+            before_stage == ProcurementTender.Stage.ACCEPTANCE
+            and target_stage == ProcurementTender.Stage.ACCEPTANCE
+            and any(field in self.request.data for field in ("start_at", "end_at"))
+        )
+        if acceptance_timing_changed:
+            timing_comment = str(self.request.data.get("timing_comment") or "").strip()
+            if not timing_comment:
+                raise DRFValidationError(
+                    {"timing_comment": "Comment is required when changing acceptance timing."}
+                )
 
         approval_model_changed = "approval_model" in serializer.validated_data
         serializer.save()
@@ -6022,7 +6155,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 tender=serializer.instance,
                 is_sales=False,
                 event_type=Notification.Type.TENDER_TO_DECISION,
-                title="РўРµРЅРґРµСЂ РїРµСЂРµР№С€РѕРІ РЅР° РµС‚Р°Рї РІРёР±РѕСЂСѓ СЂС–С€РµРЅРЅСЏ",
+                title="Тендер перейшов на етап вибору рішення",
                 body="РџСЂРёР№РѕРј РїСЂРѕРїРѕР·РёС†С–Р№ Р·Р°РІРµСЂС€РµРЅРѕ, С‚РµРЅРґРµСЂ РѕС‡С–РєСѓС” РІРёР±С–СЂ СЂС–С€РµРЅРЅСЏ.",
             )
         if (
@@ -6033,8 +6166,8 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 tender=serializer.instance,
                 is_sales=False,
                 event_type=Notification.Type.TENDER_COMPLETED,
-                title="РўРµРЅРґРµСЂ Р·Р°РІРµСЂС€РµРЅРѕ",
-                body="РўРµРЅРґРµСЂ РїРµСЂРµР№С€РѕРІ РЅР° РµС‚Р°Рї В«Р—Р°РІРµСЂС€РµРЅРѕВ».",
+                title="Тендер завершено",
+                body='Тендер перейшов на етап "Завершено".',
             )
         if approval_model_changed:
             _ensure_stage_state_snapshot(
@@ -6245,6 +6378,10 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 current_user_has_win=Exists(won_proposal_subquery),
             )
         )
+        qs = _filter_participation_qs_by_publication_type(
+            qs=qs,
+            user_company_ids=user_company_ids,
+        )
         qs = _filter_participation_qs_by_tab(qs, tab)
         participated_filter_field = (
             "current_user_has_position_proposal"
@@ -6376,6 +6513,15 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         supplier_company_id, error_response = _resolve_request_company_id(request)
         if error_response:
             return error_response
+        if not _is_company_invited_to_tender(
+            tender=tender,
+            supplier_company_id=supplier_company_id,
+            is_sales=False,
+        ):
+            return Response(
+                {"detail": "Your company is not invited to this tender."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         if tender.company_id == supplier_company_id:
             return Response(
                 {"detail": "РћСЂРіР°РЅС–Р·Р°С‚РѕСЂ РЅРµ РјРѕР¶Рµ РїС–РґС‚РІРµСЂРґРёС‚Рё СѓС‡Р°СЃС‚СЊ Сѓ РІР»Р°СЃРЅРѕРјСѓ С‚РµРЅРґРµСЂС–."},
@@ -6448,6 +6594,15 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         supplier_company_id, error_response = _resolve_request_company_id(request)
         if error_response:
             return error_response
+        if not _is_company_invited_to_tender(
+            tender=tender,
+            supplier_company_id=supplier_company_id,
+            is_sales=False,
+        ):
+            return Response(
+                {"detail": "Your company is not invited to this tender."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         proposal = TenderProposal.objects.select_related("created_by").filter(
             tender=tender, supplier_company_id=supplier_company_id
         ).first()
@@ -6528,6 +6683,15 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         supplier_company_id, error_response = _resolve_request_company_id(request)
         if error_response:
             return error_response
+        if not _is_company_invited_to_tender(
+            tender=tender,
+            supplier_company_id=supplier_company_id,
+            is_sales=False,
+        ):
+            return Response(
+                {"detail": "Your company is not invited to this tender."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         proposal = TenderProposal.objects.select_related("created_by").filter(
             tender=tender, supplier_company_id=supplier_company_id
         ).first()
@@ -6980,6 +7144,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             publication_type=parent.publication_type,
             currency=parent.currency,
             general_terms=parent.general_terms or "",
+            invited_emails=getattr(parent, "invited_emails", []) or [],
             planned_start_at=getattr(parent, "planned_start_at", None),
             planned_end_at=getattr(parent, "planned_end_at", None),
             price_criterion_vat=parent.price_criterion_vat or "",
@@ -6990,6 +7155,13 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         )
         new_tender.cpv_categories.set(parent.cpv_categories.all())
         new_tender.tender_criteria.set(parent.tender_criteria.all())
+        _sync_tender_invited_suppliers(
+            tender=new_tender,
+            supplier_company_ids=list(
+                parent.invited_supplier_links.values_list("supplier_company_id", flat=True)
+            ),
+            is_sales=False,
+        )
         if parent.criteria_items.exists():
             for crit in parent.criteria_items.all():
                 ProcurementTenderCriterion.objects.create(
@@ -7667,6 +7839,17 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             raise DRFValidationError(
                 {"stage": "Transition requires completed approval route."}
             )
+        acceptance_timing_changed = (
+            before_stage == SalesTender.Stage.ACCEPTANCE
+            and target_stage == SalesTender.Stage.ACCEPTANCE
+            and any(field in self.request.data for field in ("start_at", "end_at"))
+        )
+        if acceptance_timing_changed:
+            timing_comment = str(self.request.data.get("timing_comment") or "").strip()
+            if not timing_comment:
+                raise DRFValidationError(
+                    {"timing_comment": "Comment is required when changing acceptance timing."}
+                )
 
         approval_model_changed = "approval_model" in serializer.validated_data
         serializer.save()
@@ -7683,7 +7866,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                 tender=serializer.instance,
                 is_sales=True,
                 event_type=Notification.Type.TENDER_TO_DECISION,
-                title="РўРµРЅРґРµСЂ РїРµСЂРµР№С€РѕРІ РЅР° РµС‚Р°Рї РІРёР±РѕСЂСѓ СЂС–С€РµРЅРЅСЏ",
+                title="Тендер перейшов на етап вибору рішення",
                 body="РџСЂРёР№РѕРј РїСЂРѕРїРѕР·РёС†С–Р№ Р·Р°РІРµСЂС€РµРЅРѕ, С‚РµРЅРґРµСЂ РѕС‡С–РєСѓС” РІРёР±С–СЂ СЂС–С€РµРЅРЅСЏ.",
             )
         if (
@@ -7694,8 +7877,8 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                 tender=serializer.instance,
                 is_sales=True,
                 event_type=Notification.Type.TENDER_COMPLETED,
-                title="РўРµРЅРґРµСЂ Р·Р°РІРµСЂС€РµРЅРѕ",
-                body="РўРµРЅРґРµСЂ РїРµСЂРµР№С€РѕРІ РЅР° РµС‚Р°Рї В«Р—Р°РІРµСЂС€РµРЅРѕВ».",
+                title="Тендер завершено",
+                body='Тендер перейшов на етап "Завершено".',
             )
         if approval_model_changed:
             _ensure_stage_state_snapshot(
@@ -7879,6 +8062,10 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                 current_user_has_win=Exists(won_proposal_subquery),
             )
         )
+        qs = _filter_participation_qs_by_publication_type(
+            qs=qs,
+            user_company_ids=user_company_ids,
+        )
         qs = _filter_participation_qs_by_tab(qs, tab)
         participated_filter_field = (
             "current_user_has_position_proposal"
@@ -8010,6 +8197,15 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
         supplier_company_id, error_response = _resolve_request_company_id(request)
         if error_response:
             return error_response
+        if not _is_company_invited_to_tender(
+            tender=tender,
+            supplier_company_id=supplier_company_id,
+            is_sales=True,
+        ):
+            return Response(
+                {"detail": "Your company is not invited to this tender."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         if tender.company_id == supplier_company_id:
             return Response(
                 {"detail": "РћСЂРіР°РЅС–Р·Р°С‚РѕСЂ РЅРµ РјРѕР¶Рµ РїС–РґС‚РІРµСЂРґРёС‚Рё СѓС‡Р°СЃС‚СЊ Сѓ РІР»Р°СЃРЅРѕРјСѓ С‚РµРЅРґРµСЂС–."},
@@ -8082,6 +8278,15 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
         supplier_company_id, error_response = _resolve_request_company_id(request)
         if error_response:
             return error_response
+        if not _is_company_invited_to_tender(
+            tender=tender,
+            supplier_company_id=supplier_company_id,
+            is_sales=True,
+        ):
+            return Response(
+                {"detail": "Your company is not invited to this tender."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         proposal = SalesTenderProposal.objects.select_related("created_by").filter(
             tender=tender, supplier_company_id=supplier_company_id
         ).first()
@@ -8162,6 +8367,15 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
         supplier_company_id, error_response = _resolve_request_company_id(request)
         if error_response:
             return error_response
+        if not _is_company_invited_to_tender(
+            tender=tender,
+            supplier_company_id=supplier_company_id,
+            is_sales=True,
+        ):
+            return Response(
+                {"detail": "Your company is not invited to this tender."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         proposal = SalesTenderProposal.objects.select_related("created_by").filter(
             tender=tender, supplier_company_id=supplier_company_id
         ).first()
@@ -8593,6 +8807,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             publication_type=parent.publication_type,
             currency=parent.currency,
             general_terms=parent.general_terms or "",
+            invited_emails=getattr(parent, "invited_emails", []) or [],
             planned_start_at=getattr(parent, "planned_start_at", None),
             planned_end_at=getattr(parent, "planned_end_at", None),
             price_criterion_vat=parent.price_criterion_vat or "",
@@ -8603,6 +8818,13 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
         )
         new_tender.cpv_categories.set(parent.cpv_categories.all())
         new_tender.tender_criteria.set(parent.tender_criteria.all())
+        _sync_tender_invited_suppliers(
+            tender=new_tender,
+            supplier_company_ids=list(
+                parent.invited_supplier_links.values_list("supplier_company_id", flat=True)
+            ),
+            is_sales=True,
+        )
         if parent.criteria_items.exists():
             for crit in parent.criteria_items.all():
                 SalesTenderCriterion.objects.create(

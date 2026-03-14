@@ -45,6 +45,7 @@
         v-model="currentStepValue"
         :items="stepperItems"
         value-key="value"
+        :linear="false"
         size="sm"
       />
     </div>
@@ -2261,6 +2262,14 @@
             <p class="text-xs text-gray-500">
               Введіть час вручну у форматі ГГ:ХХ (наприклад 9:30 або 09:30).
             </p>
+            <UFormField label="Коментар" required>
+              <UTextarea
+                v-model="timingComment"
+                :rows="3"
+                class="w-full"
+                placeholder="Вкажіть причину зміни часу проведення"
+              />
+            </UFormField>
             <div class="flex gap-2">
               <UButton class="flex-1" @click="publishTender"
                 >Підтвердити</UButton
@@ -3755,6 +3764,7 @@ const timingStartDate = ref("");
 const timingEndDate = ref("");
 const timingStartTime = ref("");
 const timingEndTime = ref("");
+const timingComment = ref("");
 const showProtocolModal = ref(false);
 const showApprovalJournalModal = ref(false);
 const showApprovalActionModal = ref(false);
@@ -6553,6 +6563,22 @@ async function loadTender() {
       general_terms: tenderData.general_terms ?? "",
       approval_model_id: tenderData.approval_model ?? null,
     });
+    invitedCompanies.value = Array.isArray(
+      (tenderData as any).invited_supplier_companies,
+    )
+      ? (tenderData as any).invited_supplier_companies
+          .map((company: any) => ({
+            id: Number(company?.id || 0),
+            name: company?.name ?? "",
+            edrpou: company?.edrpou ?? "",
+          }))
+          .filter((company: any) => company.id > 0)
+      : [];
+    invitedEmails.value = Array.isArray((tenderData as any).invited_emails)
+      ? (tenderData as any).invited_emails
+          .map((email: any) => String(email || "").trim())
+          .filter(Boolean)
+      : [];
     await loadAvailableApprovalModels();
     timingForm.start_at = isoToInput(tenderData.start_at);
     timingForm.end_at = isoToInput(tenderData.end_at);
@@ -7072,6 +7098,8 @@ async function savePassport() {
       currency: form.currency,
       general_terms: form.general_terms,
       approval_model_id: form.approval_model_id,
+      invited_supplier_company_ids: invitedCompanies.value.map((company) => company.id),
+      invited_emails: invitedEmails.value,
       ...buildPlannedPublicationPayload(),
       stage: "preparation",
     });
@@ -7112,6 +7140,7 @@ function openPublishModal() {
 function openTimingModal() {
   timingForm.start_at = isoToInput(tender.value?.start_at);
   timingForm.end_at = isoToInput(tender.value?.end_at);
+  timingComment.value = "";
   syncTimingScheduleFromForm();
   showTimingModal.value = true;
 }
@@ -7171,10 +7200,23 @@ async function saveTiming() {
     });
     return;
   }
+  const nextStartAt = canEditStart.value ? inputToIso(timingForm.start_at) : undefined;
+  const nextEndAt = inputToIso(timingForm.end_at);
+  const startChanged =
+    canEditStart.value && nextStartAt !== (tender.value?.start_at ?? null);
+  const endChanged = nextEndAt !== (tender.value?.end_at ?? null);
+  if ((startChanged || endChanged) && !timingComment.value.trim()) {
+    useToast().add({
+      title: "Заповніть коментар до зміни часу",
+      color: "error",
+    });
+    return;
+  }
   const payload: Record<string, unknown> = {
-    end_at: inputToIso(timingForm.end_at),
+    end_at: nextEndAt,
+    timing_comment: timingComment.value.trim(),
   };
-  if (canEditStart.value) payload.start_at = inputToIso(timingForm.start_at);
+  if (canEditStart.value) payload.start_at = nextStartAt;
   const ok = await patchTender(payload);
   if (ok) showTimingModal.value = false;
 }

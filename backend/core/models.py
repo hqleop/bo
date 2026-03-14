@@ -1096,6 +1096,7 @@ class ProcurementTender(models.Model):
         related_name="procurement_tenders",
     )
     general_terms = models.TextField(blank=True, default="")
+    invited_emails = models.JSONField(default=list, blank=True)
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -1168,6 +1169,29 @@ class ProcurementTender(models.Model):
 
     def __str__(self) -> str:
         return f"#{self.number or '?'} {self.name}"
+
+
+class ProcurementTenderInvitation(models.Model):
+    tender = models.ForeignKey(
+        ProcurementTender,
+        on_delete=models.CASCADE,
+        related_name="invited_supplier_links",
+    )
+    supplier_company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="invited_procurement_tenders",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Запрошений контрагент тендера на закупівлю"
+        verbose_name_plural = "Запрошені контрагенти тендерів на закупівлю"
+        unique_together = (("tender", "supplier_company"),)
+        ordering = ["supplier_company__name", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.tender_id} -> {self.supplier_company.name}"
 
 
 class ProcurementTenderCriterion(models.Model):
@@ -1516,6 +1540,7 @@ class SalesTender(models.Model):
         related_name="sales_tenders",
     )
     general_terms = models.TextField(blank=True, default="")
+    invited_emails = models.JSONField(default=list, blank=True)
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -1587,6 +1612,29 @@ class SalesTender(models.Model):
 
     def __str__(self) -> str:
         return f"#{self.number or '?'} {self.name}"
+
+
+class SalesTenderInvitation(models.Model):
+    tender = models.ForeignKey(
+        SalesTender,
+        on_delete=models.CASCADE,
+        related_name="invited_supplier_links",
+    )
+    supplier_company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="invited_sales_tenders",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Запрошений контрагент тендера на продаж"
+        verbose_name_plural = "Запрошені контрагенти тендерів на продаж"
+        unique_together = (("tender", "supplier_company"),)
+        ordering = ["supplier_company__name", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.tender_id} -> {self.supplier_company.name}"
 
 
 class SalesTenderCriterion(models.Model):

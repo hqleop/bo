@@ -34,11 +34,13 @@ from .models import (
     ApprovalModel,
     ApprovalModelStep,
     ProcurementTender,
+    ProcurementTenderInvitation,
     ProcurementTenderPosition,
     TenderProposal,
     TenderProposalPosition,
     ProcurementTenderFile,
     SalesTender,
+    SalesTenderInvitation,
     SalesTenderPosition,
     SalesTenderProposal,
     SalesTenderProposalPosition,
@@ -64,6 +66,79 @@ def _format_tender_number(
     if not normalized_number:
         return ""
     return f"{normalized_number}-{company_id}-{suffix}"
+
+
+def _normalize_tender_invited_emails(value):
+    if not isinstance(value, (list, tuple)):
+        return []
+    normalized = []
+    seen = set()
+    for item in value:
+        email = str(item or "").strip().lower()
+        if not email or email in seen:
+            continue
+        seen.add(email)
+        normalized.append(email)
+    return normalized
+
+
+def _serialize_tender_invited_suppliers(obj):
+    result = []
+    for link in obj.invited_supplier_links.select_related("supplier_company").all():
+        company = getattr(link, "supplier_company", None)
+        if not company:
+            continue
+        result.append(
+            {
+                "id": int(company.id),
+                "name": getattr(company, "name", "") or "",
+                "edrpou": getattr(company, "edrpou", "") or "",
+            }
+        )
+    return result
+
+
+def _sync_tender_invited_suppliers(*, tender, supplier_company_ids, is_sales):
+    invitation_model = SalesTenderInvitation if is_sales else ProcurementTenderInvitation
+    normalized_ids = []
+    seen = set()
+    for item in supplier_company_ids or []:
+        try:
+            company_id = int(item)
+        except (TypeError, ValueError):
+            continue
+        if company_id <= 0 or company_id in seen:
+            continue
+        seen.add(company_id)
+        normalized_ids.append(company_id)
+
+    existing_ids = set(
+        invitation_model.objects.filter(tender=tender).values_list(
+            "supplier_company_id", flat=True
+        )
+    )
+    target_ids = set(normalized_ids)
+    removed_ids = existing_ids - target_ids
+    if removed_ids:
+        invitation_model.objects.filter(
+            tender=tender,
+            supplier_company_id__in=list(removed_ids),
+        ).delete()
+
+    missing_ids = list(target_ids - existing_ids)
+    if not missing_ids:
+        return
+
+    valid_company_ids = list(
+        Company.objects.filter(id__in=missing_ids).values_list("id", flat=True)
+    )
+    invitation_model.objects.bulk_create(
+        [
+            invitation_model(tender=tender, supplier_company_id=company_id)
+            for company_id in valid_company_ids
+        ],
+        ignore_conflicts=True,
+    )
 
 
 def _to_decimal_or_none(value):
@@ -1759,6 +1834,21 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
     department_name = serializers.SerializerMethodField()
     created_by_display = serializers.SerializerMethodField()
     organizer_contact = serializers.SerializerMethodField()
+    invited_supplier_company_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        write_only=True,
+    )
+    invited_supplier_companies = serializers.SerializerMethodField()
+    invited_emails = serializers.ListField(
+        child=serializers.EmailField(),
+        required=False,
+    )
+    timing_comment = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
     company_participation_lock = serializers.SerializerMethodField()
     positions = ProcurementTenderPositionSerializer(many=True, required=False)
     approval_model_id = serializers.PrimaryKeyRelatedField(
@@ -1858,6 +1948,10 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             instance=self.instance,
             request=self.context.get("request"),
         )
+        if "invited_emails" in attrs:
+            attrs["invited_emails"] = _normalize_tender_invited_emails(
+                attrs.get("invited_emails")
+            )
         return attrs
 
     criterion_ids = serializers.PrimaryKeyRelatedField(
@@ -1984,6 +2078,10 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             "created_by",
             "created_by_display",
             "organizer_contact",
+            "invited_supplier_company_ids",
+            "invited_supplier_companies",
+            "invited_emails",
+            "timing_comment",
             "company_participation_lock",
             "start_at",
             "end_at",
@@ -2022,10 +2120,38 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             "branch_name",
             "department_name",
             "created_by_display",
+            "invited_supplier_companies",
             "company_participation_lock",
             "is_latest_tour",
             "current_user_has_proposal",
         )
+
+    def create(self, validated_data):
+        invited_supplier_company_ids = validated_data.pop(
+            "invited_supplier_company_ids", []
+        )
+        validated_data.pop("timing_comment", None)
+        tender = super().create(validated_data)
+        _sync_tender_invited_suppliers(
+            tender=tender,
+            supplier_company_ids=invited_supplier_company_ids,
+            is_sales=False,
+        )
+        return tender
+
+    def update(self, instance, validated_data):
+        invited_supplier_company_ids = validated_data.pop(
+            "invited_supplier_company_ids", None
+        )
+        validated_data.pop("timing_comment", None)
+        tender = super().update(instance, validated_data)
+        if invited_supplier_company_ids is not None:
+            _sync_tender_invited_suppliers(
+                tender=tender,
+                supplier_company_ids=invited_supplier_company_ids,
+                is_sales=False,
+            )
+        return tender
 
     def get_is_latest_tour(self, obj):
         return not obj.next_tours.exists()
@@ -2052,6 +2178,9 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
         return TenderProposal.objects.filter(
             tender=obj, supplier_company_id__in=user_company_ids
         ).exists()
+
+    def get_invited_supplier_companies(self, obj):
+        return _serialize_tender_invited_suppliers(obj)
 
     def get_category_name(self, obj):
         return obj.category.name if obj.category else ""
@@ -2697,6 +2826,21 @@ class SalesTenderSerializer(serializers.ModelSerializer):
     department_name = serializers.SerializerMethodField()
     created_by_display = serializers.SerializerMethodField()
     organizer_contact = serializers.SerializerMethodField()
+    invited_supplier_company_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        write_only=True,
+    )
+    invited_supplier_companies = serializers.SerializerMethodField()
+    invited_emails = serializers.ListField(
+        child=serializers.EmailField(),
+        required=False,
+    )
+    timing_comment = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
     company_participation_lock = serializers.SerializerMethodField()
     positions = SalesTenderPositionSerializer(many=True, required=False)
     approval_model_id = serializers.PrimaryKeyRelatedField(
@@ -2884,6 +3028,10 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             instance=self.instance,
             request=self.context.get("request"),
         )
+        if "invited_emails" in attrs:
+            attrs["invited_emails"] = _normalize_tender_invited_emails(
+                attrs.get("invited_emails")
+            )
         return attrs
 
     class Meta:
@@ -2921,6 +3069,10 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             "created_by",
             "created_by_display",
             "organizer_contact",
+            "invited_supplier_company_ids",
+            "invited_supplier_companies",
+            "invited_emails",
+            "timing_comment",
             "company_participation_lock",
             "start_at",
             "end_at",
@@ -2959,10 +3111,38 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             "branch_name",
             "department_name",
             "created_by_display",
+            "invited_supplier_companies",
             "company_participation_lock",
             "is_latest_tour",
             "current_user_has_proposal",
         )
+
+    def create(self, validated_data):
+        invited_supplier_company_ids = validated_data.pop(
+            "invited_supplier_company_ids", []
+        )
+        validated_data.pop("timing_comment", None)
+        tender = super().create(validated_data)
+        _sync_tender_invited_suppliers(
+            tender=tender,
+            supplier_company_ids=invited_supplier_company_ids,
+            is_sales=True,
+        )
+        return tender
+
+    def update(self, instance, validated_data):
+        invited_supplier_company_ids = validated_data.pop(
+            "invited_supplier_company_ids", None
+        )
+        validated_data.pop("timing_comment", None)
+        tender = super().update(instance, validated_data)
+        if invited_supplier_company_ids is not None:
+            _sync_tender_invited_suppliers(
+                tender=tender,
+                supplier_company_ids=invited_supplier_company_ids,
+                is_sales=True,
+            )
+        return tender
 
     def get_is_latest_tour(self, obj):
         return not obj.next_tours.exists()
@@ -2989,6 +3169,9 @@ class SalesTenderSerializer(serializers.ModelSerializer):
         return SalesTenderProposal.objects.filter(
             tender=obj, supplier_company_id__in=user_company_ids
         ).exists()
+
+    def get_invited_supplier_companies(self, obj):
+        return _serialize_tender_invited_suppliers(obj)
 
     def get_category_name(self, obj):
         return obj.category.name if obj.category else ""
