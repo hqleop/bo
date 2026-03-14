@@ -13,6 +13,14 @@
             <h3 class="font-semibold">Продаж</h3>
             <UButton
               size="sm"
+              variant="outline"
+              icon="i-heroicons-archive-box"
+              @click="openInactiveAttributesModal('sales')"
+            >
+              Деактивовані
+            </UButton>
+            <UButton
+              size="sm"
               icon="i-heroicons-plus"
               @click="openModal(undefined, 'sales')"
             >
@@ -42,6 +50,14 @@
               <div class="flex gap-1">
                 
                 <UButton
+                  icon="i-heroicons-archive-box"
+                  size="xs"
+                  variant="ghost"
+                  color="warning"
+                  aria-label="Деактивувати"
+                  @click.stop="deactivateAttribute(row.original)"
+                />
+                <UButton
                   icon="i-heroicons-trash"
                   size="xs"
                   variant="ghost"
@@ -65,6 +81,14 @@
         <template #header>
           <div class="flex items-center justify-between">
             <h3 class="font-semibold">Закупівля</h3>
+            <UButton
+              size="sm"
+              variant="outline"
+              icon="i-heroicons-archive-box"
+              @click="openInactiveAttributesModal('procurement')"
+            >
+              Деактивовані
+            </UButton>
             <UButton
               size="sm"
               icon="i-heroicons-plus"
@@ -95,6 +119,14 @@
             <template #actions-cell="{ row }">
               <div class="flex gap-1">
                 
+                <UButton
+                  icon="i-heroicons-archive-box"
+                  size="xs"
+                  variant="ghost"
+                  color="warning"
+                  aria-label="Деактивувати"
+                  @click.stop="deactivateAttribute(row.original)"
+                />
                 <UButton
                   icon="i-heroicons-trash"
                   size="xs"
@@ -278,6 +310,22 @@
         </UCard>
       </template>
     </UModal>
+
+    <InactiveItemsModal
+      :open="showInactiveModal"
+      :title="
+        inactiveTenderType === 'sales'
+          ? 'Деактивовані атрибути продажу'
+          : 'Деактивовані атрибути закупівлі'
+      "
+      :items="inactiveAttributes"
+      :fields="inactiveAttributeFields"
+      :loading="loadingInactiveAttributes"
+      empty-text="Немає деактивованих атрибутів."
+      @update:open="showInactiveModal = $event"
+      @restore="restoreAttribute"
+      @delete="deleteInactiveAttribute"
+    />
   </div>
 </template>
 
@@ -293,10 +341,14 @@ const { fetch } = useApi();
 
 const salesAttributes = ref<any[]>([]);
 const procurementAttributes = ref<any[]>([]);
+const inactiveAttributes = ref<any[]>([]);
 const selectedAttribute = ref<any | null>(null);
 const showModal = ref(false);
+const showInactiveModal = ref(false);
 const saving = ref(false);
+const loadingInactiveAttributes = ref(false);
 const editing = ref(false);
+const inactiveTenderType = ref<"sales" | "procurement">("sales");
 const categoryOptions = ref<{ value: number | null; label: string }[]>([
   { value: null, label: "Без категорії" },
 ]);
@@ -425,6 +477,12 @@ const procurementTableData = computed(() =>
   })),
 );
 
+const inactiveAttributeFields = [
+  { key: "name", label: "Назва" },
+  { key: "type_label", label: "Тип" },
+  { key: "category_name", label: "Категорія" },
+];
+
 function formatOptionsSummary(a: any): string {
   const opt = a.options || {};
   if (a.type === "numeric" && opt.numeric_choices?.length) {
@@ -472,6 +530,16 @@ async function loadAttributes() {
   procurementAttributes.value = Array.isArray(procurementRes.data)
     ? procurementRes.data
     : [];
+}
+
+async function loadInactiveAttributes(tenderType: "sales" | "procurement") {
+  loadingInactiveAttributes.value = true;
+  const { data } = await fetch(
+    `/tender-attributes/?tender_type=${tenderType}&inactive_only=1`,
+    { headers: getAuthHeaders() },
+  );
+  inactiveAttributes.value = Array.isArray(data) ? data : [];
+  loadingInactiveAttributes.value = false;
 }
 
 async function getCurrentCompanyId(): Promise<number | null> {
@@ -562,6 +630,52 @@ async function deleteAttribute(item: any) {
   }
   if (selectedAttribute.value?.id === item.id) selectedAttribute.value = null;
   await loadAttributes();
+}
+
+async function deactivateAttribute(item: any) {
+  if (!item?.id) return;
+  if (!confirm(`Деактивувати атрибут "${item.name}"?`)) return;
+  const { error } = await fetch(`/tender-attributes/${item.id}/deactivate/`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+  if (error) {
+    alert("Не вдалося деактивувати атрибут");
+    return;
+  }
+  if (selectedAttribute.value?.id === item.id) selectedAttribute.value = null;
+  await loadAttributes();
+}
+
+async function openInactiveAttributesModal(tenderType: "sales" | "procurement") {
+  inactiveTenderType.value = tenderType;
+  showInactiveModal.value = true;
+  await loadInactiveAttributes(tenderType);
+}
+
+async function restoreAttribute(item: any) {
+  const { error } = await fetch(`/tender-attributes/${item.id}/activate/`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+  if (error) {
+    alert("Не вдалося відновити атрибут");
+    return;
+  }
+  await Promise.all([loadAttributes(), loadInactiveAttributes(inactiveTenderType.value)]);
+}
+
+async function deleteInactiveAttribute(item: any) {
+  if (!confirm(`Видалити атрибут "${item.name}" остаточно?`)) return;
+  const { error } = await fetch(`/tender-attributes/${item.id}/`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+  if (error) {
+    alert("Не вдалося видалити атрибут");
+    return;
+  }
+  await Promise.all([loadAttributes(), loadInactiveAttributes(inactiveTenderType.value)]);
 }
 
 onMounted(async () => {

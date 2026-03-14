@@ -7,6 +7,14 @@
             <h2 class="text-2xl font-bold">Довідник моделей</h2>
             <div class="flex items-center gap-2">
               <UButton
+                icon="i-heroicons-archive-box"
+                variant="outline"
+                :disabled="selectedModelIds.length === 0"
+                @click="deactivateSelectedModels"
+              >
+                Деактивувати
+              </UButton>
+              <UButton
                 icon="i-heroicons-trash"
                 color="error"
                 variant="outline"
@@ -14,6 +22,13 @@
                 @click="deleteSelectedModels"
               >
                 Видалити модель
+              </UButton>
+              <UButton
+                icon="i-heroicons-archive-box"
+                variant="outline"
+                @click="openInactiveModelsModal"
+              >
+                Деактивовані
               </UButton>
               <UButton icon="i-heroicons-plus" @click="openCreateModal">Додати модель</UButton>
             </div>
@@ -193,6 +208,18 @@
         </UCard>
       </template>
     </UModal>
+
+    <InactiveItemsModal
+      :open="showInactiveModal"
+      title="Деактивовані моделі погодження"
+      :items="inactiveModels"
+      :fields="inactiveModelFields"
+      :loading="loadingInactiveModels"
+      empty-text="Немає деактивованих моделей."
+      @update:open="showInactiveModal = $event"
+      @restore="restoreModel"
+      @delete="deleteInactiveModel"
+    />
   </div>
 </template>
 
@@ -204,6 +231,7 @@ const tendersUC = useTendersUseCases();
 const { me, refreshMe } = useMe();
 
 const list = ref<any[]>([]);
+const inactiveModels = ref<any[]>([]);
 const categories = ref<any[]>([]);
 const ranges = ref<any[]>([]);
 const roles = ref<any[]>([]);
@@ -211,7 +239,9 @@ const selectedModelIds = ref<number[]>([]);
 const editingModelId = ref<number | null>(null);
 
 const showModal = ref(false);
+const showInactiveModal = ref(false);
 const saving = ref(false);
+const loadingInactiveModels = ref(false);
 const form = reactive({
   name: "",
   application: "procurement" as "procurement" | "sales",
@@ -250,6 +280,11 @@ const applicationOptions = [
 const ruleOptions = [
   { value: "one_of", label: "Один зі" },
   { value: "all", label: "Усі" },
+];
+
+const inactiveModelFields = [
+  { key: "name", label: "Назва" },
+  { key: "application_label", label: "Застосування" },
 ];
 
 const categoryOptions = computed(() =>
@@ -366,6 +401,13 @@ async function loadData() {
   roles.value = rolesData;
 }
 
+async function loadInactiveModels() {
+  loadingInactiveModels.value = true;
+  const { data } = await approvalUC.getApprovalModels({ inactiveOnly: true });
+  inactiveModels.value = Array.isArray(data) ? data : [];
+  loadingInactiveModels.value = false;
+}
+
 async function saveModel() {
   const companyId = await ensureCompanyId();
   const name = form.name.trim();
@@ -410,6 +452,36 @@ async function deleteSelectedModels() {
   }
   selectedModelIds.value = [];
   await loadData();
+}
+
+async function deactivateSelectedModels() {
+  if (!selectedModelIds.value.length) return;
+  if (!confirm(`Деактивувати обрані моделі (${selectedModelIds.value.length})?`)) return;
+  const ids = [...selectedModelIds.value];
+  for (const id of ids) {
+    const { error } = await approvalUC.deactivateApprovalModel(id);
+    if (error) return;
+  }
+  selectedModelIds.value = [];
+  await loadData();
+}
+
+async function openInactiveModelsModal() {
+  showInactiveModal.value = true;
+  await loadInactiveModels();
+}
+
+async function restoreModel(item: any) {
+  const { error } = await approvalUC.activateApprovalModel(Number(item.id));
+  if (error) return;
+  await Promise.all([loadData(), loadInactiveModels()]);
+}
+
+async function deleteInactiveModel(item: any) {
+  if (!confirm(`Видалити модель "${item.name}" остаточно?`)) return;
+  const { error } = await approvalUC.deleteApprovalModel(Number(item.id));
+  if (error) return;
+  await Promise.all([loadData(), loadInactiveModels()]);
 }
 
 onMounted(loadData);

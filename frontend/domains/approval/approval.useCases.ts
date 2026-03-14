@@ -5,6 +5,7 @@ export function useApprovalUseCases() {
 
   async function getModelRoles(params?: {
     application?: "procurement" | "sales";
+    inactiveOnly?: boolean;
   }) {
     const { data, error } = await approvalApi.getModelRoles(fetch, params);
     return { data: Array.isArray(data) ? data : [], error };
@@ -30,6 +31,14 @@ export function useApprovalUseCases() {
 
   async function deleteModelRole(roleId: number) {
     return approvalApi.deleteModelRole(fetch, roleId);
+  }
+
+  async function deactivateModelRole(roleId: number) {
+    return approvalApi.deactivateModelRole(fetch, roleId);
+  }
+
+  async function activateModelRole(roleId: number) {
+    return approvalApi.activateModelRole(fetch, roleId);
   }
 
   async function getModelRoleUsers(roleId: number) {
@@ -79,6 +88,7 @@ export function useApprovalUseCases() {
     application?: "procurement" | "sales";
     categoryIds?: number[];
     rangeIds?: number[];
+    inactiveOnly?: boolean;
   }) {
     const { data, error } = await approvalApi.getApprovalModels(fetch, params);
     return { data: Array.isArray(data) ? data : [], error };
@@ -96,11 +106,21 @@ export function useApprovalUseCases() {
     return approvalApi.deleteApprovalModel(fetch, id);
   }
 
+  async function deactivateApprovalModel(id: number) {
+    return approvalApi.deactivateApprovalModel(fetch, id);
+  }
+
+  async function activateApprovalModel(id: number) {
+    return approvalApi.activateApprovalModel(fetch, id);
+  }
+
   return {
     getModelRoles,
     createModelRole,
     patchModelRole,
     deleteModelRole,
+    deactivateModelRole,
+    activateModelRole,
     getModelRoleUsers,
     createModelRoleUser,
     deleteModelRoleUser,
@@ -112,5 +132,7 @@ export function useApprovalUseCases() {
     createApprovalModel,
     patchApprovalModel,
     deleteApprovalModel,
+    deactivateApprovalModel,
+    activateApprovalModel,
   };
 }

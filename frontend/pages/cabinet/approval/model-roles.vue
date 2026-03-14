@@ -5,7 +5,17 @@
         <template #header>
           <div class="flex items-center justify-between gap-3">
             <h2 class="text-2xl font-bold">Ролі для моделей</h2>
-            <UButton icon="i-heroicons-plus" size="sm" @click="openCreateRole">Додати роль</UButton>
+            <div class="flex items-center gap-2">
+              <UButton
+                icon="i-heroicons-archive-box"
+                size="sm"
+                variant="outline"
+                @click="openInactiveRolesModal"
+              >
+                Деактивовані елементи
+              </UButton>
+              <UButton icon="i-heroicons-plus" size="sm" @click="openCreateRole">Додати роль</UButton>
+            </div>
           </div>
         </template>
 
@@ -36,6 +46,13 @@
                   size="xs"
                   variant="ghost"
                   @click.stop="openEditRole(role)"
+                />
+                <UButton
+                  icon="i-heroicons-archive-box"
+                  size="xs"
+                  variant="ghost"
+                  title="Деактивувати"
+                  @click.stop="deactivateRole(role)"
                 />
                 <UButton
                   icon="i-heroicons-trash"
@@ -163,6 +180,18 @@
         </UCard>
       </template>
     </UModal>
+
+    <InactiveItemsModal
+      :open="showInactiveRolesModal"
+      title="Деактивовані ролі"
+      :items="inactiveRoles"
+      :fields="inactiveRoleFields"
+      :loading="loadingInactiveRoles"
+      empty-text="Немає деактивованих ролей."
+      @update:open="showInactiveRolesModal = $event"
+      @restore="restoreRole"
+      @delete="deleteInactiveRole"
+    />
   </div>
 </template>
 
@@ -174,10 +203,13 @@ const usersUC = useUsersUseCases();
 const { me, refreshMe } = useMe();
 
 const roles = ref<any[]>([]);
+const inactiveRoles = ref<any[]>([]);
 const selectedRole = ref<any | null>(null);
 const selectedRoleUsers = ref<any[]>([]);
 const members = ref<any[]>([]);
 const roleSearch = ref("");
+const showInactiveRolesModal = ref(false);
+const loadingInactiveRoles = ref(false);
 
 const showCreateRoleModal = ref(false);
 const savingRole = ref(false);
@@ -206,6 +238,10 @@ const usersColumns = [
 const applicationOptions = [
   { value: "sales", label: "Тендер-Продаж" },
   { value: "procurement", label: "Тендер-Закупівля" },
+];
+const inactiveRoleFields = [
+  { key: "name", label: "Назва" },
+  { key: "application_label", label: "Застосування" },
 ];
 
 const filteredRoles = computed(() => {
@@ -251,6 +287,16 @@ async function ensureCompanyId() {
 async function loadRoles() {
   const { data } = await approvalUC.getModelRoles();
   roles.value = Array.isArray(data) ? data : [];
+}
+
+async function loadInactiveRoles() {
+  loadingInactiveRoles.value = true;
+  try {
+    const { data } = await approvalUC.getModelRoles({ inactiveOnly: true });
+    inactiveRoles.value = Array.isArray(data) ? data : [];
+  } finally {
+    loadingInactiveRoles.value = false;
+  }
 }
 
 async function loadMembers() {
@@ -333,6 +379,51 @@ async function deleteRole(role: any) {
     selectedRoleUsers.value = [];
   }
   await loadRoles();
+}
+
+async function deactivateRole(role: any) {
+  const roleId = Number(role?.id || 0);
+  if (!roleId) return;
+  if (!confirm(`Деактивувати роль "${role?.name || roleId}"?`)) return;
+
+  const { error } = await approvalUC.deactivateModelRole(roleId);
+  if (error) return;
+
+  if (selectedRole.value && Number(selectedRole.value.id) === roleId) {
+    selectedRole.value = null;
+    selectedRoleUsers.value = [];
+  }
+
+  await loadRoles();
+  if (showInactiveRolesModal.value) {
+    await loadInactiveRoles();
+  }
+}
+
+async function openInactiveRolesModal() {
+  showInactiveRolesModal.value = true;
+  await loadInactiveRoles();
+}
+
+async function restoreRole(role: any) {
+  const roleId = Number(role?.id || 0);
+  if (!roleId) return;
+
+  const { error } = await approvalUC.activateModelRole(roleId);
+  if (error) return;
+
+  await Promise.all([loadRoles(), loadInactiveRoles()]);
+}
+
+async function deleteInactiveRole(role: any) {
+  const roleId = Number(role?.id || 0);
+  if (!roleId) return;
+  if (!confirm(`Видалити роль "${role?.name || roleId}" остаточно?`)) return;
+
+  const { error } = await approvalUC.deleteModelRole(roleId);
+  if (error) return;
+
+  await Promise.all([loadRoles(), loadInactiveRoles()]);
 }
 
 async function addUserToRole() {

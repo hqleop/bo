@@ -2,11 +2,12 @@ import type { RequestFn } from "~/shared/api/apiClient";
 
 export async function getModelRoles(
   request: RequestFn,
-  params?: { application?: "procurement" | "sales" }
+  params?: { application?: "procurement" | "sales"; inactiveOnly?: boolean }
 ) {
-  const query = params?.application
-    ? `?application=${encodeURIComponent(params.application)}`
-    : "";
+  const q = new URLSearchParams();
+  if (params?.application) q.set("application", params.application);
+  if (params?.inactiveOnly) q.set("inactive_only", "1");
+  const query = q.toString() ? `?${q.toString()}` : "";
   return request<any[]>(`/approval-model-roles/${query}`);
 }
 
@@ -42,6 +43,14 @@ export async function deleteModelRole(request: RequestFn, roleId: number) {
   return request(`/approval-model-roles/${roleId}/`, {
     method: "DELETE",
   });
+}
+
+export async function deactivateModelRole(request: RequestFn, roleId: number) {
+  return request(`/approval-model-roles/${roleId}/deactivate/`, { method: "POST" });
+}
+
+export async function activateModelRole(request: RequestFn, roleId: number) {
+  return request(`/approval-model-roles/${roleId}/activate/`, { method: "POST" });
 }
 
 export async function getModelRoleUsers(
@@ -110,10 +119,12 @@ export async function getApprovalModels(
     application?: "procurement" | "sales";
     categoryIds?: number[];
     rangeIds?: number[];
+    inactiveOnly?: boolean;
   }
 ) {
   const q = new URLSearchParams();
   if (params?.application) q.set("application", params.application);
+  if (params?.inactiveOnly) q.set("inactive_only", "1");
   for (const id of params?.categoryIds || []) q.append("category_ids", String(id));
   for (const id of params?.rangeIds || []) q.append("range_ids", String(id));
   const query = q.toString() ? `?${q.toString()}` : "";
@@ -137,4 +148,12 @@ export async function patchApprovalModel(
 
 export async function deleteApprovalModel(request: RequestFn, id: number) {
   return request(`/approval-models/${id}/`, { method: "DELETE" });
+}
+
+export async function deactivateApprovalModel(request: RequestFn, id: number) {
+  return request(`/approval-models/${id}/deactivate/`, { method: "POST" });
+}
+
+export async function activateApprovalModel(request: RequestFn, id: number) {
+  return request(`/approval-models/${id}/activate/`, { method: "POST" });
 }

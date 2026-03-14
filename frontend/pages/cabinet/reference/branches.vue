@@ -1,12 +1,22 @@
-<template>
+﻿<template>
   <div class="h-full grid grid-cols-1 xl:grid-cols-3 gap-4">
-    <!-- Колонка 1: Філіали -->
+    <!-- РљРѕР»РѕРЅРєР° 1: Р¤С–Р»С–Р°Р»Рё -->
     <div class="min-h-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div class="flex justify-between items-center mb-4">
-        <h3 class="text-lg font-semibold">Філіали</h3>
-        <UButton icon="i-heroicons-plus" size="sm" @click="openBranchModal()"
-          >Додати</UButton
-        >
+        <h3 class="text-lg font-semibold">Р¤С–Р»С–Р°Р»Рё</h3>
+        <div class="flex gap-2">
+          <UButton
+            icon="i-heroicons-archive-box"
+            size="sm"
+            variant="outline"
+            @click="openInactiveBranchesModal"
+          >
+            Р”РµР°РєС‚РёРІРѕРІР°РЅС–
+          </UButton>
+                    <UButton icon="i-heroicons-plus" size="sm" @click="openBranchModal()">
+            Р”РѕРґР°С‚Рё
+          </UButton>
+        </div>
       </div>
       <div class="space-y-0 min-h-[200px]">
         <TreeItem
@@ -17,32 +27,43 @@
           :selected-id="selectedBranch?.id"
           @select="selectBranch"
           @edit="openBranchModal"
+          @deactivate="deactivateBranch"
           @delete="deleteBranch"
         />
         <div
           v-if="branches.length === 0"
           class="text-center text-gray-400 py-8"
         >
-          Немає філіалів
+          РќРµРјР°С” С„С–Р»С–Р°Р»С–РІ
         </div>
       </div>
     </div>
 
-    <!-- Колонка 2: Підрозділи -->
+    <!-- РљРѕР»РѕРЅРєР° 2: РџС–РґСЂРѕР·РґС–Р»Рё -->
     <div class="min-h-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div class="flex justify-between items-center mb-4">
-        <h3 class="text-lg font-semibold">Підрозділи</h3>
+        <h3 class="text-lg font-semibold">РџС–РґСЂРѕР·РґС–Р»Рё</h3>
+        <div class="flex gap-2">
+        <UButton
+          icon="i-heroicons-archive-box"
+          size="sm"
+          variant="outline"
+          @click="openInactiveDepartmentsModal"
+        >
+          Р”РµР°РєС‚РёРІРѕРІР°РЅС–
+        </UButton>
         <UButton
           icon="i-heroicons-plus"
           size="sm"
           :disabled="!selectedBranch"
           @click="openDepartmentModal()"
         >
-          Додати
+          Р”РѕРґР°С‚Рё
         </UButton>
       </div>
+      </div>
       <div v-if="!selectedBranch" class="text-center text-gray-400 py-8">
-        Оберіть філіал
+        РћР±РµСЂС–С‚СЊ С„С–Р»С–Р°Р»
       </div>
       <div v-else class="space-y-0 min-h-[200px]">
         <TreeItem
@@ -53,21 +74,22 @@
           :selected-id="selectedDepartment?.id"
           @select="selectDepartment"
           @edit="openDepartmentModal"
+          @deactivate="deactivateDepartment"
           @delete="deleteDepartment"
         />
         <div
           v-if="departments.length === 0"
           class="text-center text-gray-400 py-8"
         >
-          Немає підрозділів
+          РќРµРјР°С” РїС–РґСЂРѕР·РґС–Р»С–РІ
         </div>
       </div>
     </div>
 
-    <!-- Колонка 3: Користувачі -->
+    <!-- РљРѕР»РѕРЅРєР° 3: РљРѕСЂРёСЃС‚СѓРІР°С‡С– -->
     <div class="min-h-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div class="flex justify-between items-center mb-4">
-        <h3 class="text-lg font-semibold">Користувачі</h3>
+        <h3 class="text-lg font-semibold">РљРѕСЂРёСЃС‚СѓРІР°С‡С–</h3>
         <div class="flex gap-2">
           <UButton
             icon="i-heroicons-arrow-up-tray"
@@ -75,8 +97,8 @@
             variant="outline"
             color="neutral"
             :disabled="!canCopyUsersToParent"
-            title="Скопіювати користувачів у батьківську сутність"
-            aria-label="Скопіювати користувачів у батьківську сутність"
+            title="РЎРєРѕРїС–СЋРІР°С‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ Сѓ Р±Р°С‚СЊРєС–РІСЃСЊРєСѓ СЃСѓС‚РЅС–СЃС‚СЊ"
+            aria-label="РЎРєРѕРїС–СЋРІР°С‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ Сѓ Р±Р°С‚СЊРєС–РІСЃСЊРєСѓ СЃСѓС‚РЅС–СЃС‚СЊ"
             @click="copyUsers('parent')"
           />
           <UButton
@@ -85,8 +107,8 @@
             variant="outline"
             color="neutral"
             :disabled="!canCopyUsersToDescendants"
-            title="Скопіювати користувачів у підлеглі сутності"
-            aria-label="Скопіювати користувачів у підлеглі сутності"
+            title="РЎРєРѕРїС–СЋРІР°С‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ Сѓ РїС–РґР»РµРіР»С– СЃСѓС‚РЅРѕСЃС‚С–"
+            aria-label="РЎРєРѕРїС–СЋРІР°С‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ Сѓ РїС–РґР»РµРіР»С– СЃСѓС‚РЅРѕСЃС‚С–"
             @click="copyUsers('descendants')"
           />
           <UButton
@@ -95,7 +117,7 @@
             :disabled="!selectedBranch && !selectedDepartment"
             @click="openAddUsersModal()"
           >
-            Додати
+            Р”РѕРґР°С‚Рё
           </UButton>
           <UButton
             icon="i-heroicons-trash"
@@ -108,7 +130,7 @@
             "
             @click="openRemoveUsersModal()"
           >
-            Видалити
+            Р’РёРґР°Р»РёС‚Рё
           </UButton>
         </div>
       </div>
@@ -116,7 +138,7 @@
         v-if="!selectedBranch && !selectedDepartment"
         class="text-center text-gray-400 py-8"
       >
-        Оберіть філіал або підрозділ
+        РћР±РµСЂС–С‚СЊ С„С–Р»С–Р°Р» Р°Р±Рѕ РїС–РґСЂРѕР·РґС–Р»
       </div>
       <div v-else class="space-y-2">
         <div
@@ -139,31 +161,31 @@
           v-if="currentUsers.length === 0"
           class="text-center text-gray-400 py-8"
         >
-          Немає користувачів
+          РќРµРјР°С” РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ
         </div>
       </div>
     </div>
 
-    <!-- Модальне вікно для філіалу -->
+    <!-- РњРѕРґР°Р»СЊРЅРµ РІС–РєРЅРѕ РґР»СЏ С„С–Р»С–Р°Р»Сѓ -->
     <UModal v-model:open="showBranchModal">
       <template #content>
         <UCard>
           <template #header>
-            <h3>{{ editingBranch ? "Редагувати філіал" : "Додати філіал" }}</h3>
+            <h3>{{ editingBranch ? "Р РµРґР°РіСѓРІР°С‚Рё С„С–Р»С–Р°Р»" : "Р”РѕРґР°С‚Рё С„С–Р»С–Р°Р»" }}</h3>
           </template>
           <UForm :state="branchForm" @submit="saveBranch" class="space-y-4">
-            <UFormField label="Назва" name="name" required>
+            <UFormField label="РќР°Р·РІР°" name="name" required>
               <UInput v-model="branchForm.name" class="w-full" />
             </UFormField>
-            <UFormField label="Код" name="code">
+            <UFormField label="РљРѕРґ" name="code">
               <UInput v-model="branchForm.code" class="w-full" />
             </UFormField>
-            <UFormField label="Батьківський філіал" name="parent_id">
+            <UFormField label="Р‘Р°С‚СЊРєС–РІСЃСЊРєРёР№ С„С–Р»С–Р°Р»" name="parent_id">
               <USelectMenu
                 v-model="branchForm.parent_id"
                 :items="branchParentOptions"
                 value-key="value"
-                placeholder="Без батьківського філіалу"
+                placeholder="Р‘РµР· Р±Р°С‚СЊРєС–РІСЃСЊРєРѕРіРѕ С„С–Р»С–Р°Р»Сѓ"
                 class="w-full"
               />
             </UFormField>
@@ -172,10 +194,10 @@
                 variant="outline"
                 class="flex-1"
                 @click="showBranchModal = false"
-                >Скасувати</UButton
+                >РЎРєР°СЃСѓРІР°С‚Рё</UButton
               >
               <UButton type="submit" class="flex-1" :loading="saving"
-                >Зберегти</UButton
+                >Р—Р±РµСЂРµРіС‚Рё</UButton
               >
             </div>
           </UForm>
@@ -183,14 +205,14 @@
       </template>
     </UModal>
 
-    <!-- Модальне вікно для підрозділу -->
+    <!-- РњРѕРґР°Р»СЊРЅРµ РІС–РєРЅРѕ РґР»СЏ РїС–РґСЂРѕР·РґС–Р»Сѓ -->
     <UModal v-model:open="showDepartmentModal">
       <template #content>
         <UCard>
           <template #header>
             <h3>
               {{
-                editingDepartment ? "Редагувати підрозділ" : "Додати підрозділ"
+                editingDepartment ? "Р РµРґР°РіСѓРІР°С‚Рё РїС–РґСЂРѕР·РґС–Р»" : "Р”РѕРґР°С‚Рё РїС–РґСЂРѕР·РґС–Р»"
               }}
             </h3>
           </template>
@@ -199,15 +221,15 @@
             @submit="saveDepartment"
             class="space-y-4"
           >
-            <UFormField label="Назва" name="name" required>
+            <UFormField label="РќР°Р·РІР°" name="name" required>
               <UInput v-model="departmentForm.name" class="w-full" />
             </UFormField>
-            <UFormField label="Батьківський підрозділ" name="parent_id">
+            <UFormField label="Р‘Р°С‚СЊРєС–РІСЃСЊРєРёР№ РїС–РґСЂРѕР·РґС–Р»" name="parent_id">
               <USelectMenu
                 v-model="departmentForm.parent_id"
                 :items="departmentParentOptions"
                 value-key="value"
-                placeholder="Без батьківського підрозділу"
+                placeholder="Р‘РµР· Р±Р°С‚СЊРєС–РІСЃСЊРєРѕРіРѕ РїС–РґСЂРѕР·РґС–Р»Сѓ"
                 class="w-full"
               />
             </UFormField>
@@ -216,10 +238,10 @@
                 variant="outline"
                 class="flex-1"
                 @click="showDepartmentModal = false"
-                >Скасувати</UButton
+                >РЎРєР°СЃСѓРІР°С‚Рё</UButton
               >
               <UButton type="submit" class="flex-1" :loading="saving"
-                >Зберегти</UButton
+                >Р—Р±РµСЂРµРіС‚Рё</UButton
               >
             </div>
           </UForm>
@@ -227,12 +249,12 @@
       </template>
     </UModal>
 
-    <!-- Модальне вікно для додавання користувачів -->
+    <!-- РњРѕРґР°Р»СЊРЅРµ РІС–РєРЅРѕ РґР»СЏ РґРѕРґР°РІР°РЅРЅСЏ РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ -->
     <UModal v-model:open="showAddUsersModal">
       <template #content>
         <UCard>
           <template #header>
-            <h3>Додати користувачів</h3>
+            <h3>Р”РѕРґР°С‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ</h3>
           </template>
           <div class="space-y-2 max-h-96 overflow-y-auto">
             <div
@@ -260,10 +282,10 @@
                 variant="outline"
                 class="flex-1"
                 @click="showAddUsersModal = false"
-                >Скасувати</UButton
+                >РЎРєР°СЃСѓРІР°С‚Рё</UButton
               >
               <UButton class="flex-1" @click="addUsers" :loading="saving"
-                >Додати</UButton
+                >Р”РѕРґР°С‚Рё</UButton
               >
             </div>
           </template>
@@ -271,12 +293,12 @@
       </template>
     </UModal>
 
-    <!-- Модальне вікно для видалення користувачів -->
+    <!-- РњРѕРґР°Р»СЊРЅРµ РІС–РєРЅРѕ РґР»СЏ РІРёРґР°Р»РµРЅРЅСЏ РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ -->
     <UModal v-model:open="showRemoveUsersModal">
       <template #content>
         <UCard>
           <template #header>
-            <h3>Видалити користувачів</h3>
+            <h3>Р’РёРґР°Р»РёС‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ</h3>
           </template>
           <div class="space-y-2 max-h-96 overflow-y-auto">
             <div
@@ -306,20 +328,44 @@
                 variant="outline"
                 class="flex-1"
                 @click="showRemoveUsersModal = false"
-                >Скасувати</UButton
+                >РЎРєР°СЃСѓРІР°С‚Рё</UButton
               >
               <UButton
                 class="flex-1"
                 color="red"
                 @click="removeUsers"
                 :loading="saving"
-                >Видалити</UButton
+                >Р’РёРґР°Р»РёС‚Рё</UButton
               >
             </div>
           </template>
         </UCard>
       </template>
     </UModal>
+
+    <InactiveItemsModal
+      :open="showInactiveBranchesModal"
+      title="Р”РµР°РєС‚РёРІРѕРІР°РЅС– С„С–Р»С–Р°Р»Рё"
+      :items="inactiveBranches"
+      :fields="inactiveBranchFields"
+      :loading="loadingInactiveBranches"
+      empty-text="РќРµРјР°С” РґРµР°РєС‚РёРІРѕРІР°РЅРёС… С„С–Р»С–Р°Р»С–РІ."
+      @update:open="showInactiveBranchesModal = $event"
+      @restore="restoreBranch"
+      @delete="deleteInactiveBranch"
+    />
+
+    <InactiveItemsModal
+      :open="showInactiveDepartmentsModal"
+      title="Р”РµР°РєС‚РёРІРѕРІР°РЅС– РїС–РґСЂРѕР·РґС–Р»Рё"
+      :items="inactiveDepartments"
+      :fields="inactiveDepartmentFields"
+      :loading="loadingInactiveDepartments"
+      empty-text="РќРµРјР°С” РґРµР°РєС‚РёРІРѕРІР°РЅРёС… РїС–РґСЂРѕР·РґС–Р»С–РІ."
+      @update:open="showInactiveDepartmentsModal = $event"
+      @restore="restoreDepartment"
+      @delete="deleteInactiveDepartment"
+    />
   </div>
 </template>
 
@@ -330,7 +376,7 @@ definePageMeta({
   layout: "cabinet",
   middleware: "auth",
   meta: {
-    title: "Філіали підрозділи",
+    title: "Р¤С–Р»С–Р°Р»Рё РїС–РґСЂРѕР·РґС–Р»Рё",
   },
 });
 
@@ -340,12 +386,14 @@ const { fetch } = useApi();
 const { getCurrentCompanyId } = useCurrentCompanyId();
 const toast = useToast();
 
-// Дані
+// Р”Р°РЅС–
 const branches = ref<any[]>([]);
+const inactiveBranches = ref<any[]>([]);
 const departments = ref<any[]>([]);
+const inactiveDepartments = ref<any[]>([]);
 const currentUsers = ref<any[]>([]);
 const companyUsers = ref<any[]>([]);
-// користувачі компанії, які ще не додані в поточний філіал/підрозділ
+// РєРѕСЂРёСЃС‚СѓРІР°С‡С– РєРѕРјРїР°РЅС–С—, СЏРєС– С‰Рµ РЅРµ РґРѕРґР°РЅС– РІ РїРѕС‚РѕС‡РЅРёР№ С„С–Р»С–Р°Р»/РїС–РґСЂРѕР·РґС–Р»
 const availableCompanyUsers = computed(() => {
   const assignedIds = new Set<number>(
     currentUsers.value.map((u: any) => u.user.id),
@@ -353,7 +401,7 @@ const availableCompanyUsers = computed(() => {
   return companyUsers.value.filter((u: any) => !assignedIds.has(u.id));
 });
 
-// Вибраний елемент
+// Р’РёР±СЂР°РЅРёР№ РµР»РµРјРµРЅС‚
 const selectedBranch = ref<any>(null);
 const selectedDepartment = ref<any>(null);
 const selectedUsers = ref<number[]>([]);
@@ -372,14 +420,27 @@ const canCopyUsersToDescendants = computed(
     currentUsers.value.length > 0,
 );
 
-// Модальні вікна
+// РњРѕРґР°Р»СЊРЅС– РІС–РєРЅР°
+const inactiveBranchFields = [
+  { key: "name", label: "РќР°Р·РІР°" },
+  { key: "code", label: "РљРѕРґ" },
+];
+
+const inactiveDepartmentFields = [
+  { key: "name", label: "РќР°Р·РІР°" },
+];
+
 const showBranchModal = ref(false);
 const showDepartmentModal = ref(false);
 const showAddUsersModal = ref(false);
 const showRemoveUsersModal = ref(false);
+const showInactiveBranchesModal = ref(false);
+const showInactiveDepartmentsModal = ref(false);
 const saving = ref(false);
+const loadingInactiveBranches = ref(false);
+const loadingInactiveDepartments = ref(false);
 
-// Форми
+// Р¤РѕСЂРјРё
 const editingBranch = ref<any>(null);
 const editingDepartment = ref<any>(null);
 const branchForm = reactive({
@@ -394,7 +455,7 @@ const departmentForm = reactive({
 const usersToAdd = ref<number[]>([]);
 const usersToRemove = ref<number[]>([]);
 
-// Завантаження даних
+// Р—Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ РґР°РЅРёС…
 const loadBranches = async () => {
   const { data } = await fetch("/branches/", {
     headers: getAuthHeaders(),
@@ -402,6 +463,15 @@ const loadBranches = async () => {
   if (data) {
     branches.value = data;
   }
+};
+
+const loadInactiveBranches = async () => {
+  loadingInactiveBranches.value = true;
+  const { data } = await fetch("/branches/?inactive_only=1&flat=1", {
+    headers: getAuthHeaders(),
+  });
+  inactiveBranches.value = Array.isArray(data) ? data : [];
+  loadingInactiveBranches.value = false;
 };
 
 const loadDepartments = async () => {
@@ -415,6 +485,19 @@ const loadDepartments = async () => {
   if (data) {
     departments.value = data;
   }
+};
+
+const loadInactiveDepartments = async () => {
+  loadingInactiveDepartments.value = true;
+  const branchId = Number(selectedBranch.value?.id || 0);
+  const query = branchId
+    ? `/departments/?branch_id=${branchId}&inactive_only=1&flat=1`
+    : "/departments/?inactive_only=1&flat=1";
+  const { data } = await fetch(query, {
+    headers: getAuthHeaders(),
+  });
+  inactiveDepartments.value = Array.isArray(data) ? data : [];
+  loadingInactiveDepartments.value = false;
 };
 
 const loadUsers = async () => {
@@ -453,7 +536,7 @@ const loadCompanyUsers = async () => {
   }
 };
 
-// Обробники подій
+// РћР±СЂРѕР±РЅРёРєРё РїРѕРґС–Р№
 const selectBranch = (branch: any) => {
   selectedBranch.value = branch;
   selectedDepartment.value = null;
@@ -477,7 +560,7 @@ const toggleUserSelection = (userId: number) => {
   }
 };
 
-// Філіали
+// Р¤С–Р»С–Р°Р»Рё
 const openBranchModal = (branch?: any) => {
   editingBranch.value = branch || null;
   if (branch) {
@@ -516,7 +599,7 @@ const saveBranch = async () => {
 
   saving.value = false;
   if (error) {
-    alert(getApiErrorMessage(error, "Помилка збереження"));
+    alert(getApiErrorMessage(error, "РџРѕРјРёР»РєР° Р·Р±РµСЂРµР¶РµРЅРЅСЏ"));
     return;
   }
 
@@ -525,7 +608,7 @@ const saveBranch = async () => {
 };
 
 const deleteBranch = async (branch: any) => {
-  if (!confirm(`Видалити філіал "${branch.name}"?`)) return;
+  if (!confirm(`Р’РёРґР°Р»РёС‚Рё С„С–Р»С–Р°Р» "${branch.name}"?`)) return;
 
   const { error } = await fetch(`/branches/${branch.id}/`, {
     method: "DELETE",
@@ -533,7 +616,7 @@ const deleteBranch = async (branch: any) => {
   });
 
   if (error) {
-    alert("Помилка видалення");
+    alert("РџРѕРјРёР»РєР° РІРёРґР°Р»РµРЅРЅСЏ");
     return;
   }
 
@@ -544,7 +627,66 @@ const deleteBranch = async (branch: any) => {
   await loadBranches();
 };
 
-// Підрозділи
+const deactivateBranch = async (branch: any) => {
+  if (!confirm(`Р”РµР°РєС‚РёРІСѓРІР°С‚Рё С„С–Р»С–Р°Р» "${branch.name}"?`)) return;
+
+  const { error } = await fetch(`/branches/${branch.id}/deactivate/`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+
+  if (error) {
+    alert(getApiErrorMessage(error, "РќРµ РІРґР°Р»РѕСЃСЏ РґРµР°РєС‚РёРІСѓРІР°С‚Рё С„С–Р»С–Р°Р»"));
+    return;
+  }
+
+  if (selectedBranch.value?.id === branch.id) {
+    selectedBranch.value = null;
+    selectedDepartment.value = null;
+    departments.value = [];
+    currentUsers.value = [];
+    selectedUsers.value = [];
+  }
+
+  await loadBranches();
+};
+
+const openInactiveBranchesModal = async () => {
+  showInactiveBranchesModal.value = true;
+  await loadInactiveBranches();
+};
+
+const restoreBranch = async (branch: any) => {
+  const { error } = await fetch(`/branches/${branch.id}/activate/`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+
+  if (error) {
+    alert(getApiErrorMessage(error, "РќРµ РІРґР°Р»РѕСЃСЏ РІС–РґРЅРѕРІРёС‚Рё С„С–Р»С–Р°Р»"));
+    return;
+  }
+
+  await Promise.all([loadBranches(), loadInactiveBranches()]);
+};
+
+const deleteInactiveBranch = async (branch: any) => {
+  if (!confirm(`Р’РёРґР°Р»РёС‚Рё С„С–Р»С–Р°Р» "${branch.name}" РѕСЃС‚Р°С‚РѕС‡РЅРѕ?`)) return;
+
+  const { error } = await fetch(`/branches/${branch.id}/`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+
+  if (error) {
+    alert(getApiErrorMessage(error, "РќРµ РІРґР°Р»РѕСЃСЏ РІРёРґР°Р»РёС‚Рё С„С–Р»С–Р°Р»"));
+    return;
+  }
+
+  await Promise.all([loadBranches(), loadInactiveBranches()]);
+};
+
+// РџС–РґСЂРѕР·РґС–Р»Рё
 const openDepartmentModal = (dept?: any) => {
   editingDepartment.value = dept || null;
   if (dept) {
@@ -582,7 +724,7 @@ const saveDepartment = async () => {
 
   saving.value = false;
   if (error) {
-    alert(getApiErrorMessage(error, "Помилка збереження"));
+    alert(getApiErrorMessage(error, "РџРѕРјРёР»РєР° Р·Р±РµСЂРµР¶РµРЅРЅСЏ"));
     return;
   }
 
@@ -591,7 +733,7 @@ const saveDepartment = async () => {
 };
 
 const deleteDepartment = async (dept: any) => {
-  if (!confirm(`Видалити підрозділ "${dept.name}"?`)) return;
+  if (!confirm(`Р’РёРґР°Р»РёС‚Рё РїС–РґСЂРѕР·РґС–Р» "${dept.name}"?`)) return;
 
   const { error } = await fetch(`/departments/${dept.id}/`, {
     method: "DELETE",
@@ -599,7 +741,7 @@ const deleteDepartment = async (dept: any) => {
   });
 
   if (error) {
-    alert("Помилка видалення");
+    alert("РџРѕРјРёР»РєР° РІРёРґР°Р»РµРЅРЅСЏ");
     return;
   }
 
@@ -609,7 +751,64 @@ const deleteDepartment = async (dept: any) => {
   await loadDepartments();
 };
 
-// Користувачі
+const deactivateDepartment = async (dept: any) => {
+  if (!confirm(`Р”РµР°РєС‚РёРІСѓРІР°С‚Рё РїС–РґСЂРѕР·РґС–Р» "${dept.name}"?`)) return;
+
+  const { error } = await fetch(`/departments/${dept.id}/deactivate/`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+
+  if (error) {
+    alert(getApiErrorMessage(error, "РќРµ РІРґР°Р»РѕСЃСЏ РґРµР°РєС‚РёРІСѓРІР°С‚Рё РїС–РґСЂРѕР·РґС–Р»"));
+    return;
+  }
+
+  if (selectedDepartment.value?.id === dept.id) {
+    selectedDepartment.value = null;
+    currentUsers.value = [];
+    selectedUsers.value = [];
+  }
+
+  await loadDepartments();
+};
+
+const openInactiveDepartmentsModal = async () => {
+  showInactiveDepartmentsModal.value = true;
+  await loadInactiveDepartments();
+};
+
+const restoreDepartment = async (dept: any) => {
+  const { error } = await fetch(`/departments/${dept.id}/activate/`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+
+  if (error) {
+    alert(getApiErrorMessage(error, "РќРµ РІРґР°Р»РѕСЃСЏ РІС–РґРЅРѕРІРёС‚Рё РїС–РґСЂРѕР·РґС–Р»"));
+    return;
+  }
+
+  await Promise.all([loadDepartments(), loadInactiveDepartments()]);
+};
+
+const deleteInactiveDepartment = async (dept: any) => {
+  if (!confirm(`Р’РёРґР°Р»РёС‚Рё РїС–РґСЂРѕР·РґС–Р» "${dept.name}" РѕСЃС‚Р°С‚РѕС‡РЅРѕ?`)) return;
+
+  const { error } = await fetch(`/departments/${dept.id}/`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+
+  if (error) {
+    alert(getApiErrorMessage(error, "РќРµ РІРґР°Р»РѕСЃСЏ РІРёРґР°Р»РёС‚Рё РїС–РґСЂРѕР·РґС–Р»"));
+    return;
+  }
+
+  await Promise.all([loadDepartments(), loadInactiveDepartments()]);
+};
+
+// РљРѕСЂРёСЃС‚СѓРІР°С‡С–
 const openAddUsersModal = async () => {
   usersToAdd.value = [];
   await loadCompanyUsers();
@@ -650,7 +849,7 @@ const addUsers = async () => {
 
   saving.value = false;
   if (error) {
-    alert(getApiErrorMessage(error, "Помилка додавання"));
+    alert(getApiErrorMessage(error, "РџРѕРјРёР»РєР° РґРѕРґР°РІР°РЅРЅСЏ"));
     return;
   }
 
@@ -677,7 +876,7 @@ const removeUsers = async () => {
 
   saving.value = true;
   if (selectedDepartment.value) {
-    // Масове видалення з підрозділу за department + user_ids
+    // РњР°СЃРѕРІРµ РІРёРґР°Р»РµРЅРЅСЏ Р· РїС–РґСЂРѕР·РґС–Р»Сѓ Р·Р° department + user_ids
     await fetch("/department-users/bulk-delete/", {
       method: "POST",
       body: {
@@ -687,7 +886,7 @@ const removeUsers = async () => {
       headers: getAuthHeaders(),
     });
   } else {
-    // Старий механізм для філіалів — видаляємо по одному
+    // РЎС‚Р°СЂРёР№ РјРµС…Р°РЅС–Р·Рј РґР»СЏ С„С–Р»С–Р°Р»С–РІ вЂ” РІРёРґР°Р»СЏС”РјРѕ РїРѕ РѕРґРЅРѕРјСѓ
     const endpoint = "/branch-users/";
     for (const userId of usersToRemove.value) {
       const userItem = currentUsers.value.find((u) => u.user.id === userId);
@@ -730,7 +929,7 @@ const copyUsers = async (direction: "parent" | "descendants") => {
 
   if (error) {
     toast.add({
-      title: getApiErrorMessage(error, "Не вдалося скопіювати користувачів"),
+      title: getApiErrorMessage(error, "РќРµ РІРґР°Р»РѕСЃСЏ СЃРєРѕРїС–СЋРІР°С‚Рё РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ"),
       color: "error",
     });
     return;
@@ -739,13 +938,13 @@ const copyUsers = async (direction: "parent" | "descendants") => {
   toast.add({
     title:
       Number((data as any)?.created_count || 0) > 0
-        ? `Скопійовано користувачів: ${(data as any)?.created_count || 0}`
-        : "Нових користувачів для копіювання не знайдено",
+        ? `РЎРєРѕРїС–Р№РѕРІР°РЅРѕ РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ: ${(data as any)?.created_count || 0}`
+        : "РќРѕРІРёС… РєРѕСЂРёСЃС‚СѓРІР°С‡С–РІ РґР»СЏ РєРѕРїС–СЋРІР°РЅРЅСЏ РЅРµ Р·РЅР°Р№РґРµРЅРѕ",
     color: "success",
   });
 };
 
-// Допоміжні: сплощення дерева та збір id нащадків
+// Р”РѕРїРѕРјС–Р¶РЅС–: СЃРїР»РѕС‰РµРЅРЅСЏ РґРµСЂРµРІР° С‚Р° Р·Р±С–СЂ id РЅР°С‰Р°РґРєС–РІ
 function flattenBranches(
   branchList: any[],
 ): { id: number; name: string; level: number }[] {
@@ -792,7 +991,7 @@ function getDepartmentDescendantIds(dept: any): number[] {
   return ids;
 }
 
-// Опції для батьківського філіалу: плоский список, без поточного та його нащадків
+// РћРїС†С–С— РґР»СЏ Р±Р°С‚СЊРєС–РІСЃСЊРєРѕРіРѕ С„С–Р»С–Р°Р»Сѓ: РїР»РѕСЃРєРёР№ СЃРїРёСЃРѕРє, Р±РµР· РїРѕС‚РѕС‡РЅРѕРіРѕ С‚Р° Р№РѕРіРѕ РЅР°С‰Р°РґРєС–РІ
 const branchParentOptions = computed(() => {
   const flat = flattenBranches(branches.value);
   const excludeIds = new Set<number>();
@@ -806,10 +1005,10 @@ const branchParentOptions = computed(() => {
     value: b.id,
     label: (b.level ? "  ".repeat(b.level) : "") + b.name,
   }));
-  return [{ value: null, label: "Без батьківського філіалу" }, ...withPrefix];
+  return [{ value: null, label: "Р‘РµР· Р±Р°С‚СЊРєС–РІСЃСЊРєРѕРіРѕ С„С–Р»С–Р°Р»Сѓ" }, ...withPrefix];
 });
 
-// Опції для батьківського підрозділу
+// РћРїС†С–С— РґР»СЏ Р±Р°С‚СЊРєС–РІСЃСЊРєРѕРіРѕ РїС–РґСЂРѕР·РґС–Р»Сѓ
 const departmentParentOptions = computed(() => {
   const flat = flattenDepartments(departments.value);
   const excludeIds = new Set<number>();
@@ -824,14 +1023,18 @@ const departmentParentOptions = computed(() => {
     label: (d.level ? "  ".repeat(d.level) : "") + d.name,
   }));
   return [
-    { value: null, label: "Без батьківського підрозділу" },
+    { value: null, label: "Р‘РµР· Р±Р°С‚СЊРєС–РІСЃСЊРєРѕРіРѕ РїС–РґСЂРѕР·РґС–Р»Сѓ" },
     ...withPrefix,
   ];
 });
 
-// Ініціалізація
+// Р†РЅС–С†С–Р°Р»С–Р·Р°С†С–СЏ
 onMounted(async () => {
   await loadBranches();
   await loadCompanyUsers();
 });
 </script>
+
+
+
+

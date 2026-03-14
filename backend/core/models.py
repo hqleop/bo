@@ -386,6 +386,7 @@ class Branch(models.Model):
     )
     name = models.CharField(max_length=255)
     code = models.CharField(max_length=50, blank=True, default="")
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -408,6 +409,7 @@ class Department(models.Model):
         "self", on_delete=models.CASCADE, null=True, blank=True, related_name="children"
     )
     name = models.CharField(max_length=255)
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -502,6 +504,7 @@ class Category(models.Model):
     name = models.CharField(max_length=255)
     code = models.CharField(max_length=50, blank=True, default="")
     description = models.TextField(blank=True, default="")
+    is_active = models.BooleanField(default=True)
     cpvs = models.ManyToManyField(
         CpvDictionary,
         related_name="categories",
@@ -553,6 +556,7 @@ class ExpenseArticle(models.Model):
     year_start = models.PositiveIntegerField()
     year_end = models.PositiveIntegerField(null=True, blank=True)
     description = models.TextField(blank=True, default="")
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -750,6 +754,7 @@ class TenderCriterion(models.Model):
         help_text="Ознака обов'язковості заповнення критерію при подачі пропозиції.",
     )
     options = models.JSONField(default=dict, blank=True)
+    is_active = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -801,6 +806,7 @@ class TenderAttribute(models.Model):
         help_text="Ознака обов'язковості заповнення атрибута в позиції.",
     )
     options = models.JSONField(default=dict, blank=True)
+    is_active = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -859,6 +865,7 @@ class ApprovalModelRole(models.Model):
     application = models.CharField(
         max_length=20, choices=Application.choices, default=Application.PROCUREMENT
     )
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

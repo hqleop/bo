@@ -1,12 +1,22 @@
-<template>
+﻿<template>
   <div class="h-full grid grid-cols-1 xl:grid-cols-2 gap-4">
     <!-- Область 1: Категорії -->
     <div class="min-h-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div class="flex justify-between items-center mb-4">
         <h3 class="text-lg font-semibold">Категорії</h3>
-        <UButton icon="i-heroicons-plus" size="sm" @click="openCategoryModal()"
-          >Додати</UButton
-        >
+        <div class="flex gap-2">
+          <UButton
+            icon="i-heroicons-archive-box"
+            size="sm"
+            variant="outline"
+            @click="openInactiveCategoriesModal"
+          >
+            Деактивовані елементи
+          </UButton>
+          <UButton icon="i-heroicons-plus" size="sm" @click="openCategoryModal()">
+            Додати
+          </UButton>
+        </div>
       </div>
       <div class="space-y-0 min-h-[200px]">
         <TreeItem
@@ -17,6 +27,7 @@
           :selected-id="selectedCategory?.id"
           @select="selectCategory"
           @edit="openCategoryModal"
+          @deactivate="deactivateCategory"
           @delete="deleteCategory"
         />
         <div
@@ -249,6 +260,18 @@
         </UCard>
       </template>
     </UModal>
+
+    <InactiveItemsModal
+      :open="showInactiveCategoriesModal"
+      title="Деактивовані категорії"
+      :items="inactiveCategories"
+      :fields="inactiveCategoryFields"
+      :loading="loadingInactiveCategories"
+      empty-text="Немає деактивованих категорій."
+      @update:open="showInactiveCategoriesModal = $event"
+      @restore="restoreCategory"
+      @delete="deleteInactiveCategory"
+    />
   </div>
 </template>
 
@@ -269,6 +292,7 @@ const { getCurrentCompanyId } = useCurrentCompanyId();
 const toast = useToast();
 
 const categories = ref<any[]>([]);
+const inactiveCategories = ref<any[]>([]);
 const currentUsers = ref<any[]>([]);
 const companyUsers = ref<any[]>([]);
 
@@ -278,7 +302,9 @@ const selectedUsers = ref<number[]>([]);
 const showCategoryModal = ref(false);
 const showAddUsersModal = ref(false);
 const showRemoveUsersModal = ref(false);
+const showInactiveCategoriesModal = ref(false);
 const saving = ref(false);
+const loadingInactiveCategories = ref(false);
 
 const editingCategory = ref<any>(null);
 const categoryForm = reactive({
@@ -313,6 +339,11 @@ const canCopyUsersToDescendants = computed(
     currentUsers.value.length > 0,
 );
 
+const inactiveCategoryFields = [
+  { key: "name", label: "Назва" },
+  { key: "code", label: "Код" },
+];
+
 const loadCategories = async () => {
   const { data } = await fetch("/categories/", {
     headers: getAuthHeaders(),
@@ -320,6 +351,15 @@ const loadCategories = async () => {
   if (data) {
     categories.value = data;
   }
+};
+
+const loadInactiveCategories = async () => {
+  loadingInactiveCategories.value = true;
+  const { data } = await fetch("/categories/?inactive_only=1&flat=1", {
+    headers: getAuthHeaders(),
+  });
+  inactiveCategories.value = Array.isArray(data) ? data : [];
+  loadingInactiveCategories.value = false;
 };
 
 const loadUsers = async () => {
@@ -448,6 +488,63 @@ const deleteCategory = async (cat: any) => {
     selectedCategory.value = null;
   }
   await loadCategories();
+};
+
+const deactivateCategory = async (cat: any) => {
+  if (!confirm(`Деактивувати категорію "${cat.name}"?`)) return;
+
+  const { error } = await fetch(`/categories/${cat.id}/deactivate/`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+
+  if (error) {
+    alert(getApiErrorMessage(error, "Не вдалося деактивувати категорію"));
+    return;
+  }
+
+  if (selectedCategory.value?.id === cat.id) {
+    selectedCategory.value = null;
+    currentUsers.value = [];
+    selectedUsers.value = [];
+  }
+
+  await loadCategories();
+};
+
+const openInactiveCategoriesModal = async () => {
+  showInactiveCategoriesModal.value = true;
+  await loadInactiveCategories();
+};
+
+const restoreCategory = async (cat: any) => {
+  const { error } = await fetch(`/categories/${cat.id}/activate/`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+
+  if (error) {
+    alert(getApiErrorMessage(error, "Не вдалося відновити категорію"));
+    return;
+  }
+
+  await Promise.all([loadCategories(), loadInactiveCategories()]);
+};
+
+const deleteInactiveCategory = async (cat: any) => {
+  if (!confirm(`Видалити категорію "${cat.name}" остаточно?`)) return;
+
+  const { error } = await fetch(`/categories/${cat.id}/`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+
+  if (error) {
+    alert(getApiErrorMessage(error, "Не вдалося видалити категорію"));
+    return;
+  }
+
+  await Promise.all([loadCategories(), loadInactiveCategories()]);
 };
 
 // Користувачі
@@ -602,3 +699,4 @@ onMounted(async () => {
   await loadCompanyUsers();
 });
 </script>
+

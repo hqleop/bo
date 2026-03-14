@@ -50,6 +50,14 @@
             @click="$emit('edit', item)"
           />
           <UButton
+            icon="i-heroicons-archive-box"
+            size="xs"
+            variant="ghost"
+            color="warning"
+            class="!p-1"
+            @click="$emit('deactivate', item)"
+          />
+          <UButton
             icon="i-heroicons-trash"
             size="xs"
             variant="ghost"
@@ -72,6 +80,7 @@
           :selected-id="selectedId"
           @select="$emit('select', $event)"
           @edit="$emit('edit', $event)"
+          @deactivate="$emit('deactivate', $event)"
           @delete="$emit('delete', $event)"
         />
       </div>
@@ -90,6 +99,7 @@ const props = defineProps<{
 defineEmits<{
   select: [item: any];
   edit: [item: any];
+  deactivate: [item: any];
   delete: [item: any];
 }>();
 

@@ -13,19 +13,6 @@
             Додати номенклатуру
           </UButton>
           <UButton
-            icon="i-heroicons-check-circle"
-            size="sm"
-            variant="outline"
-            color="green"
-            :disabled="
-              selectedNomenclatures.length === 0 ||
-              selectedNomenclatures.every((n) => n.is_active)
-            "
-            @click="activateSelected"
-          >
-            Активувати
-          </UButton>
-          <UButton
             icon="i-heroicons-x-circle"
             size="sm"
             variant="outline"
@@ -47,6 +34,14 @@
             @click="deleteSelected"
           >
             Видалити
+          </UButton>
+          <UButton
+            icon="i-heroicons-archive-box"
+            size="sm"
+            variant="outline"
+            @click="openInactiveNomenclaturesModal"
+          >
+            Деактивовані елементи
           </UButton>
         </div>
       </div>
@@ -260,6 +255,18 @@
         </UCard>
       </template>
     </UModal>
+
+    <InactiveItemsModal
+      :open="showInactiveNomenclaturesModal"
+      title="Деактивовані номенклатури"
+      :items="inactiveNomenclatures"
+      :fields="inactiveNomenclatureFields"
+      :loading="loadingInactiveNomenclatures"
+      empty-text="Немає деактивованих номенклатур."
+      @update:open="showInactiveNomenclaturesModal = $event"
+      @restore="restoreInactiveNomenclature"
+      @delete="deleteInactiveNomenclature"
+    />
   </div>
 </template>
 
@@ -277,6 +284,7 @@ const { fetch } = useApi();
 
 // Дані
 const nomenclatures = ref<any[]>([]);
+const inactiveNomenclatures = ref<any[]>([]);
 /** ID обраних номенклатур (множинний вибір для Активувати/Деактивувати/Видалити) */
 const selectedNomenclatureIds = ref<number[]>([]);
 
@@ -298,7 +306,9 @@ let nameFilterTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Стан форм / модалок
 const showNomenclatureModal = ref(false);
+const showInactiveNomenclaturesModal = ref(false);
 const saving = ref(false);
+const loadingInactiveNomenclatures = ref(false);
 const editingNomenclature = ref<any | null>(null);
 
 const nomenclatureForm = reactive({
@@ -316,6 +326,12 @@ const nomenclatureForm = reactive({
 // CPV для форми (мультивибір)
 const selectedCpvIds = ref<number[]>([]);
 const selectedCpvLabels = ref<string[]>([]);
+const inactiveNomenclatureFields = [
+  { key: "name", label: "Назва" },
+  { key: "code", label: "Код / Артикул" },
+  { key: "unit_name", label: "Од. виміру" },
+  { key: "category_display", label: "Категорія" },
+];
 
 // Допоміжні функції
 const getCurrentCompany = async () => {
@@ -392,6 +408,22 @@ const loadNomenclatures = async () => {
   selectedNomenclatureIds.value = selectedNomenclatureIds.value.filter((id) =>
     loadedIds.has(Number(id)),
   );
+};
+
+const loadInactiveNomenclatures = async () => {
+  loadingInactiveNomenclatures.value = true;
+  try {
+    const { data } = await fetch("/nomenclatures/?inactive_only=1", {
+      headers: getAuthHeaders(),
+    });
+    const list = Array.isArray(data) ? data : [];
+    inactiveNomenclatures.value = list.map((item: any) => ({
+      ...item,
+      category_display: item.category_name || item.cpv_label || "—",
+    }));
+  } finally {
+    loadingInactiveNomenclatures.value = false;
+  }
 };
 
 const loadUnits = async () => {
@@ -783,6 +815,11 @@ const saveNomenclature = async () => {
   }
 };
 
+const openInactiveNomenclaturesModal = async () => {
+  showInactiveNomenclaturesModal.value = true;
+  await loadInactiveNomenclatures();
+};
+
 // Активувати / деактивувати / видалити (множинний вибір)
 const deactivateSelected = async () => {
   const toDeactivate = selectedNomenclatures.value.filter((n) => n.is_active);
@@ -806,30 +843,9 @@ const deactivateSelected = async () => {
   }
   selectedNomenclatureIds.value = [];
   await loadNomenclatures();
-};
-
-const activateSelected = async () => {
-  const toActivate = selectedNomenclatures.value.filter((n) => !n.is_active);
-  if (toActivate.length === 0) return;
-  if (
-    !confirm(
-      `Активувати ${toActivate.length} номенклатур? Вони будуть доступні для вибору.`,
-    )
-  ) {
-    return;
+  if (showInactiveNomenclaturesModal.value) {
+    await loadInactiveNomenclatures();
   }
-  for (const { id } of toActivate) {
-    const { error } = await fetch(`/nomenclatures/${id}/activate/`, {
-      method: "POST",
-      headers: getAuthHeaders(),
-    });
-    if (error) {
-      alert("Помилка активації номенклатури");
-      return;
-    }
-  }
-  selectedNomenclatureIds.value = [];
-  await loadNomenclatures();
 };
 
 const deleteSelected = async () => {
@@ -854,6 +870,41 @@ const deleteSelected = async () => {
   }
   selectedNomenclatureIds.value = [];
   await loadNomenclatures();
+};
+
+const restoreInactiveNomenclature = async (item: any) => {
+  const id = Number(item?.id || 0);
+  if (!id) return;
+
+  const { error } = await fetch(`/nomenclatures/${id}/activate/`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+  if (error) {
+    alert("Помилка відновлення номенклатури");
+    return;
+  }
+
+  await Promise.all([loadNomenclatures(), loadInactiveNomenclatures()]);
+};
+
+const deleteInactiveNomenclature = async (item: any) => {
+  const id = Number(item?.id || 0);
+  if (!id) return;
+  if (!confirm(`Видалити номенклатуру "${item?.name || id}" остаточно?`)) {
+    return;
+  }
+
+  const { error } = await fetch(`/nomenclatures/${id}/`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+  if (error) {
+    alert("Помилка видалення номенклатури");
+    return;
+  }
+
+  await Promise.all([loadNomenclatures(), loadInactiveNomenclatures()]);
 };
 
 onMounted(async () => {

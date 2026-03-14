@@ -4,9 +4,19 @@
     <div class="min-h-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div class="flex justify-between items-center mb-4">
         <h3 class="text-lg font-semibold">Статті бюджету</h3>
-        <UButton icon="i-heroicons-plus" size="sm" @click="openExpenseModal()">
+        <div class="flex gap-2">
+          <UButton
+            icon="i-heroicons-archive-box"
+            size="sm"
+            variant="outline"
+            @click="openInactiveExpensesModal"
+          >
+            Деактивовані елементи
+          </UButton>
+          <UButton icon="i-heroicons-plus" size="sm" @click="openExpenseModal()">
           Додати
         </UButton>
+        </div>
       </div>
       <div class="space-y-0 min-h-[200px]">
         <TreeItem
@@ -17,6 +27,7 @@
           :selected-id="selectedExpense?.id"
           @select="selectExpense"
           @edit="openExpenseModal"
+          @deactivate="deactivateExpense"
           @delete="deleteExpense"
         />
         <div
@@ -255,6 +266,18 @@
         </UCard>
       </template>
     </UModal>
+
+    <InactiveItemsModal
+      :open="showInactiveExpensesModal"
+      title="Деактивовані статті бюджету"
+      :items="inactiveExpenses"
+      :fields="inactiveExpenseFields"
+      :loading="loadingInactiveExpenses"
+      empty-text="Немає деактивованих статей бюджету."
+      @update:open="showInactiveExpensesModal = $event"
+      @restore="restoreExpense"
+      @delete="deleteInactiveExpense"
+    />
   </div>
 </template>
 
@@ -275,6 +298,7 @@ const { getCurrentCompanyId } = useCurrentCompanyId();
 const toast = useToast();
 
 const expenses = ref<any[]>([]);
+const inactiveExpenses = ref<any[]>([]);
 const currentUsers = ref<any[]>([]);
 const companyUsers = ref<any[]>([]);
 const selectedExpense = ref<any>(null);
@@ -283,7 +307,9 @@ const selectedUsers = ref<number[]>([]);
 const showExpenseModal = ref(false);
 const showAddUsersModal = ref(false);
 const showRemoveUsersModal = ref(false);
+const showInactiveExpensesModal = ref(false);
 const saving = ref(false);
+const loadingInactiveExpenses = ref(false);
 
 const editingExpense = ref<any>(null);
 const currentYear = new Date().getFullYear();
@@ -316,6 +342,13 @@ const canCopyUsersToDescendants = computed(
     currentUsers.value.length > 0,
 );
 
+const inactiveExpenseFields = [
+  { key: "name", label: "Назва" },
+  { key: "code", label: "Код" },
+  { key: "year_start", label: "Рік з" },
+  { key: "year_end", label: "Рік по" },
+];
+
 const loadExpenses = async () => {
   const { data } = await fetch("/expenses/", {
     headers: getAuthHeaders(),
@@ -323,6 +356,15 @@ const loadExpenses = async () => {
   if (data) {
     expenses.value = data;
   }
+};
+
+const loadInactiveExpenses = async () => {
+  loadingInactiveExpenses.value = true;
+  const { data } = await fetch("/expenses/?inactive_only=1&flat=1", {
+    headers: getAuthHeaders(),
+  });
+  inactiveExpenses.value = Array.isArray(data) ? data : [];
+  loadingInactiveExpenses.value = false;
 };
 
 const loadUsers = async () => {
@@ -439,6 +481,63 @@ const deleteExpense = async (exp: any) => {
     selectedExpense.value = null;
   }
   await loadExpenses();
+};
+
+const deactivateExpense = async (exp: any) => {
+  if (!confirm(`Деактивувати статтю бюджету "${exp.name}"?`)) return;
+
+  const { error } = await fetch(`/expenses/${exp.id}/deactivate/`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+
+  if (error) {
+    alert(getApiErrorMessage(error, "Не вдалося деактивувати статтю бюджету"));
+    return;
+  }
+
+  if (selectedExpense.value?.id === exp.id) {
+    selectedExpense.value = null;
+    currentUsers.value = [];
+    selectedUsers.value = [];
+  }
+
+  await loadExpenses();
+};
+
+const openInactiveExpensesModal = async () => {
+  showInactiveExpensesModal.value = true;
+  await loadInactiveExpenses();
+};
+
+const restoreExpense = async (exp: any) => {
+  const { error } = await fetch(`/expenses/${exp.id}/activate/`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+
+  if (error) {
+    alert(getApiErrorMessage(error, "Не вдалося відновити статтю бюджету"));
+    return;
+  }
+
+  await Promise.all([loadExpenses(), loadInactiveExpenses()]);
+};
+
+const deleteInactiveExpense = async (exp: any) => {
+  if (!confirm(`Видалити статтю бюджету "${exp.name}" остаточно?`)) return;
+
+  const { error } = await fetch(`/expenses/${exp.id}/`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+
+  if (error) {
+    alert(getApiErrorMessage(error, "Не вдалося видалити статтю бюджету"));
+    return;
+  }
+
+  await Promise.all([loadExpenses(), loadInactiveExpenses()]);
 };
 
 // Користувачі
