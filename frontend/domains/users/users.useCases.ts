@@ -260,6 +260,10 @@ export function useUsersUseCases() {
     return { data: Array.isArray(data) ? data : [] }
   }
 
+  async function removeNotification(notificationId: number) {
+    return usersApi.removeNotification(fetch, notificationId)
+  }
+
   async function getRoles(): Promise<{ data: unknown[] }> {
     const { data } = await usersApi.getRoles(fetch)
     return { data: Array.isArray(data) ? data : [] }
@@ -296,6 +300,7 @@ export function useUsersUseCases() {
     getCurrentCompanyCpvs,
     updateCurrentCompanyCpvs,
     getNotifications,
+    removeNotification,
     getRoles,
     getPermissions
   }

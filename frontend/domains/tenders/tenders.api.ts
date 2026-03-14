@@ -609,6 +609,84 @@ export async function submitTenderApprovalAction(
   })
 }
 
+export async function getTenderBidHistory(
+  request: RequestFn,
+  tenderId: number,
+  isSales: boolean,
+  tenderPositionId: number
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  const query = new URLSearchParams({ tender_position_id: String(tenderPositionId) })
+  return request<unknown[]>(`${prefix}/${tenderId}/bid-history/?${query.toString()}`)
+}
+
+export async function getTenderChatThreads(
+  request: RequestFn,
+  tenderId: number,
+  isSales: boolean
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<unknown[]>(`${prefix}/${tenderId}/chat/threads/`)
+}
+
+export async function getTenderChatMessages(
+  request: RequestFn,
+  tenderId: number,
+  isSales: boolean,
+  supplierCompanyId?: number | null
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  const query = new URLSearchParams()
+  if (supplierCompanyId) query.set('supplier_company_id', String(supplierCompanyId))
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request<unknown[]>(`${prefix}/${tenderId}/chat/messages/${suffix}`)
+}
+
+export async function sendTenderChatMessage(
+  request: RequestFn,
+  tenderId: number,
+  isSales: boolean,
+  body: { body: string; supplier_company_id?: number | null }
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<unknown>(`${prefix}/${tenderId}/chat/messages/`, {
+    method: 'POST',
+    body: body as unknown as Record<string, unknown>,
+  })
+}
+
+export async function getTenderProposalChangeReport(
+  request: RequestFn,
+  tenderId: number,
+  isSales: boolean
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<unknown[]>(`${prefix}/${tenderId}/proposal-change-report/`)
+}
+
+export async function disqualifyTenderProposals(
+  request: RequestFn,
+  tenderId: number,
+  isSales: boolean,
+  body: { items: Array<{ proposal_id: number; disqualify: boolean; comment?: string }> }
+) {
+  const prefix = isSales ? SALES_PREFIX : PROCUREMENT_PREFIX
+  return request<unknown[]>(`${prefix}/${tenderId}/disqualify-proposals/`, {
+    method: 'POST',
+    body: body as unknown as Record<string, unknown>,
+  })
+}
+
+export async function carryPreviousTourProposals(
+  request: RequestFn,
+  tenderId: number
+) {
+  return request<{ copied_companies?: number[]; copied_count?: number }>(
+    `${SALES_PREFIX}/${tenderId}/carry-previous-tour-proposals/`,
+    { method: 'POST' }
+  )
+}
+
 export async function getAvailableApprovalModels(
   request: RequestFn,
   params: {

@@ -208,6 +208,9 @@ class Notification(models.Model):
 
     class Type(models.TextChoices):
         MEMBERSHIP_REQUEST = "membership_request", "Запит на приєднання"
+        CHAT_MESSAGE = "chat_message", "Повідомлення у чаті тендера"
+        TENDER_TO_DECISION = "tender_to_decision", "Тендер перейшов на вибір рішення"
+        TENDER_COMPLETED = "tender_completed", "Тендер завершено"
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
     type = models.CharField(max_length=64, choices=Type.choices)
@@ -216,6 +219,158 @@ class Notification(models.Model):
     is_read = models.BooleanField(default=False)
     meta = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class TenderChatThread(models.Model):
+    """Чат між організатором та контрагентом у межах тендера."""
+
+    class TenderType(models.TextChoices):
+        PROCUREMENT = "procurement", "Закупівля"
+        SALES = "sales", "Продаж"
+
+    tender_type = models.CharField(max_length=16, choices=TenderType.choices)
+    tender_id = models.PositiveIntegerField(db_index=True)
+    supplier_company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="tender_chat_threads",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    last_message_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    class Meta:
+        verbose_name = "Чат тендера"
+        verbose_name_plural = "Чати тендерів"
+        ordering = ["-last_message_at", "-updated_at", "-id"]
+        unique_together = (("tender_type", "tender_id", "supplier_company"),)
+        indexes = [
+            models.Index(
+                fields=["tender_type", "tender_id", "last_message_at"],
+                name="tchat_tender_last_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.tender_type}:{self.tender_id} — {self.supplier_company.name}"
+
+
+class TenderChatMessage(models.Model):
+    """Повідомлення у чаті тендера."""
+
+    thread = models.ForeignKey(
+        TenderChatThread,
+        on_delete=models.CASCADE,
+        related_name="messages",
+    )
+    author_user = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tender_chat_messages",
+    )
+    author_company = models.ForeignKey(
+        Company,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tender_chat_messages",
+    )
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Повідомлення чату тендера"
+        verbose_name_plural = "Повідомлення чатів тендерів"
+        ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(fields=["thread", "created_at"], name="tchat_msg_thread_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"chat:{self.thread_id} by {self.author_user_id or '-'}"
+
+
+class TenderBidHistory(models.Model):
+    """Історія ставок/цінових подань по позиціях."""
+
+    class TenderType(models.TextChoices):
+        PROCUREMENT = "procurement", "Закупівля"
+        SALES = "sales", "Продаж"
+
+    tender_type = models.CharField(max_length=16, choices=TenderType.choices)
+    tender_id = models.PositiveIntegerField(db_index=True)
+    proposal_id = models.PositiveIntegerField(db_index=True)
+    tender_position_id = models.PositiveIntegerField(db_index=True)
+    supplier_company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="tender_bid_history",
+    )
+    price = models.DecimalField(max_digits=18, decimal_places=4, null=True, blank=True)
+    created_by = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tender_bid_history_entries",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Історія ставки тендера"
+        verbose_name_plural = "Історія ставок тендерів"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(
+                fields=["tender_type", "tender_id", "tender_position_id", "created_at"],
+                name="tbid_tender_pos_idx",
+            ),
+        ]
+
+
+class TenderProposalChangeLog(models.Model):
+    """Актуальний звіт змін КП, які вносив замовник на етапі вибору рішення."""
+
+    class TenderType(models.TextChoices):
+        PROCUREMENT = "procurement", "Закупівля"
+        SALES = "sales", "Продаж"
+
+    tender_type = models.CharField(max_length=16, choices=TenderType.choices)
+    tender_id = models.PositiveIntegerField(db_index=True)
+    proposal_id = models.PositiveIntegerField(db_index=True)
+    tender_position_id = models.PositiveIntegerField(db_index=True)
+    supplier_company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="tender_proposal_change_logs",
+    )
+    original_price = models.DecimalField(max_digits=18, decimal_places=4, null=True, blank=True)
+    original_criterion_values = models.JSONField(default=dict, blank=True)
+    current_price = models.DecimalField(max_digits=18, decimal_places=4, null=True, blank=True)
+    current_criterion_values = models.JSONField(default=dict, blank=True)
+    updated_by = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tender_proposal_change_logs",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Звіт змін КП"
+        verbose_name_plural = "Звіти змін КП"
+        ordering = ["supplier_company__name", "tender_position_id", "id"]
+        unique_together = (("tender_type", "proposal_id", "tender_position_id"),)
+        indexes = [
+            models.Index(
+                fields=["tender_type", "tender_id", "updated_at"],
+                name="tchg_tender_updated_idx",
+            ),
+        ]
 
 
 class Branch(models.Model):
@@ -1152,6 +1307,15 @@ class TenderProposal(models.Model):
         db_index=True,
         help_text="Timestamp for delta sync of acceptance status changes.",
     )
+    disqualified_at = models.DateTimeField(null=True, blank=True)
+    disqualification_comment = models.TextField(blank=True, default="")
+    disqualified_by = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="disqualified_procurement_proposals",
+    )
 
     class Meta:
         verbose_name = "Пропозиція в тендері"
@@ -1552,6 +1716,15 @@ class SalesTenderProposal(models.Model):
         auto_now=True,
         db_index=True,
         help_text="Timestamp for delta sync of acceptance status changes.",
+    )
+    disqualified_at = models.DateTimeField(null=True, blank=True)
+    disqualification_comment = models.TextField(blank=True, default="")
+    disqualified_by = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="disqualified_sales_proposals",
     )
 
     class Meta:

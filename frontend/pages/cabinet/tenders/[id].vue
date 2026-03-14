@@ -1221,8 +1221,14 @@
           <UCard>
             <template #header>
               <h3 class="text-lg font-semibold">Прийом пропозицій</h3>
+              <div class="mt-3">
+                <UTabs v-model="acceptanceTab" :items="acceptanceTabItems" />
+              </div>
             </template>
-            <div class="border border-gray-200 rounded-lg overflow-hidden">
+            <div
+              v-if="acceptanceTab === 'suppliers'"
+              class="border border-gray-200 rounded-lg overflow-hidden"
+            >
               <table class="w-full text-sm border-collapse">
                 <thead>
                   <tr class="border-b border-gray-200 bg-gray-50">
@@ -1272,6 +1278,181 @@
                   </tr>
                 </tbody>
               </table>
+            </div>
+            <div
+              v-if="acceptanceTab === 'positions'"
+              class="mt-4 border border-gray-200 rounded-lg overflow-hidden overflow-auto"
+            >
+              <table
+                v-if="
+                  proposalComparisonPositions.length && submittedDecisionProposals.length
+                "
+                class="w-full text-sm border-collapse"
+              >
+                <thead>
+                  <tr class="border-b border-gray-200 bg-gray-100">
+                    <th
+                      class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap"
+                    >
+                      Назва позиції
+                    </th>
+                    <th
+                      class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap"
+                    >
+                      Кількість
+                    </th>
+                    <template
+                      v-for="proposal in submittedDecisionProposals"
+                      :key="proposal.id"
+                    >
+                      <th
+                        :colspan="3 + (tender.value?.criteria?.length ?? 0)"
+                        class="text-left p-2 font-medium bg-gray-200 border-l border-gray-300"
+                      >
+                        {{
+                          proposal.supplier_company?.name ||
+                          proposal.supplier_name ||
+                          "—"
+                        }}
+                        <span
+                          v-if="proposal.supplier_company?.edrpou"
+                          class="text-gray-600 font-normal"
+                          >({{ proposal.supplier_company.edrpou }})</span
+                        >
+                      </th>
+                    </template>
+                  </tr>
+                  <tr class="border-b border-gray-200 bg-gray-50">
+                    <th class="p-2 bg-gray-50"></th>
+                    <th class="p-2 bg-gray-50"></th>
+                    <template
+                      v-for="proposal in submittedDecisionProposals"
+                      :key="proposal.id"
+                    >
+                      <th
+                        class="text-left p-2 font-medium border-l border-gray-200 whitespace-nowrap"
+                      >
+                        {{ proposalComparisonPriceHeader }}
+                      </th>
+                      <th
+                        class="text-left p-2 font-medium border-l border-gray-200 whitespace-nowrap"
+                      >
+                        Ціна без ПДВ
+                      </th>
+                      <th
+                        class="text-left p-2 font-medium border-l border-gray-200 whitespace-nowrap"
+                      >
+                        Сума
+                      </th>
+                      <th
+                        v-for="c in tender.value?.criteria ?? []"
+                        :key="c.id"
+                        class="text-left p-2 font-medium border-l border-gray-200"
+                      >
+                        {{ c.name }}
+                      </th>
+                    </template>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="pos in proposalComparisonPositions"
+                    :key="pos.id"
+                    class="border-b border-gray-200 hover:bg-gray-50/50"
+                  >
+                    <td class="p-2 bg-white whitespace-nowrap">{{ pos.name }}</td>
+                    <td class="p-2 bg-white whitespace-nowrap">
+                      {{ formatDecimalDisplay(pos.quantity) }}
+                      {{ pos.unit_name || "" }}
+                    </td>
+                    <template
+                      v-for="proposal in submittedDecisionProposals"
+                      :key="proposal.id"
+                    >
+                      <td class="p-2 border-l border-gray-200">
+                        {{
+                          formatNumericOrDash(
+                            getProposalPositionValue(proposal, pos.id)?.price,
+                          )
+                        }}
+                      </td>
+                      <td class="p-2 border-l border-gray-200">
+                        {{
+                          formatNumericOrDash(
+                            getProposalPositionValue(proposal, pos.id)
+                              ?.price_without_vat,
+                          )
+                        }}
+                      </td>
+                      <td class="p-2 border-l border-gray-200">
+                        {{ getProposalPositionSum(proposal, pos) ?? "—" }}
+                      </td>
+                      <td
+                        v-for="c in tender.value?.criteria ?? []"
+                        :key="c.id"
+                        class="p-2 border-l border-gray-200"
+                      >
+                        {{
+                          getProposalCriterionValue(proposal, pos.id, c.id) ?? "—"
+                        }}
+                      </td>
+                    </template>
+                  </tr>
+                </tbody>
+              </table>
+              <p v-else class="text-gray-500 py-8 text-center">
+                Немає позицій або пропозицій для відображення.
+              </p>
+            </div>
+            <div
+              v-if="acceptanceTab === 'history' && isOnlineAuctionTender"
+              class="mt-4 space-y-4"
+            >
+              <div class="max-w-sm">
+                <UFormField label="Позиція">
+                  <USelectMenu
+                    v-model="acceptanceBidHistoryPositionId"
+                    :items="acceptanceBidHistoryPositionOptions"
+                    value-key="value"
+                    label-key="label"
+                    placeholder="Оберіть позицію"
+                  />
+                </UFormField>
+              </div>
+              <div class="border border-gray-200 rounded-lg overflow-hidden">
+                <table
+                  v-if="acceptanceBidHistory.length"
+                  class="w-full text-sm border-collapse"
+                >
+                  <thead>
+                    <tr class="border-b border-gray-200 bg-gray-50">
+                      <th class="text-left p-2 font-medium">Контрагент</th>
+                      <th class="text-left p-2 font-medium">Ставка</th>
+                      <th class="text-left p-2 font-medium">Користувач</th>
+                      <th class="text-left p-2 font-medium">Дата та час</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="item in acceptanceBidHistory"
+                      :key="item.id"
+                      class="border-b border-gray-200 hover:bg-gray-50/50"
+                    >
+                      <td class="p-2">{{ item.supplier_company_name || "—" }}</td>
+                      <td class="p-2">{{ formatNumericOrDash(item.price) }}</td>
+                      <td class="p-2">{{ item.created_by_display || "—" }}</td>
+                      <td class="p-2">{{ formatDateTime(item.created_at) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p v-else class="text-gray-500 py-8 text-center">
+                  {{
+                    acceptanceBidHistoryLoading
+                      ? "Завантаження історії ставок..."
+                      : "Немає історії ставок для вибраної позиції."
+                  }}
+                </p>
+              </div>
             </div>
           </UCard>
         </template>
@@ -1589,6 +1770,35 @@
           >
             Усі пропозиції
           </UButton>
+          <UButton
+            v-if="isParticipant"
+            class="w-full"
+            variant="outline"
+            @click="openParticipantChatModal"
+          >
+            Задати питання
+          </UButton>
+          <UButton
+            v-else
+            class="w-full"
+            variant="outline"
+            :disabled="isViewingPreviousTour"
+            @click="openOrganizerChatModal"
+          >
+            Питання учасників
+          </UButton>
+          <div class="rounded-lg border border-gray-200 p-3 text-sm">
+            <p class="font-semibold text-gray-900">Організатор тендера</p>
+            <p class="mt-2 text-gray-800">
+              {{ tender?.organizer_contact?.full_name || "—" }}
+            </p>
+            <p class="text-gray-600">
+              {{ tender?.organizer_contact?.phone || "—" }}
+            </p>
+            <p class="text-gray-600 break-all">
+              {{ tender?.organizer_contact?.email || "—" }}
+            </p>
+          </div>
         </template>
         <template v-else-if="displayStage === 'decision'">
           <template
@@ -1644,6 +1854,31 @@
             @click="openProposalsModal"
           >
             Усі пропозиції
+          </UButton>
+          <UButton
+            class="w-full"
+            variant="outline"
+            :disabled="isViewingPreviousTour"
+            @click="openProposalEditor"
+          >
+            Редагувати КП
+          </UButton>
+          <UButton
+            class="w-full"
+            variant="outline"
+            :disabled="isViewingPreviousTour"
+            @click="openProposalChangeReportModal"
+          >
+            Звіт по змінам в КП
+          </UButton>
+          <UButton
+            class="w-full"
+            color="warning"
+            variant="outline"
+            :disabled="isViewingPreviousTour"
+            @click="openDisqualificationModal"
+          >
+            Дискваліфікація
           </UButton>
         </template>
 
@@ -2343,7 +2578,8 @@
           >
             <table
               v-if="
-                proposalComparisonPositions.length && decisionProposals.length
+                proposalComparisonPositions.length &&
+                submittedDecisionProposals.length
               "
               class="w-full text-sm border-collapse"
             >
@@ -2360,7 +2596,7 @@
                     Кількість
                   </th>
                   <template
-                    v-for="proposal in decisionProposals"
+                    v-for="proposal in submittedDecisionProposals"
                     :key="proposal.id"
                   >
                     <th
@@ -2384,7 +2620,7 @@
                   <th class="p-2 bg-gray-50"></th>
                   <th class="p-2 bg-gray-50"></th>
                   <template
-                    v-for="proposal in decisionProposals"
+                    v-for="proposal in submittedDecisionProposals"
                     :key="proposal.id"
                   >
                     <th
@@ -2424,7 +2660,7 @@
                     {{ pos.unit_name || "" }}
                   </td>
                   <template
-                    v-for="proposal in decisionProposals"
+                    v-for="proposal in submittedDecisionProposals"
                     :key="proposal.id"
                   >
                     <td
@@ -2577,6 +2813,230 @@
                 </tr>
               </tbody>
             </table>
+          </div>
+        </UCard>
+      </template>
+    </UModal>
+    <UModal
+      v-model:open="showParticipantChatModal"
+      :ui="{ content: 'w-[calc(100vw-2rem)] !max-w-3xl' }"
+    >
+      <template #content>
+        <UCard class="min-w-0">
+          <template #header><h3>Звернення до організатора</h3></template>
+          <div class="space-y-4">
+            <div class="max-h-[45vh] overflow-auto rounded border border-gray-200 p-3">
+              <div v-if="chatMessages.length" class="space-y-3">
+                <div
+                  v-for="message in chatMessages"
+                  :key="message.id"
+                  class="rounded border border-gray-100 p-3"
+                >
+                  <p class="font-medium text-gray-900">
+                    {{ message.author_display || "—" }}
+                  </p>
+                  <p class="text-xs text-gray-500">
+                    {{ formatDateTime(message.created_at) }}
+                  </p>
+                  <p class="mt-2 whitespace-pre-wrap text-sm text-gray-700">
+                    {{ message.body }}
+                  </p>
+                </div>
+              </div>
+              <p v-else class="py-6 text-center text-gray-500">
+                Історія повідомлень порожня.
+              </p>
+            </div>
+            <UTextarea
+              v-model="chatDraft"
+              :rows="4"
+              placeholder="Введіть текст повідомлення"
+            />
+            <div class="flex justify-end gap-2">
+              <UButton variant="outline" @click="closeChatModals">Скасувати</UButton>
+              <UButton :loading="chatSending" @click="submitParticipantChatMessage">
+                Надіслати
+              </UButton>
+            </div>
+          </div>
+        </UCard>
+      </template>
+    </UModal>
+    <UModal
+      v-model:open="showOrganizerChatModal"
+      :ui="{ content: 'w-[calc(100vw-2rem)] !max-w-6xl' }"
+    >
+      <template #content>
+        <UCard class="min-w-0">
+          <template #header><h3>Питання учасників</h3></template>
+          <div class="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+            <div class="rounded border border-gray-200">
+              <div class="max-h-[60vh] overflow-auto p-2">
+                <button
+                  v-for="thread in chatThreads"
+                  :key="thread.id"
+                  type="button"
+                  class="w-full rounded px-3 py-2 text-left text-sm hover:bg-gray-50"
+                  :class="
+                    selectedChatSupplierId === thread.supplier_company
+                      ? 'bg-primary-50 text-primary-700'
+                      : 'text-gray-700'
+                  "
+                  @click="selectOrganizerChatThread(thread.supplier_company)"
+                >
+                  <div class="font-medium">
+                    {{ thread.supplier_company_name || "—" }}
+                  </div>
+                  <div class="text-xs text-gray-500">
+                    {{ thread.supplier_company_edrpou || "—" }}
+                  </div>
+                </button>
+                <p v-if="!chatThreads.length" class="p-3 text-sm text-gray-500">
+                  Питань від учасників ще немає.
+                </p>
+              </div>
+            </div>
+            <div class="space-y-4">
+              <div class="max-h-[50vh] overflow-auto rounded border border-gray-200 p-3">
+                <div v-if="chatMessages.length" class="space-y-3">
+                  <div
+                    v-for="message in chatMessages"
+                    :key="message.id"
+                    class="rounded border border-gray-100 p-3"
+                  >
+                    <p class="font-medium text-gray-900">
+                      {{ message.author_display || "—" }}
+                    </p>
+                    <p class="text-xs text-gray-500">
+                      {{ formatDateTime(message.created_at) }}
+                    </p>
+                    <p class="mt-2 whitespace-pre-wrap text-sm text-gray-700">
+                      {{ message.body }}
+                    </p>
+                  </div>
+                </div>
+                <p v-else class="py-6 text-center text-gray-500">
+                  Оберіть контрагента або дочекайтесь першого питання.
+                </p>
+              </div>
+              <UTextarea
+                v-model="chatDraft"
+                :rows="4"
+                :disabled="!selectedChatSupplierId"
+                placeholder="Введіть текст відповіді"
+              />
+              <div class="flex justify-end gap-2">
+                <UButton variant="outline" @click="closeChatModals">Скасувати</UButton>
+                <UButton
+                  :loading="chatSending"
+                  :disabled="!selectedChatSupplierId"
+                  @click="submitOrganizerChatMessage"
+                >
+                  Зберегти
+                </UButton>
+              </div>
+            </div>
+          </div>
+        </UCard>
+      </template>
+    </UModal>
+    <UModal
+      v-model:open="showProposalChangeReportModal"
+      :ui="{ content: 'w-[calc(100vw-2rem)] !max-w-6xl' }"
+    >
+      <template #content>
+        <UCard class="min-w-0">
+          <template #header><h3>Звіт по змінам в КП</h3></template>
+          <div class="overflow-auto">
+            <table
+              v-if="proposalChangeReport.length"
+              class="w-full text-sm border-collapse"
+            >
+              <thead>
+                <tr class="border-b border-gray-200 bg-gray-50">
+                  <th class="p-2 text-left font-medium">Контрагент</th>
+                  <th class="p-2 text-left font-medium">Позиція</th>
+                  <th class="p-2 text-left font-medium">Було</th>
+                  <th class="p-2 text-left font-medium">Стало</th>
+                  <th class="p-2 text-left font-medium">Змінено</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="item in proposalChangeReport"
+                  :key="item.id"
+                  class="border-b border-gray-200 align-top"
+                >
+                  <td class="p-2">{{ item.supplier_company_name || "—" }}</td>
+                  <td class="p-2">{{ item.position_name || "—" }}</td>
+                  <td class="p-2">
+                    <div>Ціна: {{ formatNumericOrDash(item.original_price) }}</div>
+                    <div class="mt-1 text-xs text-gray-500">
+                      {{ formatCriterionSummary(item.original_criterion_values) }}
+                    </div>
+                  </td>
+                  <td class="p-2">
+                    <div>Ціна: {{ formatNumericOrDash(item.current_price) }}</div>
+                    <div class="mt-1 text-xs text-gray-500">
+                      {{ formatCriterionSummary(item.current_criterion_values) }}
+                    </div>
+                  </td>
+                  <td class="p-2">
+                    <div>{{ item.updated_by_display || "—" }}</div>
+                    <div class="text-xs text-gray-500">
+                      {{ formatDateTime(item.updated_at) }}
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p v-else class="py-8 text-center text-gray-500">
+              {{
+                proposalChangeReportLoading
+                  ? "Завантаження звіту..."
+                  : "Змін КП не зафіксовано."
+              }}
+            </p>
+          </div>
+        </UCard>
+      </template>
+    </UModal>
+    <UModal v-model:open="showDisqualificationModal">
+      <template #content>
+        <UCard>
+          <template #header><h3>Дискваліфікація учасників</h3></template>
+          <div class="space-y-4">
+            <div
+              v-for="row in disqualificationRows"
+              :key="row.proposal_id"
+              class="rounded border border-gray-200 p-3"
+            >
+              <label class="flex items-start gap-3">
+                <input
+                  v-model="row.disqualify"
+                  type="checkbox"
+                  class="mt-1"
+                />
+                <span class="font-medium text-gray-900">
+                  {{ row.supplier_name }}
+                </span>
+              </label>
+              <UTextarea
+                v-model="row.comment"
+                class="mt-3"
+                :rows="3"
+                :disabled="!row.disqualify"
+                placeholder="Коментар до дискваліфікації"
+              />
+            </div>
+            <div class="flex justify-end gap-2">
+              <UButton variant="outline" @click="showDisqualificationModal = false">
+                Скасувати
+              </UButton>
+              <UButton :loading="disqualificationSaving" @click="submitDisqualifications">
+                Зберегти
+              </UButton>
+            </div>
           </div>
         </UCard>
       </template>
@@ -3718,8 +4178,50 @@ const decisionProposals = ref<any[]>([]);
 const decisionProposalsFullLoaded = ref(false);
 const decisionProposalsDeltaCursor = ref<string | null>(null);
 const decisionProposalsIdleStreak = ref(0);
-const submittedDecisionProposals = computed(() =>
+const submittedDecisionProposalsAll = computed(() =>
   decisionProposals.value.filter((proposal) => Boolean(proposal?.submitted_at)),
+);
+const submittedDecisionProposals = computed(() =>
+  submittedDecisionProposalsAll.value.filter(
+    (proposal) => !proposal?.disqualified_at,
+  ),
+);
+const acceptanceTab = ref<"suppliers" | "positions" | "history">("suppliers");
+const acceptanceBidHistoryPositionId = ref<number | null>(null);
+const acceptanceBidHistory = ref<any[]>([]);
+const acceptanceBidHistoryLoading = ref(false);
+const showParticipantChatModal = ref(false);
+const showOrganizerChatModal = ref(false);
+const chatThreads = ref<any[]>([]);
+const chatMessages = ref<any[]>([]);
+const chatDraft = ref("");
+const chatSending = ref(false);
+const selectedChatSupplierId = ref<number | null>(null);
+const showProposalChangeReportModal = ref(false);
+const proposalChangeReport = ref<any[]>([]);
+const proposalChangeReportLoading = ref(false);
+const showDisqualificationModal = ref(false);
+const disqualificationRows = ref<any[]>([]);
+const disqualificationSaving = ref(false);
+let chatPollInterval: ReturnType<typeof setInterval> | null = null;
+const isOnlineAuctionTender = computed(
+  () => tender.value?.conduct_type === "online_auction",
+);
+const acceptanceTabItems = computed(() => {
+  const items = [
+    { value: "suppliers", label: "Пропозиції контрагентів" },
+    { value: "positions", label: "Пропозиції попозиційно" },
+  ];
+  if (isOnlineAuctionTender.value) {
+    items.push({ value: "history", label: "Історія ставок" });
+  }
+  return items;
+});
+const acceptanceBidHistoryPositionOptions = computed(() =>
+  displayTenderPositions.value.map((pos: any) => ({
+    value: Number(pos.id),
+    label: pos.name || `Позиція ${pos.id}`,
+  })),
 );
 const decisionMarketModeOptions = [
   { value: "first_tour", label: "Першого туру" },
@@ -7061,7 +7563,7 @@ function getProposalCriterionValue(
 
 function getBestWorstForProposalComparison(positionId: number) {
   const withPrice: { id: number; price: number }[] = [];
-  for (const p of decisionProposals.value) {
+  for (const p of submittedDecisionProposals.value) {
     const pv = getProposalPositionValue(p, positionId);
     const num = Number(pv?.price);
     if (!Number.isNaN(num)) withPrice.push({ id: p.id, price: num });
@@ -7084,6 +7586,192 @@ const proposalComparisonByPosition = computed(() => {
 async function openProposalsModal() {
   await ensureDecisionProposalsFullDetails();
   showProposalsModal.value = true;
+}
+
+async function loadAcceptanceBidHistory() {
+  if (!acceptanceBidHistoryPositionId.value || !tenderId.value) {
+    acceptanceBidHistory.value = [];
+    return;
+  }
+  acceptanceBidHistoryLoading.value = true;
+  try {
+    const { data } = await tendersUC.getTenderBidHistory(
+      tenderId.value,
+      isSales,
+      acceptanceBidHistoryPositionId.value,
+    );
+    acceptanceBidHistory.value = Array.isArray(data) ? data : [];
+  } finally {
+    acceptanceBidHistoryLoading.value = false;
+  }
+}
+
+function stopChatPolling() {
+  if (chatPollInterval) {
+    clearInterval(chatPollInterval);
+    chatPollInterval = null;
+  }
+}
+
+function startChatPolling() {
+  stopChatPolling();
+  if (!showParticipantChatModal.value && !showOrganizerChatModal.value) return;
+  chatPollInterval = setInterval(() => {
+    if (showOrganizerChatModal.value) {
+      void loadChatThreads(false);
+      if (selectedChatSupplierId.value) {
+        void loadChatMessages(selectedChatSupplierId.value, false);
+      }
+      return;
+    }
+    void loadChatMessages(null, false);
+  }, 15000);
+}
+
+async function loadChatThreads(resetSelection = true) {
+  const { data } = await tendersUC.getTenderChatThreads(tenderId.value, isSales);
+  chatThreads.value = Array.isArray(data) ? data : [];
+  if (!resetSelection) return;
+  if (!chatThreads.value.length) {
+    selectedChatSupplierId.value = null;
+    return;
+  }
+  const firstThreadSupplierId = Number(chatThreads.value[0]?.supplier_company || 0) || null;
+  selectedChatSupplierId.value = firstThreadSupplierId;
+}
+
+async function loadChatMessages(
+  supplierCompanyId?: number | null,
+  clearDraft = false,
+) {
+  const { data } = await tendersUC.getTenderChatMessages(
+    tenderId.value,
+    isSales,
+    supplierCompanyId ?? undefined,
+  );
+  chatMessages.value = Array.isArray(data) ? data : [];
+  if (clearDraft) chatDraft.value = "";
+}
+
+async function openParticipantChatModal() {
+  showOrganizerChatModal.value = false;
+  showParticipantChatModal.value = true;
+  await loadChatMessages(null, true);
+  startChatPolling();
+}
+
+async function openOrganizerChatModal() {
+  showParticipantChatModal.value = false;
+  showOrganizerChatModal.value = true;
+  await loadChatThreads(true);
+  if (selectedChatSupplierId.value) {
+    await loadChatMessages(selectedChatSupplierId.value, true);
+  } else {
+    chatMessages.value = [];
+    chatDraft.value = "";
+  }
+  startChatPolling();
+}
+
+async function selectOrganizerChatThread(supplierCompanyId: number) {
+  selectedChatSupplierId.value = Number(supplierCompanyId) || null;
+  await loadChatMessages(selectedChatSupplierId.value, true);
+}
+
+function closeChatModals() {
+  showParticipantChatModal.value = false;
+  showOrganizerChatModal.value = false;
+  chatDraft.value = "";
+  stopChatPolling();
+}
+
+async function submitParticipantChatMessage() {
+  const body = chatDraft.value.trim();
+  if (!body) return;
+  chatSending.value = true;
+  try {
+    await tendersUC.sendTenderChatMessage(tenderId.value, isSales, { body });
+    await loadChatMessages(null, true);
+  } finally {
+    chatSending.value = false;
+  }
+}
+
+async function submitOrganizerChatMessage() {
+  const body = chatDraft.value.trim();
+  if (!body || !selectedChatSupplierId.value) return;
+  chatSending.value = true;
+  try {
+    await tendersUC.sendTenderChatMessage(tenderId.value, isSales, {
+      body,
+      supplier_company_id: selectedChatSupplierId.value,
+    });
+    await loadChatMessages(selectedChatSupplierId.value, true);
+    await loadChatThreads(false);
+  } finally {
+    chatSending.value = false;
+  }
+}
+
+function formatCriterionSummary(values: Record<string, unknown> | null | undefined) {
+  if (!values || typeof values !== "object") return "—";
+  const entries = Object.entries(values)
+    .filter(([, value]) => value != null && value !== "")
+    .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`);
+  return entries.length ? entries.join("; ") : "—";
+}
+
+async function openProposalChangeReportModal() {
+  showProposalChangeReportModal.value = true;
+  proposalChangeReportLoading.value = true;
+  try {
+    const { data } = await tendersUC.getTenderProposalChangeReport(
+      tenderId.value,
+      isSales,
+    );
+    proposalChangeReport.value = Array.isArray(data) ? data : [];
+  } finally {
+    proposalChangeReportLoading.value = false;
+  }
+}
+
+function openDisqualificationModal() {
+  disqualificationRows.value = submittedDecisionProposalsAll.value.map((proposal: any) => ({
+    proposal_id: Number(proposal.id),
+    supplier_name:
+      proposal.supplier_company?.name || proposal.supplier_name || "—",
+    disqualify: Boolean(proposal.disqualified_at),
+    comment: String(proposal.disqualification_comment || ""),
+  }));
+  showDisqualificationModal.value = true;
+}
+
+async function submitDisqualifications() {
+  disqualificationSaving.value = true;
+  try {
+    const items = disqualificationRows.value.map((row: any) => ({
+      proposal_id: Number(row.proposal_id),
+      disqualify: Boolean(row.disqualify),
+      comment: String(row.comment || ""),
+    }));
+    const { data, error } = await tendersUC.disqualifyTenderProposals(
+      tenderId.value,
+      isSales,
+      { items },
+    );
+    if (error) {
+      alert(getApiErrorMessage(error));
+      return;
+    }
+    decisionProposals.value = Array.isArray(data) ? data : [];
+    showDisqualificationModal.value = false;
+  } finally {
+    disqualificationSaving.value = false;
+  }
+}
+
+async function openProposalEditor() {
+  await navigateTo(`/cabinet/tenders/proposals/${tenderId.value}`);
 }
 
 onMounted(async () => {
@@ -7132,6 +7820,34 @@ watch(displayStage, async (stage) => {
   }
   startAcceptanceRefresh();
 });
+watch(
+  () => acceptanceTab.value,
+  async (tab) => {
+    if (tab !== "history" || !isOnlineAuctionTender.value) return;
+    if (!acceptanceBidHistoryPositionId.value) {
+      acceptanceBidHistoryPositionId.value =
+        acceptanceBidHistoryPositionOptions.value[0]?.value ?? null;
+    }
+    await loadAcceptanceBidHistory();
+  },
+);
+watch(
+  () => acceptanceBidHistoryPositionId.value,
+  async () => {
+    if (acceptanceTab.value !== "history") return;
+    await loadAcceptanceBidHistory();
+  },
+);
+watch(
+  () => [showParticipantChatModal.value, showOrganizerChatModal.value],
+  ([participantOpen, organizerOpen]) => {
+    if (participantOpen || organizerOpen) {
+      startChatPolling();
+      return;
+    }
+    stopChatPolling();
+  },
+);
 watch(isParticipant, () => {
   startAcceptanceRefresh();
 });
@@ -7165,6 +7881,7 @@ watch(prepTab, (tab) => {
 
 onUnmounted(() => {
   stopAcceptanceRefresh();
+  stopChatPolling();
   if (acceptanceTimerInterval) {
     clearInterval(acceptanceTimerInterval);
     acceptanceTimerInterval = null;

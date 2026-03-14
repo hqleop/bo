@@ -55,6 +55,10 @@ from .models import (
     Role,
     Permission,
     Notification,
+    TenderChatThread,
+    TenderChatMessage,
+    TenderBidHistory,
+    TenderProposalChangeLog,
     Branch,
     Department,
     BranchUser,
@@ -113,6 +117,10 @@ from .serializers import (
     RoleSerializer,
     CompanyUserSerializer,
     NotificationSerializer,
+    TenderChatThreadSerializer,
+    TenderChatMessageSerializer,
+    TenderBidHistorySerializer,
+    TenderProposalChangeLogSerializer,
     MeSerializer,
     ProfileUpdateSerializer,
     PasswordResetRequestSerializer,
@@ -1919,6 +1927,243 @@ def _is_tender_author(*, user, tender):
         return False
 
 
+def _user_company_ids(user):
+    if not user or not getattr(user, "is_authenticated", False):
+        return []
+    return list(
+        CompanyUser.objects.filter(
+            user=user,
+            status=CompanyUser.Status.APPROVED,
+        ).values_list("company_id", flat=True)
+    )
+
+
+def _user_represents_company(*, user, company_id):
+    if not company_id:
+        return False
+    return int(company_id) in {int(item_id) for item_id in _user_company_ids(user)}
+
+
+def _tender_kind(is_sales):
+    return "sales" if is_sales else "procurement"
+
+
+def _tender_document_meta(*, tender, is_sales):
+    kind = _tender_kind(is_sales)
+    document_name = f"Тендер №{getattr(tender, 'number', None) or getattr(tender, 'id', '')}"
+    route = (
+        f"/cabinet/tenders/sales/{int(tender.id)}"
+        if is_sales
+        else f"/cabinet/tenders/{int(tender.id)}"
+    )
+    return {
+        "tender_type": kind,
+        "tender_id": int(tender.id),
+        "document_name": document_name,
+        "document_url": route,
+    }
+
+
+def _create_notification(*, user, notification_type, title, body="", meta=None):
+    if not user:
+        return None
+    return Notification.objects.create(
+        user=user,
+        type=notification_type,
+        title=title,
+        body=body or "",
+        meta=meta or {},
+    )
+
+
+def _notify_tender_author_stage_event(*, tender, is_sales, event_type, title, body=""):
+    author = getattr(tender, "created_by", None)
+    if not author:
+        return
+    meta = _tender_document_meta(tender=tender, is_sales=is_sales)
+    meta["event"] = event_type
+    _create_notification(
+        user=author,
+        notification_type=event_type,
+        title=title,
+        body=body,
+        meta=meta,
+    )
+
+
+def _get_or_create_tender_chat_thread(*, tender, is_sales, supplier_company_id):
+    return TenderChatThread.objects.get_or_create(
+        tender_type=_tender_kind(is_sales),
+        tender_id=int(tender.id),
+        supplier_company_id=supplier_company_id,
+        defaults={"last_message_at": timezone.now()},
+    )
+
+
+def _record_tender_bid_history(
+    *,
+    tender,
+    is_sales,
+    proposal,
+    tender_position_id,
+    price,
+    actor,
+):
+    if getattr(tender, "conduct_type", "") != "online_auction":
+        return
+    TenderBidHistory.objects.create(
+        tender_type=_tender_kind(is_sales),
+        tender_id=int(tender.id),
+        proposal_id=int(proposal.id),
+        tender_position_id=int(tender_position_id),
+        supplier_company_id=proposal.supplier_company_id,
+        price=price,
+        created_by=actor,
+    )
+
+
+def _record_tender_proposal_change_log(
+    *,
+    tender,
+    is_sales,
+    proposal,
+    tender_position_id,
+    original_price,
+    original_criterion_values,
+    current_price,
+    current_criterion_values,
+    actor,
+):
+    entry, created = TenderProposalChangeLog.objects.get_or_create(
+        tender_type=_tender_kind(is_sales),
+        proposal_id=int(proposal.id),
+        tender_position_id=int(tender_position_id),
+        defaults={
+            "tender_id": int(tender.id),
+            "supplier_company_id": proposal.supplier_company_id,
+            "original_price": original_price,
+            "original_criterion_values": original_criterion_values or {},
+            "current_price": current_price,
+            "current_criterion_values": current_criterion_values or {},
+            "updated_by": actor,
+        },
+    )
+    if created:
+        return
+    entry.tender_id = int(tender.id)
+    entry.supplier_company_id = proposal.supplier_company_id
+    entry.current_price = current_price
+    entry.current_criterion_values = current_criterion_values or {}
+    entry.updated_by = actor
+    entry.save(
+        update_fields=[
+            "tender_id",
+            "supplier_company",
+            "current_price",
+            "current_criterion_values",
+            "updated_by",
+            "updated_at",
+        ]
+    )
+
+
+def _notify_tender_chat_message(*, tender, is_sales, thread, message, actor):
+    meta = _tender_document_meta(tender=tender, is_sales=is_sales)
+    meta.update(
+        {
+            "event": Notification.Type.CHAT_MESSAGE,
+            "chat_thread_id": int(thread.id),
+            "supplier_company_id": int(thread.supplier_company_id),
+        }
+    )
+    title = "Нове повідомлення у чаті тендера"
+    body = str(getattr(message, "body", "") or "").strip()
+    if len(body) > 180:
+        body = f"{body[:177]}..."
+
+    recipients = []
+    if _user_represents_company(user=actor, company_id=getattr(tender, "company_id", None)):
+        recipients = list(
+            CompanyUser.objects.filter(
+                company_id=thread.supplier_company_id,
+                status=CompanyUser.Status.APPROVED,
+            )
+            .select_related("user")
+            .exclude(user_id=getattr(actor, "id", None))
+        )
+    else:
+        author = getattr(tender, "created_by", None)
+        if author and getattr(author, "id", None) != getattr(actor, "id", None):
+            recipients = [type("Recipient", (), {"user": author})()]
+
+    for membership in recipients:
+        _create_notification(
+            user=membership.user,
+            notification_type=Notification.Type.CHAT_MESSAGE,
+            title=title,
+            body=body,
+            meta=meta,
+        )
+
+
+def _copy_sales_proposals_from_previous_tour(*, tender, actor):
+    parent = getattr(tender, "parent", None)
+    if not parent:
+        return {"copied_companies": [], "copied_count": 0}
+
+    parent_positions = list(parent.positions.order_by("id"))
+    current_positions = list(tender.positions.order_by("id"))
+    position_map = {}
+    for parent_pos, current_pos in zip(parent_positions, current_positions):
+        position_map[int(parent_pos.id)] = current_pos
+
+    existing_company_ids = set(
+        SalesTenderProposal.objects.filter(tender=tender).values_list("supplier_company_id", flat=True)
+    )
+    source_qs = (
+        SalesTenderProposal.objects.filter(
+            tender=parent,
+            submitted_at__isnull=False,
+        )
+        .select_related("supplier_company")
+        .prefetch_related("position_values")
+        .order_by("id")
+    )
+
+    copied_company_ids = []
+    for source_proposal in source_qs:
+        if int(source_proposal.supplier_company_id) in existing_company_ids:
+            continue
+        target_proposal = SalesTenderProposal.objects.create(
+            tender=tender,
+            supplier_company_id=source_proposal.supplier_company_id,
+            submitted_at=source_proposal.submitted_at,
+            status_updated_at=timezone.now(),
+        )
+        new_values = []
+        for source_value in source_proposal.position_values.all():
+            target_position = position_map.get(int(source_value.tender_position_id))
+            if not target_position:
+                continue
+            new_values.append(
+                SalesTenderProposalPosition(
+                    proposal=target_proposal,
+                    tender_position=target_position,
+                    price=source_value.price,
+                    price_without_vat=source_value.price_without_vat,
+                    criterion_values=source_value.criterion_values or {},
+                )
+            )
+        if new_values:
+            SalesTenderProposalPosition.objects.bulk_create(new_values)
+        copied_company_ids.append(int(source_proposal.supplier_company_id))
+
+    return {
+        "copied_companies": copied_company_ids,
+        "copied_count": len(copied_company_ids),
+    }
+
+
 def _ensure_user_can_edit_tender(*, user, tender, is_sales):
     if _is_tender_author(user=user, tender=tender):
         stage = (getattr(tender, "stage", "") or "").strip()
@@ -2257,6 +2502,13 @@ def _apply_tender_approval_action(*, tender, is_sales, actor, action_type, comme
             ):
                 tender.stage = "completed"
                 tender.save(update_fields=["stage"])
+                _notify_tender_author_stage_event(
+                    tender=tender,
+                    is_sales=is_sales,
+                    event_type=Notification.Type.TENDER_COMPLETED,
+                    title="Тендер завершено",
+                    body="Тендер перейшов на етап «Завершено».",
+                )
         else:
             _reject_active_stage_user(stage_state, active_step_user, comment=comment)
             if stage == TenderApprovalStageState.Stage.APPROVAL and tender.stage != "decision":
@@ -2296,6 +2548,14 @@ def _apply_tender_approval_action(*, tender, is_sales, actor, action_type, comme
     else:
         tender.stage = "decision"
     tender.save(update_fields=["stage"])
+    if action_type == "approved":
+        _notify_tender_author_stage_event(
+            tender=tender,
+            is_sales=is_sales,
+            event_type=Notification.Type.TENDER_COMPLETED,
+            title="Тендер завершено",
+            body="Тендер перейшов на етап «Завершено».",
+        )
     if action_type != "approved":
         _recalculate_tender_position_values_without_vat(
             tender=tender,
@@ -3645,6 +3905,17 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
         """Mark all notifications as read."""
         count = Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
         return Response({"count": count})
+
+    @extend_schema(
+        summary="Видалити сповіщення",
+        description="Видалити одне сповіщення поточного користувача.",
+        responses={204: None},
+    )
+    @action(detail=True, methods=["delete"], url_path="remove")
+    def remove(self, request, pk=None):
+        notification = self.get_object()
+        notification.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @extend_schema(
@@ -5560,6 +5831,24 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 tender=serializer.instance,
                 is_sales=False,
             )
+            _notify_tender_author_stage_event(
+                tender=serializer.instance,
+                is_sales=False,
+                event_type=Notification.Type.TENDER_TO_DECISION,
+                title="Тендер перейшов на етап вибору рішення",
+                body="Прийом пропозицій завершено, тендер очікує вибір рішення.",
+            )
+        if (
+            before_stage != ProcurementTender.Stage.COMPLETED
+            and after_stage == ProcurementTender.Stage.COMPLETED
+        ):
+            _notify_tender_author_stage_event(
+                tender=serializer.instance,
+                is_sales=False,
+                event_type=Notification.Type.TENDER_COMPLETED,
+                title="Тендер завершено",
+                body="Тендер перейшов на етап «Завершено».",
+            )
         if approval_model_changed:
             _ensure_stage_state_snapshot(
                 tender=serializer.instance,
@@ -6189,6 +6478,162 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         )
         return Response({"id": tender.id, "stage": tender.stage, "route": payload})
 
+    @action(detail=True, methods=["get"], url_path="bid-history")
+    def bid_history(self, request, pk=None):
+        tender = self.get_object()
+        position_id = _parse_int_param(request.query_params.get("tender_position_id"), min_value=1)
+        if not position_id:
+            return Response(
+                {"detail": "Передайте tender_position_id."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        qs = TenderBidHistory.objects.filter(
+            tender_type="procurement",
+            tender_id=int(tender.id),
+            tender_position_id=position_id,
+        ).select_related("supplier_company", "created_by")
+        serializer = TenderBidHistorySerializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["get"], url_path="chat/threads")
+    def chat_threads(self, request, pk=None):
+        tender = self.get_object()
+        user_company_ids = set(_user_company_ids(request.user))
+        is_owner = int(tender.company_id) in user_company_ids
+        qs = TenderChatThread.objects.filter(
+            tender_type="procurement",
+            tender_id=int(tender.id),
+        ).select_related("supplier_company")
+        if not is_owner:
+            qs = qs.filter(supplier_company_id__in=user_company_ids).exclude(
+                supplier_company_id=tender.company_id
+            )
+        serializer = TenderChatThreadSerializer(qs.order_by("-last_message_at", "-updated_at"), many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["get", "post"], url_path="chat/messages")
+    def chat_messages(self, request, pk=None):
+        tender = self.get_object()
+        user_company_ids = set(_user_company_ids(request.user))
+        is_owner = int(tender.company_id) in user_company_ids
+        supplier_company_id_raw = (
+            request.query_params.get("supplier_company_id")
+            if request.method == "GET"
+            else request.data.get("supplier_company_id")
+        )
+        supplier_company_id = None
+        if is_owner:
+            supplier_company_id = _parse_int_param(supplier_company_id_raw, min_value=1)
+            if not supplier_company_id:
+                return Response(
+                    {"detail": "Передайте supplier_company_id."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            participant_company_ids = [int(item_id) for item_id in user_company_ids if int(item_id) != int(tender.company_id)]
+            if not participant_company_ids:
+                return Response({"detail": "Компанію учасника не визначено."}, status=status.HTTP_403_FORBIDDEN)
+            requested_company_id = _parse_int_param(supplier_company_id_raw, min_value=1)
+            supplier_company_id = requested_company_id or participant_company_ids[0]
+            if supplier_company_id not in participant_company_ids:
+                return Response({"detail": "Немає доступу до цього чату."}, status=status.HTTP_403_FORBIDDEN)
+
+        thread, _ = _get_or_create_tender_chat_thread(
+            tender=tender,
+            is_sales=False,
+            supplier_company_id=supplier_company_id,
+        )
+        if request.method == "GET":
+            qs = thread.messages.select_related("author_user", "author_company").all()
+            serializer = TenderChatMessageSerializer(qs, many=True)
+            return Response(serializer.data)
+
+        body = str(request.data.get("body") or "").strip()
+        if not body:
+            return Response({"detail": "Текст повідомлення обов'язковий."}, status=status.HTTP_400_BAD_REQUEST)
+        author_company_id = tender.company_id if is_owner else supplier_company_id
+        with transaction.atomic():
+            message = TenderChatMessage.objects.create(
+                thread=thread,
+                author_user=request.user,
+                author_company_id=author_company_id,
+                body=body,
+            )
+            thread.last_message_at = message.created_at
+            thread.save(update_fields=["last_message_at", "updated_at"])
+        _notify_tender_chat_message(
+            tender=tender,
+            is_sales=False,
+            thread=thread,
+            message=message,
+            actor=request.user,
+        )
+        serializer = TenderChatMessageSerializer(message)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"], url_path="proposal-change-report")
+    def proposal_change_report(self, request, pk=None):
+        tender = self.get_object()
+        _ensure_user_can_edit_tender(user=request.user, tender=tender, is_sales=False)
+        position_names = {
+            int(pos.id): getattr(pos, "name", "") or getattr(getattr(pos, "nomenclature", None), "name", "")
+            for pos in tender.positions.all()
+        }
+        qs = TenderProposalChangeLog.objects.filter(
+            tender_type="procurement",
+            tender_id=int(tender.id),
+        ).select_related("supplier_company", "updated_by")
+        data = list(TenderProposalChangeLogSerializer(qs, many=True).data)
+        for row in data:
+            row["position_name"] = position_names.get(int(row.get("tender_position_id") or 0), "")
+        return Response(data)
+
+    @action(detail=True, methods=["post"], url_path="disqualify-proposals")
+    def disqualify_proposals(self, request, pk=None):
+        tender = self.get_object()
+        _ensure_user_can_edit_tender(user=request.user, tender=tender, is_sales=False)
+        items = request.data.get("items") or []
+        if not isinstance(items, list):
+            return Response({"detail": "items має бути масивом."}, status=status.HTTP_400_BAD_REQUEST)
+        touched_ids = []
+        with transaction.atomic():
+            for item in items:
+                proposal_id = _parse_int_param(item.get("proposal_id"), min_value=1)
+                if not proposal_id:
+                    continue
+                proposal = TenderProposal.objects.filter(tender=tender, id=proposal_id).first()
+                if not proposal:
+                    continue
+                should_disqualify = bool(item.get("disqualify"))
+                comment = str(item.get("comment") or "").strip()
+                if should_disqualify and not comment:
+                    return Response(
+                        {"detail": "Для дискваліфікації потрібно вказати коментар.", "proposal_id": proposal_id},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                proposal.disqualified_at = timezone.now() if should_disqualify else None
+                proposal.disqualification_comment = comment if should_disqualify else ""
+                proposal.disqualified_by = request.user if should_disqualify else None
+                proposal.status_updated_at = timezone.now()
+                proposal.save(
+                    update_fields=[
+                        "disqualified_at",
+                        "disqualification_comment",
+                        "disqualified_by",
+                        "status_updated_at",
+                    ]
+                )
+                touched_ids.append(int(proposal.id))
+            if touched_ids:
+                ProcurementTenderPosition.objects.filter(
+                    tender=tender,
+                    winner_proposal_id__in=touched_ids,
+                ).update(winner_proposal=None)
+        qs = TenderProposal.objects.filter(tender=tender).select_related("supplier_company", "disqualified_by").prefetch_related(
+            "position_values__tender_position__nomenclature__unit"
+        )
+        return Response(TenderProposalSerializer(qs, many=True).data)
+
     @extend_schema(
         request={
             "application/json": {
@@ -6234,7 +6679,13 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 prop_id = item.get("proposal_id")
                 if pos_id is not None and prop_id is not None:
                     pos = ProcurementTenderPosition.objects.filter(tender=tender, id=pos_id).first()
-                    if pos and TenderProposal.objects.filter(tender=tender, id=prop_id).exists():
+                    proposal = TenderProposal.objects.filter(tender=tender, id=prop_id).first()
+                    if proposal and proposal.disqualified_at:
+                        return Response(
+                            {"detail": "Дискваліфіковану пропозицію не можна обрати переможцем.", "proposal_id": prop_id},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    if pos and proposal:
                         pos.winner_proposal_id = prop_id
                         pos.save()
             tender.stage = "approval"
@@ -6374,7 +6825,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                     )
                     return response
             qs = TenderProposal.objects.filter(tender=tender).select_related(
-                "supplier_company"
+                "supplier_company", "disqualified_by"
             )
             if updated_since is not None:
                 qs = qs.filter(status_updated_at__gt=updated_since)
@@ -6420,7 +6871,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             )
             return response
         qs = TenderProposal.objects.filter(tender=tender).select_related(
-            "supplier_company"
+            "supplier_company", "disqualified_by"
         ).prefetch_related(
             "position_values__tender_position__nomenclature__unit",
         )
@@ -6474,6 +6925,10 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             return Response(payload.errors, status=status.HTTP_400_BAD_REQUEST)
         position_values_data = payload.validated_data.get("position_values") or []
         changed_position_ids: set[int] = set()
+        actor_represents_owner = _user_represents_company(
+            user=request.user,
+            company_id=tender.company_id,
+        )
         for item in position_values_data:
             tp_id = item.get("tender_position_id")
             if not tp_id:
@@ -6500,12 +6955,44 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 proposal=proposal, tender_position=pos,
                 defaults={"price": None, "criterion_values": {}},
             )
+            previous_price = pv.price
+            previous_criterion_values = pycopy.deepcopy(pv.criterion_values or {})
+            has_changes = False
             if "price" in item:
-                pv.price = item["price"]
+                next_price = item["price"]
+                if pv.price != next_price:
+                    pv.price = next_price
+                    has_changes = True
             if "criterion_values" in item:
-                pv.criterion_values = item["criterion_values"]
+                next_criterion_values = item["criterion_values"] or {}
+                if (pv.criterion_values or {}) != next_criterion_values:
+                    pv.criterion_values = next_criterion_values
+                    has_changes = True
+            if not has_changes:
+                continue
             pv.save()
             changed_position_ids.add(int(tp_id))
+            if "price" in item and previous_price != pv.price:
+                _record_tender_bid_history(
+                    tender=tender,
+                    is_sales=False,
+                    proposal=proposal,
+                    tender_position_id=tp_id,
+                    price=pv.price,
+                    actor=request.user,
+                )
+            if actor_represents_owner and tender.stage == ProcurementTender.Stage.DECISION:
+                _record_tender_proposal_change_log(
+                    tender=tender,
+                    is_sales=False,
+                    proposal=proposal,
+                    tender_position_id=tp_id,
+                    original_price=previous_price,
+                    original_criterion_values=previous_criterion_values,
+                    current_price=pv.price,
+                    current_criterion_values=pv.criterion_values or {},
+                    actor=request.user,
+                )
         if changed_position_ids:
             payload_for_ws = {
                 "proposal_id": proposal.id,
@@ -6532,7 +7019,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
         tender = self.get_object()
         proposal = TenderProposal.objects.filter(
             tender=tender, id=proposal_id
-        ).prefetch_related(
+        ).select_related("supplier_company", "disqualified_by").prefetch_related(
             "position_values__tender_position__nomenclature__unit",
         ).first()
         if not proposal:
@@ -6943,6 +7430,24 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             _recalculate_tender_position_values_without_vat(
                 tender=serializer.instance,
                 is_sales=True,
+            )
+            _notify_tender_author_stage_event(
+                tender=serializer.instance,
+                is_sales=True,
+                event_type=Notification.Type.TENDER_TO_DECISION,
+                title="Тендер перейшов на етап вибору рішення",
+                body="Прийом пропозицій завершено, тендер очікує вибір рішення.",
+            )
+        if (
+            before_stage != SalesTender.Stage.COMPLETED
+            and after_stage == SalesTender.Stage.COMPLETED
+        ):
+            _notify_tender_author_stage_event(
+                tender=serializer.instance,
+                is_sales=True,
+                event_type=Notification.Type.TENDER_COMPLETED,
+                title="Тендер завершено",
+                body="Тендер перейшов на етап «Завершено».",
             )
         if approval_model_changed:
             _ensure_stage_state_snapshot(
@@ -7512,6 +8017,174 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
         )
         return Response({"id": tender.id, "stage": tender.stage, "route": payload})
 
+    @action(detail=True, methods=["get"], url_path="bid-history")
+    def bid_history(self, request, pk=None):
+        tender = self.get_object()
+        position_id = _parse_int_param(request.query_params.get("tender_position_id"), min_value=1)
+        if not position_id:
+            return Response(
+                {"detail": "Передайте tender_position_id."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        qs = TenderBidHistory.objects.filter(
+            tender_type="sales",
+            tender_id=int(tender.id),
+            tender_position_id=position_id,
+        ).select_related("supplier_company", "created_by")
+        serializer = TenderBidHistorySerializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["get"], url_path="chat/threads")
+    def chat_threads(self, request, pk=None):
+        tender = self.get_object()
+        user_company_ids = set(_user_company_ids(request.user))
+        is_owner = int(tender.company_id) in user_company_ids
+        qs = TenderChatThread.objects.filter(
+            tender_type="sales",
+            tender_id=int(tender.id),
+        ).select_related("supplier_company")
+        if not is_owner:
+            qs = qs.filter(supplier_company_id__in=user_company_ids).exclude(
+                supplier_company_id=tender.company_id
+            )
+        serializer = TenderChatThreadSerializer(qs.order_by("-last_message_at", "-updated_at"), many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["get", "post"], url_path="chat/messages")
+    def chat_messages(self, request, pk=None):
+        tender = self.get_object()
+        user_company_ids = set(_user_company_ids(request.user))
+        is_owner = int(tender.company_id) in user_company_ids
+        supplier_company_id_raw = (
+            request.query_params.get("supplier_company_id")
+            if request.method == "GET"
+            else request.data.get("supplier_company_id")
+        )
+        supplier_company_id = None
+        if is_owner:
+            supplier_company_id = _parse_int_param(supplier_company_id_raw, min_value=1)
+            if not supplier_company_id:
+                return Response(
+                    {"detail": "Передайте supplier_company_id."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            participant_company_ids = [int(item_id) for item_id in user_company_ids if int(item_id) != int(tender.company_id)]
+            if not participant_company_ids:
+                return Response({"detail": "Компанію учасника не визначено."}, status=status.HTTP_403_FORBIDDEN)
+            requested_company_id = _parse_int_param(supplier_company_id_raw, min_value=1)
+            supplier_company_id = requested_company_id or participant_company_ids[0]
+            if supplier_company_id not in participant_company_ids:
+                return Response({"detail": "Немає доступу до цього чату."}, status=status.HTTP_403_FORBIDDEN)
+
+        thread, _ = _get_or_create_tender_chat_thread(
+            tender=tender,
+            is_sales=True,
+            supplier_company_id=supplier_company_id,
+        )
+        if request.method == "GET":
+            qs = thread.messages.select_related("author_user", "author_company").all()
+            serializer = TenderChatMessageSerializer(qs, many=True)
+            return Response(serializer.data)
+
+        body = str(request.data.get("body") or "").strip()
+        if not body:
+            return Response({"detail": "Текст повідомлення обов'язковий."}, status=status.HTTP_400_BAD_REQUEST)
+        author_company_id = tender.company_id if is_owner else supplier_company_id
+        with transaction.atomic():
+            message = TenderChatMessage.objects.create(
+                thread=thread,
+                author_user=request.user,
+                author_company_id=author_company_id,
+                body=body,
+            )
+            thread.last_message_at = message.created_at
+            thread.save(update_fields=["last_message_at", "updated_at"])
+        _notify_tender_chat_message(
+            tender=tender,
+            is_sales=True,
+            thread=thread,
+            message=message,
+            actor=request.user,
+        )
+        serializer = TenderChatMessageSerializer(message)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"], url_path="proposal-change-report")
+    def proposal_change_report(self, request, pk=None):
+        tender = self.get_object()
+        _ensure_user_can_edit_tender(user=request.user, tender=tender, is_sales=True)
+        position_names = {
+            int(pos.id): getattr(pos, "name", "") or getattr(getattr(pos, "nomenclature", None), "name", "")
+            for pos in tender.positions.all()
+        }
+        qs = TenderProposalChangeLog.objects.filter(
+            tender_type="sales",
+            tender_id=int(tender.id),
+        ).select_related("supplier_company", "updated_by")
+        data = list(TenderProposalChangeLogSerializer(qs, many=True).data)
+        for row in data:
+            row["position_name"] = position_names.get(int(row.get("tender_position_id") or 0), "")
+        return Response(data)
+
+    @action(detail=True, methods=["post"], url_path="disqualify-proposals")
+    def disqualify_proposals(self, request, pk=None):
+        tender = self.get_object()
+        _ensure_user_can_edit_tender(user=request.user, tender=tender, is_sales=True)
+        items = request.data.get("items") or []
+        if not isinstance(items, list):
+            return Response({"detail": "items має бути масивом."}, status=status.HTTP_400_BAD_REQUEST)
+        touched_ids = []
+        with transaction.atomic():
+            for item in items:
+                proposal_id = _parse_int_param(item.get("proposal_id"), min_value=1)
+                if not proposal_id:
+                    continue
+                proposal = SalesTenderProposal.objects.filter(tender=tender, id=proposal_id).first()
+                if not proposal:
+                    continue
+                should_disqualify = bool(item.get("disqualify"))
+                comment = str(item.get("comment") or "").strip()
+                if should_disqualify and not comment:
+                    return Response(
+                        {"detail": "Для дискваліфікації потрібно вказати коментар.", "proposal_id": proposal_id},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                proposal.disqualified_at = timezone.now() if should_disqualify else None
+                proposal.disqualification_comment = comment if should_disqualify else ""
+                proposal.disqualified_by = request.user if should_disqualify else None
+                proposal.status_updated_at = timezone.now()
+                proposal.save(
+                    update_fields=[
+                        "disqualified_at",
+                        "disqualification_comment",
+                        "disqualified_by",
+                        "status_updated_at",
+                    ]
+                )
+                touched_ids.append(int(proposal.id))
+            if touched_ids:
+                SalesTenderPosition.objects.filter(
+                    tender=tender,
+                    winner_proposal_id__in=touched_ids,
+                ).update(winner_proposal=None)
+        qs = SalesTenderProposal.objects.filter(tender=tender).select_related("supplier_company", "disqualified_by").prefetch_related(
+            "position_values__tender_position__nomenclature__unit"
+        )
+        return Response(SalesTenderProposalSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=["post"], url_path="carry-previous-tour-proposals")
+    def carry_previous_tour_proposals(self, request, pk=None):
+        tender = self.get_object()
+        _ensure_user_can_edit_tender(user=request.user, tender=tender, is_sales=True)
+        if int(getattr(tender, "tour_number", 1) or 1) <= 1 or not getattr(tender, "parent_id", None):
+            return Response(
+                {"detail": "На першому турі перенесення з попереднього туру недоступне."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        result = _copy_sales_proposals_from_previous_tour(tender=tender, actor=request.user)
+        return Response(result)
+
     @extend_schema(
         request={
             "application/json": {
@@ -7556,7 +8229,13 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                 prop_id = item.get("proposal_id")
                 if pos_id is not None and prop_id is not None:
                     pos = SalesTenderPosition.objects.filter(tender=tender, id=pos_id).first()
-                    if pos and SalesTenderProposal.objects.filter(tender=tender, id=prop_id).exists():
+                    proposal = SalesTenderProposal.objects.filter(tender=tender, id=prop_id).first()
+                    if proposal and proposal.disqualified_at:
+                        return Response(
+                            {"detail": "Дискваліфіковану пропозицію не можна обрати переможцем.", "proposal_id": prop_id},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    if pos and proposal:
                         pos.winner_proposal_id = prop_id
                         pos.save()
             tender.stage = "approval"
@@ -7696,7 +8375,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                     )
                     return response
             qs = SalesTenderProposal.objects.filter(tender=tender).select_related(
-                "supplier_company"
+                "supplier_company", "disqualified_by"
             )
             if updated_since is not None:
                 qs = qs.filter(status_updated_at__gt=updated_since)
@@ -7742,7 +8421,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             )
             return response
         qs = SalesTenderProposal.objects.filter(tender=tender).select_related(
-            "supplier_company"
+            "supplier_company", "disqualified_by"
         ).prefetch_related(
             "position_values__tender_position__nomenclature__unit",
         )
@@ -7796,6 +8475,10 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             return Response(payload.errors, status=status.HTTP_400_BAD_REQUEST)
         position_values_data = payload.validated_data.get("position_values") or []
         changed_position_ids: set[int] = set()
+        actor_represents_owner = _user_represents_company(
+            user=request.user,
+            company_id=tender.company_id,
+        )
         for item in position_values_data:
             tp_id = item.get("tender_position_id")
             if not tp_id:
@@ -7820,12 +8503,44 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                 proposal=proposal, tender_position=pos,
                 defaults={"price": None, "criterion_values": {}},
             )
+            previous_price = pv.price
+            previous_criterion_values = pycopy.deepcopy(pv.criterion_values or {})
+            has_changes = False
             if "price" in item:
-                pv.price = item["price"]
+                next_price = item["price"]
+                if pv.price != next_price:
+                    pv.price = next_price
+                    has_changes = True
             if "criterion_values" in item:
-                pv.criterion_values = item["criterion_values"]
+                next_criterion_values = item["criterion_values"] or {}
+                if (pv.criterion_values or {}) != next_criterion_values:
+                    pv.criterion_values = next_criterion_values
+                    has_changes = True
+            if not has_changes:
+                continue
             pv.save()
             changed_position_ids.add(int(tp_id))
+            if "price" in item and previous_price != pv.price:
+                _record_tender_bid_history(
+                    tender=tender,
+                    is_sales=True,
+                    proposal=proposal,
+                    tender_position_id=tp_id,
+                    price=pv.price,
+                    actor=request.user,
+                )
+            if actor_represents_owner and tender.stage == SalesTender.Stage.DECISION:
+                _record_tender_proposal_change_log(
+                    tender=tender,
+                    is_sales=True,
+                    proposal=proposal,
+                    tender_position_id=tp_id,
+                    original_price=previous_price,
+                    original_criterion_values=previous_criterion_values,
+                    current_price=pv.price,
+                    current_criterion_values=pv.criterion_values or {},
+                    actor=request.user,
+                )
         if changed_position_ids:
             payload_for_ws = {
                 "proposal_id": proposal.id,
@@ -7852,7 +8567,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
         tender = self.get_object()
         proposal = SalesTenderProposal.objects.filter(
             tender=tender, id=proposal_id
-        ).prefetch_related(
+        ).select_related("supplier_company", "disqualified_by").prefetch_related(
             "position_values__tender_position__nomenclature__unit",
         ).first()
         if not proposal:

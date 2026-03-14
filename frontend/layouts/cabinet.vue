@@ -98,17 +98,50 @@
             Немає сповіщень
           </div>
           <div v-else class="space-y-2">
-              <div
-                v-for="notification in notifications"
-                :key="notification.id"
-                class="p-3 border border-gray-200 rounded-lg"
-                :class="{ 'bg-gray-50': notification.is_read }"
-              >
-              <h4 class="font-semibold">{{ notification.title }}</h4>
-              <p class="text-sm text-gray-600">{{ notification.body }}</p>
-              <p class="text-xs text-gray-400 mt-1">
-                {{ formatDate(notification.created_at) }}
-              </p>
+            <div
+              v-for="notification in notifications"
+              :key="notification.id"
+              class="rounded-lg border border-gray-200 p-3"
+              :class="{ 'bg-gray-50': notification.is_read }"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0 flex-1">
+                  <p class="text-xs text-gray-400">
+                    {{ formatDate(notification.created_at) }}
+                  </p>
+                  <h4 class="mt-1 font-semibold text-gray-900">
+                    {{ notification.title || "Сповіщення" }}
+                  </h4>
+                  <p
+                    v-if="notification.meta?.event"
+                    class="mt-1 text-sm text-gray-700"
+                  >
+                    Подія: {{ getNotificationEventLabel(notification) }}
+                  </p>
+                  <p v-if="notification.body" class="mt-1 text-sm text-gray-600">
+                    {{ notification.body }}
+                  </p>
+                  <NuxtLink
+                    v-if="getNotificationDocumentUrl(notification)"
+                    :to="getNotificationDocumentUrl(notification)!"
+                    class="mt-2 inline-flex text-sm font-medium text-primary-600 hover:text-primary-700 underline underline-offset-2"
+                    @click="showNotifications = false"
+                  >
+                    {{ getNotificationDocumentName(notification) }}
+                  </NuxtLink>
+                  <p v-else-if="getNotificationDocumentName(notification)" class="mt-2 text-sm font-medium text-gray-700">
+                    {{ getNotificationDocumentName(notification) }}
+                  </p>
+                </div>
+                <UButton
+                  icon="i-heroicons-trash"
+                  variant="ghost"
+                  color="neutral"
+                  size="sm"
+                  title="Видалити сповіщення"
+                  @click="removeNotification(notification.id)"
+                />
+              </div>
             </div>
           </div>
         </UCard>
@@ -466,10 +499,20 @@ const pageTitle = computed(
 // Notifications (via users useCases)
 const usersUC = useUsersUseCases();
 const tendersUC = useTendersUseCases();
-const notifications = ref<{ id: number; is_read?: boolean }[]>([]);
+type CabinetNotification = {
+  id: number;
+  type?: string;
+  title?: string;
+  body?: string;
+  is_read?: boolean;
+  created_at?: string;
+  meta?: Record<string, any> | null;
+};
+const notifications = ref<CabinetNotification[]>([]);
 const activeTasksCount = ref(0);
 const seenActiveTasksCount = ref(0);
 let activeTasksRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let notificationsRefreshTimer: ReturnType<typeof setInterval> | null = null;
 const activeTasksSeenStorageKey = computed(
   () => `cabinet.tasks.seen-count:${String(me.value?.user?.id ?? "0")}`,
 );
@@ -521,13 +564,26 @@ async function loadActiveTasksCount() {
   }
 }
 
+async function loadNotifications() {
+  try {
+    const { data } = await usersUC.getNotifications();
+    notifications.value = Array.isArray(data) ? data : [];
+  } catch {
+    notifications.value = [];
+  }
+}
+
+async function removeNotification(notificationId: number) {
+  const { error } = await usersUC.removeNotification(notificationId);
+  if (error) return;
+  notifications.value = notifications.value.filter(
+    (notification) => notification.id !== notificationId,
+  );
+}
+
 onMounted(async () => {
   readSeenActiveTasksCountFromStorage();
-  const [{ data }] = await Promise.all([
-    usersUC.getNotifications(),
-    loadActiveTasksCount(),
-  ]);
-  notifications.value = data ?? [];
+  await Promise.all([loadNotifications(), loadActiveTasksCount()]);
   if (route.path === "/cabinet/tasks") {
     markActiveTasksSeen();
   }
@@ -537,12 +593,21 @@ onMounted(async () => {
       void loadActiveTasksCount();
     }, 60_000);
   }
+  if (!notificationsRefreshTimer) {
+    notificationsRefreshTimer = setInterval(() => {
+      void loadNotifications();
+    }, 60_000);
+  }
 });
 
 onBeforeUnmount(() => {
   if (activeTasksRefreshTimer) {
     clearInterval(activeTasksRefreshTimer);
     activeTasksRefreshTimer = null;
+  }
+  if (notificationsRefreshTimer) {
+    clearInterval(notificationsRefreshTimer);
+    notificationsRefreshTimer = null;
   }
 });
 watch(
@@ -559,11 +624,34 @@ watch(
     }
   },
 );
+watch(
+  () => showNotifications.value,
+  (isOpen) => {
+    if (isOpen) {
+      void loadNotifications();
+    }
+  },
+);
 const unreadNotificationsCount = computed(
   () => notifications.value?.filter((n) => !n.is_read).length || 0,
 );
 
 const formatDate = (date: string) => {
   return new Date(date).toLocaleString("uk-UA");
+};
+const getNotificationDocumentName = (notification: CabinetNotification) =>
+  String(notification.meta?.document_name || "").trim();
+const getNotificationDocumentUrl = (notification: CabinetNotification) => {
+  const value = String(notification.meta?.document_url || "").trim();
+  return value || null;
+};
+const getNotificationEventLabel = (notification: CabinetNotification) => {
+  const event = String(notification.meta?.event || notification.type || "").trim();
+  const labels: Record<string, string> = {
+    chat_message: "Нове повідомлення в чаті",
+    tender_to_decision: "Тендер перейшов на етап вибору рішення",
+    tender_completed: "Тендер перейшов на етап завершення",
+  };
+  return labels[event] || notification.title || "Подія системи";
 };
 </script>

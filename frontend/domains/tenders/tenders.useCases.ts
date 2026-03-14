@@ -168,6 +168,59 @@ export function useTendersUseCases() {
     return tendersApi.fixTenderDecision(fetch, id, isSales, body)
   }
 
+  async function getTenderBidHistory(
+    id: number,
+    isSales: boolean,
+    tenderPositionId: number
+  ) {
+    const { data, error } = await tendersApi.getTenderBidHistory(fetch, id, isSales, tenderPositionId)
+    return { data: Array.isArray(data) ? data : [], error }
+  }
+
+  async function getTenderChatThreads(id: number, isSales: boolean) {
+    const { data, error } = await tendersApi.getTenderChatThreads(fetch, id, isSales)
+    return { data: Array.isArray(data) ? data : [], error }
+  }
+
+  async function getTenderChatMessages(
+    id: number,
+    isSales: boolean,
+    supplierCompanyId?: number | null
+  ) {
+    const { data, error } = await tendersApi.getTenderChatMessages(
+      fetch,
+      id,
+      isSales,
+      supplierCompanyId
+    )
+    return { data: Array.isArray(data) ? data : [], error }
+  }
+
+  async function sendTenderChatMessage(
+    id: number,
+    isSales: boolean,
+    body: { body: string; supplier_company_id?: number | null }
+  ) {
+    return tendersApi.sendTenderChatMessage(fetch, id, isSales, body)
+  }
+
+  async function getTenderProposalChangeReport(id: number, isSales: boolean) {
+    const { data, error } = await tendersApi.getTenderProposalChangeReport(fetch, id, isSales)
+    return { data: Array.isArray(data) ? data : [], error }
+  }
+
+  async function disqualifyTenderProposals(
+    id: number,
+    isSales: boolean,
+    body: { items: Array<{ proposal_id: number; disqualify: boolean; comment?: string }> }
+  ) {
+    return tendersApi.disqualifyTenderProposals(fetch, id, isSales, body)
+  }
+
+  async function carryPreviousTourProposals(id: number) {
+    return tendersApi.carryPreviousTourProposals(fetch, id)
+  }
+
   async function getTenderCriteria() {
     return tendersApi.getTenderCriteria(fetch)
   }
@@ -387,6 +440,13 @@ export function useTendersUseCases() {
     deleteTenderFile,
     patchTenderFile,
     fixTenderDecision,
+    getTenderBidHistory,
+    getTenderChatThreads,
+    getTenderChatMessages,
+    sendTenderChatMessage,
+    getTenderProposalChangeReport,
+    disqualifyTenderProposals,
+    carryPreviousTourProposals,
     getTenderCriteria,
     getTenderCriteriaByType,
     createTenderCriterion,

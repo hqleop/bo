@@ -10,6 +10,10 @@ from .models import (
     Role,
     Permission,
     Notification,
+    TenderChatThread,
+    TenderChatMessage,
+    TenderBidHistory,
+    TenderProposalChangeLog,
     Branch,
     Department,
     BranchUser,
@@ -121,6 +125,17 @@ def _format_amount(value):
     if decimal_value is None:
         return None
     return str(decimal_value.quantize(Decimal("0.01")))
+
+
+def _serialize_organizer_contact(user):
+    if not user:
+        return {"full_name": "", "phone": "", "email": ""}
+    full_name = (user.get_full_name() or "").strip()
+    return {
+        "full_name": full_name or getattr(user, "email", "") or "",
+        "phone": getattr(user, "phone", "") or "",
+        "email": getattr(user, "email", "") or "",
+    }
 
 
 def _validate_required_org_fields_for_user(*, attrs, instance, request):
@@ -756,6 +771,118 @@ class NotificationSerializer(serializers.ModelSerializer):
         model = Notification
         fields = ("id", "type", "title", "body", "is_read", "meta", "created_at")
         read_only_fields = ("id", "created_at")
+
+
+class TenderChatThreadSerializer(serializers.ModelSerializer):
+    supplier_company_name = serializers.CharField(source="supplier_company.name", read_only=True)
+    supplier_company_edrpou = serializers.CharField(source="supplier_company.edrpou", read_only=True)
+    unread_count = serializers.IntegerField(read_only=True, default=0)
+
+    class Meta:
+        model = TenderChatThread
+        fields = (
+            "id",
+            "tender_type",
+            "tender_id",
+            "supplier_company",
+            "supplier_company_name",
+            "supplier_company_edrpou",
+            "last_message_at",
+            "unread_count",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = fields
+
+
+class TenderChatMessageSerializer(serializers.ModelSerializer):
+    author_display = serializers.SerializerMethodField()
+    author_company_name = serializers.CharField(source="author_company.name", read_only=True)
+
+    class Meta:
+        model = TenderChatMessage
+        fields = (
+            "id",
+            "thread",
+            "author_user",
+            "author_display",
+            "author_company",
+            "author_company_name",
+            "body",
+            "created_at",
+        )
+        read_only_fields = fields
+
+    def get_author_display(self, obj):
+        user = getattr(obj, "author_user", None)
+        if user:
+            full_name = (user.get_full_name() or "").strip()
+            if full_name:
+                return full_name
+            if getattr(user, "email", ""):
+                return user.email
+        company = getattr(obj, "author_company", None)
+        return getattr(company, "name", "") or ""
+
+
+class TenderBidHistorySerializer(serializers.ModelSerializer):
+    supplier_company_name = serializers.CharField(source="supplier_company.name", read_only=True)
+    created_by_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TenderBidHistory
+        fields = (
+            "id",
+            "tender_type",
+            "tender_id",
+            "proposal_id",
+            "tender_position_id",
+            "supplier_company",
+            "supplier_company_name",
+            "price",
+            "created_by",
+            "created_by_display",
+            "created_at",
+        )
+        read_only_fields = fields
+
+    def get_created_by_display(self, obj):
+        user = getattr(obj, "created_by", None)
+        if not user:
+            return ""
+        return (user.get_full_name() or "").strip() or getattr(user, "email", "") or ""
+
+
+class TenderProposalChangeLogSerializer(serializers.ModelSerializer):
+    supplier_company_name = serializers.CharField(source="supplier_company.name", read_only=True)
+    updated_by_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TenderProposalChangeLog
+        fields = (
+            "id",
+            "tender_type",
+            "tender_id",
+            "proposal_id",
+            "tender_position_id",
+            "supplier_company",
+            "supplier_company_name",
+            "original_price",
+            "original_criterion_values",
+            "current_price",
+            "current_criterion_values",
+            "updated_by",
+            "updated_by_display",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = fields
+
+    def get_updated_by_display(self, obj):
+        user = getattr(obj, "updated_by", None)
+        if not user:
+            return ""
+        return (user.get_full_name() or "").strip() or getattr(user, "email", "") or ""
 
 
 class MeSerializer(serializers.Serializer):
@@ -1585,6 +1712,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
     branch_name = serializers.SerializerMethodField()
     department_name = serializers.SerializerMethodField()
     created_by_display = serializers.SerializerMethodField()
+    organizer_contact = serializers.SerializerMethodField()
     positions = ProcurementTenderPositionSerializer(many=True, required=False)
     approval_model_id = serializers.PrimaryKeyRelatedField(
         queryset=ApprovalModel.objects.none(),
@@ -1808,6 +1936,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             "general_terms",
             "created_by",
             "created_by_display",
+            "organizer_contact",
             "start_at",
             "end_at",
             "planned_start_at",
@@ -1910,6 +2039,9 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             part for part in [user.last_name, user.first_name, user.middle_name] if part
         ).strip()
         return full_name or getattr(user, "email", "") or ""
+
+    def get_organizer_contact(self, obj):
+        return _serialize_organizer_contact(getattr(obj, "created_by", None))
 
     def get_criteria(self, obj):
         snapshots = list(obj.criteria_items.all())
@@ -2339,14 +2471,22 @@ class TenderProposalSerializer(serializers.ModelSerializer):
     )
     supplier_name = serializers.CharField(source="supplier_company.name", read_only=True)
     position_values = TenderProposalPositionSerializer(many=True, read_only=True)
+    disqualified_by_display = serializers.SerializerMethodField()
 
     class Meta:
         model = TenderProposal
         fields = (
             "id", "tender", "supplier_company", "supplier_company_id", "supplier_name",
-            "position_values", "created_at", "submitted_at",
+            "position_values", "created_at", "submitted_at", "disqualified_at",
+            "disqualification_comment", "disqualified_by", "disqualified_by_display",
         )
         read_only_fields = ("id", "tender", "created_at", "submitted_at")
+
+    def get_disqualified_by_display(self, obj):
+        user = getattr(obj, "disqualified_by", None)
+        if not user:
+            return ""
+        return (user.get_full_name() or "").strip() or getattr(user, "email", "") or ""
 
 
 class TenderProposalStatusSerializer(serializers.ModelSerializer):
@@ -2365,6 +2505,7 @@ class TenderProposalStatusSerializer(serializers.ModelSerializer):
             "supplier_name",
             "created_at",
             "submitted_at",
+            "disqualified_at",
             "status_updated_at",
         )
         read_only_fields = fields
@@ -2498,6 +2639,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
     branch_name = serializers.SerializerMethodField()
     department_name = serializers.SerializerMethodField()
     created_by_display = serializers.SerializerMethodField()
+    organizer_contact = serializers.SerializerMethodField()
     positions = SalesTenderPositionSerializer(many=True, required=False)
     approval_model_id = serializers.PrimaryKeyRelatedField(
         queryset=ApprovalModel.objects.none(),
@@ -2720,6 +2862,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             "general_terms",
             "created_by",
             "created_by_display",
+            "organizer_contact",
             "start_at",
             "end_at",
             "planned_start_at",
@@ -2822,6 +2965,9 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             part for part in [user.last_name, user.first_name, user.middle_name] if part
         ).strip()
         return full_name or getattr(user, "email", "") or ""
+
+    def get_organizer_contact(self, obj):
+        return _serialize_organizer_contact(getattr(obj, "created_by", None))
 
     def get_criteria(self, obj):
         snapshots = list(obj.criteria_items.all())
@@ -3181,14 +3327,22 @@ class SalesTenderProposalSerializer(serializers.ModelSerializer):
     )
     supplier_name = serializers.CharField(source="supplier_company.name", read_only=True)
     position_values = SalesTenderProposalPositionSerializer(many=True, read_only=True)
+    disqualified_by_display = serializers.SerializerMethodField()
 
     class Meta:
         model = SalesTenderProposal
         fields = (
             "id", "tender", "supplier_company", "supplier_company_id", "supplier_name",
-            "position_values", "created_at", "submitted_at",
+            "position_values", "created_at", "submitted_at", "disqualified_at",
+            "disqualification_comment", "disqualified_by", "disqualified_by_display",
         )
         read_only_fields = ("id", "tender", "created_at", "submitted_at")
+
+    def get_disqualified_by_display(self, obj):
+        user = getattr(obj, "disqualified_by", None)
+        if not user:
+            return ""
+        return (user.get_full_name() or "").strip() or getattr(user, "email", "") or ""
 
 
 class SalesTenderProposalStatusSerializer(serializers.ModelSerializer):
@@ -3207,6 +3361,7 @@ class SalesTenderProposalStatusSerializer(serializers.ModelSerializer):
             "supplier_name",
             "created_at",
             "submitted_at",
+            "disqualified_at",
             "status_updated_at",
         )
         read_only_fields = fields

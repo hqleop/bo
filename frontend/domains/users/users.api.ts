@@ -105,6 +105,10 @@ export async function getNotifications(request: RequestFn) {
   return request<{ id: number; is_read?: boolean }[]>('/notifications/')
 }
 
+export async function removeNotification(request: RequestFn, notificationId: number) {
+  return request<void>(`/notifications/${notificationId}/remove/`, { method: 'DELETE' })
+}
+
 export async function getRoles(request: RequestFn) {
   return request<unknown[]>('/roles/')
 }
