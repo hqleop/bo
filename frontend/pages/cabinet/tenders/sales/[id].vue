@@ -2779,7 +2779,7 @@
       :items="availableWarehouses"
       :loading="loadingWarehouses"
       :selected-warehouse-id="selectedWarehouseIdForActivePosition"
-      title="Обрати склад"
+      title="Обрати місце відвантаження"
       @update:open="showWarehousePickerModal = $event"
       @select="onWarehouseSelected"
     />
@@ -3179,6 +3179,16 @@ const tenderPositions = ref<any[]>([]);
 const availableWarehouses = ref<any[]>([]);
 const usesPositionWarehouses = ref(false);
 const showWarehousePickerModal = ref(false);
+let tenderPositionLocalKeyCounter = 0;
+
+function nextTenderPositionLocalKey() {
+  tenderPositionLocalKeyCounter += 1;
+  return `new-${tenderPositionLocalKeyCounter}`;
+}
+
+const warehouseTypeForPositions = computed(() =>
+  isSales ? "shipment" : "delivery",
+);
 const isOnlineAuctionConductType = computed(
   () => (form.conduct_type ?? tender.value?.conduct_type) === "online_auction",
 );
@@ -3197,6 +3207,7 @@ const displayTenderPositions = computed(() => {
       nomenclature_id: p.nomenclature_id ?? p.nomenclature,
       name: p.name,
       unit_name: p.unit_name ?? "",
+      position_local_key: p.position_local_key ?? p.id ?? null,
       quantity: p.quantity ?? 1,
       description: p.description ?? "",
       warehouse_id: p.warehouse_id ?? p.warehouse ?? null,
@@ -4656,6 +4667,9 @@ async function loadWarehousesForPositions(force = false) {
   loadingWarehouses.value = true;
   try {
     const { data } = await fetch("/warehouses/", {
+      query: {
+        warehouse_type: warehouseTypeForPositions.value,
+      },
       cacheTtlMs: 60_000,
     });
     availableWarehouses.value = Array.isArray(data) ? data : [];
@@ -4665,8 +4679,11 @@ async function loadWarehousesForPositions(force = false) {
 }
 
 function getPositionIdentity(position: any) {
+  if (position?.position_local_key != null && position.position_local_key !== "") {
+    return String(position.position_local_key);
+  }
   const candidate = Number(position?.id ?? position?.nomenclature_id ?? 0);
-  return Number.isInteger(candidate) && candidate > 0 ? candidate : null;
+  return Number.isInteger(candidate) && candidate > 0 ? String(candidate) : null;
 }
 
 function getActiveWarehousePosition() {
@@ -5999,6 +6016,7 @@ async function loadTender() {
         nomenclature_id: p.nomenclature_id ?? p.nomenclature,
         name: p.name,
         unit_name: p.unit_name ?? "",
+        position_local_key: p.id ?? nextTenderPositionLocalKey(),
         quantity: p.quantity ?? 1,
         description: p.description ?? "",
         warehouse_id: p.warehouse_id ?? p.warehouse ?? null,
@@ -6255,18 +6273,21 @@ async function loadNomenclaturesForPreparation() {
 /** Додати позицію з номенклатури (подвійний клік у лівій панелі). Якщо вже є — нічого не робимо. */
 function addPositionFromNomenclature(nomenclatureId: number) {
   if (isViewingPreviousTour.value) return;
-  if (tenderPositions.value.some((p) => p.nomenclature_id === nomenclatureId)) {
+  const hasSimilarPosition = tenderPositions.value.some(
+    (p) => p.nomenclature_id === nomenclatureId,
+  );
+  if (hasSimilarPosition) {
     useToast().add({
-      title: "Ця номенклатура вже додана до позицій тендера",
+      title: "Ви додали подібну позицію в тендер",
       color: "warning",
     });
-    return;
   }
   const n = availableNomenclatures.value.find(
     (x: any) => x.id === nomenclatureId,
   );
   if (!n) return;
   tenderPositions.value.push({
+    position_local_key: nextTenderPositionLocalKey(),
     nomenclature_id: n.id,
     name: n.name,
     unit_name: n.unit_name || "",
