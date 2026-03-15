@@ -391,6 +391,69 @@ def _copy_tree_user_assignments(
     }
 
 
+def _ensure_branch_users_for_department_assignments(*, department_ids, user_ids):
+    normalized_department_ids = sorted(
+        {
+            int(department_id)
+            for department_id in (department_ids or [])
+            if department_id is not None and int(department_id) > 0
+        }
+    )
+    normalized_user_ids = sorted(
+        {
+            int(user_id)
+            for user_id in (user_ids or [])
+            if user_id is not None and int(user_id) > 0
+        }
+    )
+    if not normalized_department_ids or not normalized_user_ids:
+        return {
+            "created_count": 0,
+            "branch_ids": [],
+            "user_ids": normalized_user_ids,
+        }
+
+    department_branch_map = dict(
+        Department.objects.filter(id__in=normalized_department_ids).values_list("id", "branch_id")
+    )
+    required_pairs = sorted(
+        {
+            (int(branch_id), int(user_id))
+            for department_id in normalized_department_ids
+            for user_id in normalized_user_ids
+            for branch_id in [department_branch_map.get(department_id)]
+            if branch_id
+        }
+    )
+    if not required_pairs:
+        return {
+            "created_count": 0,
+            "branch_ids": [],
+            "user_ids": normalized_user_ids,
+        }
+
+    branch_ids = sorted({branch_id for branch_id, _ in required_pairs})
+    existing_pairs = set(
+        BranchUser.objects.filter(
+            branch_id__in=branch_ids,
+            user_id__in=normalized_user_ids,
+        ).values_list("branch_id", "user_id")
+    )
+    to_create = [
+        BranchUser(branch_id=branch_id, user_id=user_id)
+        for branch_id, user_id in required_pairs
+        if (branch_id, user_id) not in existing_pairs
+    ]
+    if to_create:
+        BranchUser.objects.bulk_create(to_create, ignore_conflicts=True)
+
+    return {
+        "created_count": len(to_create),
+        "branch_ids": branch_ids,
+        "user_ids": normalized_user_ids,
+    }
+
+
 def _apply_is_active_filter(queryset, request):
     if not hasattr(queryset.model, "is_active"):
         return queryset
@@ -5789,14 +5852,20 @@ class DepartmentUserViewSet(viewsets.ModelViewSet):
             return Response({"error": "user_ids повинен бути масивом"}, status=400)
 
         created = []
+        assigned_user_ids = []
         for user_id in user_ids:
             serializer = self.get_serializer(data={"department": department_id, "user_id": user_id})
             if serializer.is_valid():
+                assigned_user_ids.append(int(user_id))
                 instance, created_flag = DepartmentUser.objects.get_or_create(
                     department_id=department_id, user_id=user_id
                 )
                 if created_flag:
                     created.append(DepartmentUserSerializer(instance).data)
+        _ensure_branch_users_for_department_assignments(
+            department_ids=[department_id],
+            user_ids=assigned_user_ids,
+        )
         return Response(created, status=201)
 
     @extend_schema(
@@ -5827,6 +5896,10 @@ class DepartmentUserViewSet(viewsets.ModelViewSet):
             target_ids=[source.parent_id] if source.parent_id else [],
             assignment_model=DepartmentUser,
             relation_field="department",
+        )
+        _ensure_branch_users_for_department_assignments(
+            department_ids=result.get("target_ids", []),
+            user_ids=result.get("source_user_ids", []),
         )
         return Response(result)
 
@@ -5859,6 +5932,10 @@ class DepartmentUserViewSet(viewsets.ModelViewSet):
             target_ids=target_ids,
             assignment_model=DepartmentUser,
             relation_field="department",
+        )
+        _ensure_branch_users_for_department_assignments(
+            department_ids=result.get("target_ids", []),
+            user_ids=result.get("source_user_ids", []),
         )
         return Response(result)
 

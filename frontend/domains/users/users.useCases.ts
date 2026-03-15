@@ -255,8 +255,10 @@ export function useUsersUseCases() {
     return { error: error ?? null }
   }
 
-  async function getNotifications(): Promise<{ data: { id: number; is_read?: boolean }[] }> {
-    const { data } = await usersApi.getNotifications(fetch)
+  async function getNotifications(
+    options?: { skipLoader?: boolean; cacheTtlMs?: number }
+  ): Promise<{ data: { id: number; is_read?: boolean }[] }> {
+    const { data } = await usersApi.getNotifications(fetch, options)
     return { data: Array.isArray(data) ? data : [] }
   }
 

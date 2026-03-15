@@ -99,7 +99,13 @@
           >
             Немає сповіщень
           </div>
-          <div v-else class="space-y-2">
+          <div
+            v-else
+            class="space-y-2"
+            :class="
+              notifications.length > 3 ? 'max-h-[26rem] overflow-y-auto pr-1' : ''
+            "
+          >
             <div
               v-for="notification in notifications"
               :key="notification.id"
@@ -578,7 +584,10 @@ async function loadActiveTasksCount() {
 
 async function loadNotifications() {
   try {
-    const { data } = await usersUC.getNotifications();
+    const { data } = await usersUC.getNotifications({
+      skipLoader: true,
+      cacheTtlMs: 15_000,
+    });
     notifications.value = Array.isArray(data) ? data : [];
   } catch {
     notifications.value = [];

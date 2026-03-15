@@ -111,6 +111,7 @@
                       label="Підрозділ"
                       placeholder="Оберіть підрозділ"
                       search-placeholder="Пошук підрозділу"
+                      :disabled="!form.branch"
                       :tree="departmentTree"
                       :selected-ids="selectedDepartmentIds"
                       :search-term="departmentSearch"
@@ -483,7 +484,12 @@ const generalTermsEditorToolbarItems = [
 const categoryTree = ref<any[]>([]);
 const expenseTree = ref<any[]>([]);
 const branchTree = ref<any[]>([]);
-const departmentTree = ref<any[]>([]);
+const departmentsByBranch = ref<Record<number, any[]>>({});
+const departmentTree = computed(() => {
+  const branchId = Number(form.branch || 0);
+  if (!Number.isInteger(branchId) || branchId <= 0) return [];
+  return departmentsByBranch.value[branchId] || [];
+});
 const currencyOptions = ref<{ value: number; label: string }[]>([]);
 const categoryDisabledIds = computed(() => collectDisabledTreeIds(categoryTree.value));
 const expenseDisabledIds = computed(() => collectDisabledTreeIds(expenseTree.value));
@@ -496,7 +502,7 @@ const isExpenseArticleRequired = computed(
 );
 const isBranchRequired = computed(() => countSelectableTreeNodes(branchTree.value) > 0);
 const isDepartmentRequired = computed(
-  () => countSelectableTreeNodes(departmentTree.value) > 0,
+  () => Boolean(form.branch) && countSelectableTreeNodes(departmentTree.value) > 0,
 );
 const availableApprovalModels = ref<any[]>([]);
 let approvalModelsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -606,25 +612,44 @@ function toggleExpense(id: number) {
   form.expense_article = form.expense_article === id ? undefined : id;
 }
 
-function toggleBranch(id: number) {
+async function ensureDepartmentsLoaded(branchId?: number) {
+  const normalizedBranchId = Number(branchId || 0);
+  if (!Number.isInteger(normalizedBranchId) || normalizedBranchId <= 0) return;
+  if (departmentsByBranch.value[normalizedBranchId]) return;
+
+  const { data } = await tendersUC.getDepartments(normalizedBranchId);
+  departmentsByBranch.value = {
+    ...departmentsByBranch.value,
+    [normalizedBranchId]: Array.isArray(data) ? data : [],
+  };
+}
+
+async function toggleBranch(id: number) {
   form.branch = form.branch === id ? undefined : id;
-  if (!form.branch) return;
+  departmentSearch.value = "";
+  if (!form.branch) {
+    form.department = undefined;
+    return;
+  }
+
+  await ensureDepartmentsLoaded(form.branch);
 
   const selectedDepartment = form.department
     ? findTreeNodeById(departmentTree.value, form.department)
     : null;
-  if (selectedDepartment && Number(selectedDepartment.branch) !== Number(form.branch)) {
+  if (!selectedDepartment) {
     form.department = undefined;
   }
 }
 
 function toggleDepartment(id: number) {
+  if (!form.branch) return;
   form.department = form.department === id ? undefined : id;
-  if (!form.department || !form.branch) return;
+  if (!form.department) return;
 
   const selectedDepartment = findTreeNodeById(departmentTree.value, form.department);
-  if (selectedDepartment && Number(selectedDepartment.branch) !== Number(form.branch)) {
-    form.branch = undefined;
+  if (!selectedDepartment) {
+    form.department = undefined;
   }
 }
 
@@ -653,18 +678,16 @@ function applyConditionTemplate(templateItem: TenderConditionTemplate) {
 }
 
 async function loadOptions() {
-  const [cats, expenses, branches, departments, currencies] = await Promise.all([
+  const [cats, expenses, branches, currencies] = await Promise.all([
     tendersUC.getCategories(),
     tendersUC.getExpenses(),
     tendersUC.getBranches(),
-    tendersUC.getDepartments(),
     tendersUC.getCurrencies(),
   ]);
 
   categoryTree.value = (cats.data as any[]) || [];
   expenseTree.value = (expenses.data as any[]) || [];
   branchTree.value = (branches.data as any[]) || [];
-  departmentTree.value = (departments.data as any[]) || [];
   const rawCurrencies = (currencies.data as any[]) || [];
   currencyOptions.value = rawCurrencies.map((c: any) => ({
     value: c.id,

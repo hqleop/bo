@@ -101,8 +101,14 @@ export async function updateCurrentCompanyCpvs(
   return request<unknown>('/companies/current-cpvs/', { method: 'PUT', body })
 }
 
-export async function getNotifications(request: RequestFn) {
-  return request<{ id: number; is_read?: boolean }[]>('/notifications/')
+export async function getNotifications(
+  request: RequestFn,
+  options?: { skipLoader?: boolean; cacheTtlMs?: number }
+) {
+  return request<{ id: number; is_read?: boolean }[]>('/notifications/', {
+    skipLoader: options?.skipLoader,
+    cacheTtlMs: options?.cacheTtlMs
+  })
 }
 
 export async function removeNotification(request: RequestFn, notificationId: number) {

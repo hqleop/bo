@@ -174,7 +174,7 @@
                         label="Підрозділ"
                         placeholder="Оберіть підрозділ"
                         search-placeholder="Пошук підрозділу"
-                        :disabled="isViewingPreviousTour"
+                        :disabled="isViewingPreviousTour || !form.branch"
                         :tree="departmentTree"
                         :selected-ids="selectedDepartmentIds"
                         :search-term="departmentSearch"
@@ -1261,7 +1261,11 @@
             <template #header>
               <h3 class="text-lg font-semibold">Прийом пропозицій</h3>
               <div class="mt-3">
-                <UTabs v-model="acceptanceTab" :items="acceptanceTabItems" />
+                <UTabs
+                  v-model="acceptanceTab"
+                  :items="acceptanceTabItems"
+                  size="sm"
+                />
               </div>
             </template>
             <div
@@ -4072,7 +4076,12 @@ const auctionModelOptions = [
 const categoryTree = ref<any[]>([]);
 const expenseTree = ref<any[]>([]);
 const branchTree = ref<any[]>([]);
-const departmentTree = ref<any[]>([]);
+const departmentsByBranch = ref<Record<number, any[]>>({});
+const departmentTree = computed(() => {
+  const branchId = Number(form.branch || 0);
+  if (!Number.isInteger(branchId) || branchId <= 0) return [];
+  return departmentsByBranch.value[branchId] || [];
+});
 const currencyOptions = ref<{ value: number; label: string }[]>([]);
 const categoryDisabledIds = computed(() =>
   collectDisabledTreeIds(categoryTree.value),
@@ -4093,7 +4102,7 @@ const isBranchRequired = computed(
   () => countSelectableTreeNodes(branchTree.value) > 0,
 );
 const isDepartmentRequired = computed(
-  () => countSelectableTreeNodes(departmentTree.value) > 0,
+  () => Boolean(form.branch) && countSelectableTreeNodes(departmentTree.value) > 0,
 );
 const availableApprovalModels = ref<any[]>([]);
 const approvalModelOptions = computed(() =>
@@ -5730,34 +5739,47 @@ function toggleExpense(id: number) {
   form.expense_article = form.expense_article === id ? null : id;
 }
 
-function toggleBranch(id: number) {
+async function ensureDepartmentsLoaded(branchId?: number | null) {
+  const normalizedBranchId = Number(branchId || 0);
+  if (!Number.isInteger(normalizedBranchId) || normalizedBranchId <= 0) return;
+  if (departmentsByBranch.value[normalizedBranchId]) return;
+
+  const { data } = await tendersUC.getDepartments(normalizedBranchId);
+  departmentsByBranch.value = {
+    ...departmentsByBranch.value,
+    [normalizedBranchId]: Array.isArray(data) ? data : [],
+  };
+}
+
+async function toggleBranch(id: number) {
   form.branch = form.branch === id ? null : id;
-  if (!form.branch) return;
+  departmentSearch.value = "";
+  if (!form.branch) {
+    form.department = null;
+    return;
+  }
+
+  await ensureDepartmentsLoaded(form.branch);
 
   const selectedDepartment = form.department
     ? findTreeNodeById(departmentTree.value, form.department)
     : null;
-  if (
-    selectedDepartment &&
-    Number(selectedDepartment.branch) !== Number(form.branch)
-  ) {
+  if (!selectedDepartment) {
     form.department = null;
   }
 }
 
 function toggleDepartment(id: number) {
+  if (!form.branch) return;
   form.department = form.department === id ? null : id;
-  if (!form.department || !form.branch) return;
+  if (!form.department) return;
 
   const selectedDepartment = findTreeNodeById(
     departmentTree.value,
     form.department,
   );
-  if (
-    selectedDepartment &&
-    Number(selectedDepartment.branch) !== Number(form.branch)
-  ) {
-    form.branch = null;
+  if (!selectedDepartment) {
+    form.department = null;
   }
 }
 
@@ -6131,6 +6153,14 @@ async function loadTender() {
       general_terms: tenderData.general_terms ?? "",
       approval_model_id: tenderData.approval_model ?? null,
     });
+    if (form.branch) {
+      await ensureDepartmentsLoaded(form.branch);
+      if (form.department && !findTreeNodeById(departmentTree.value, form.department)) {
+        form.department = null;
+      }
+    } else {
+      form.department = null;
+    }
     invitedCompanies.value = Array.isArray(
       (tenderData as any).invited_supplier_companies,
     )
@@ -6256,19 +6286,17 @@ function onTourSelect(value: number | null) {
 }
 
 async function loadOptions() {
-  const [cats, expenses, branches, departments, currencies] = await Promise.all(
+  const [cats, expenses, branches, currencies] = await Promise.all(
     [
       tendersUC.getCategories(),
       tendersUC.getExpenses(),
       tendersUC.getBranches(),
-      tendersUC.getDepartments(),
       tendersUC.getCurrencies(),
     ],
   );
   categoryTree.value = (cats.data as any[]) || [];
   expenseTree.value = (expenses.data as any[]) || [];
   branchTree.value = (branches.data as any[]) || [];
-  departmentTree.value = (departments.data as any[]) || [];
   const rawCurrencies = (currencies.data as any[]) || [];
   currencyOptions.value = rawCurrencies.map((c: any) => ({
     value: c.id,

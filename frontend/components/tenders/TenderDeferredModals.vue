@@ -1,10 +1,12 @@
 <template>
   <UModal
     v-model:open="protocolModalOpen"
-    :ui="{ content: 'w-[calc(100vw-2rem)] !max-w-[96vw]' }"
+    :ui="{
+      content: 'w-[calc(100vw-2rem)] !max-w-[96vw] max-h-[92vh] overflow-hidden',
+    }"
   >
     <template #content>
-      <UCard class="flex max-h-[92vh] flex-col overflow-hidden">
+      <UCard class="flex h-[92vh] max-h-[92vh] flex-col overflow-hidden">
         <template #header>
           <div class="flex items-center justify-between gap-2">
             <h3 class="text-lg font-semibold">Протокол процедури</h3>
@@ -17,7 +19,7 @@
             </UButton>
           </div>
         </template>
-        <div class="min-h-0 flex-1 overflow-y-auto">
+        <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <TenderProtocolPreview
             :protocol="props.protocolPreview"
             :loading="props.protocolPreviewLoading"
