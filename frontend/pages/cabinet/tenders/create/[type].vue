@@ -60,6 +60,7 @@
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <ContentSearch
                       label="Стаття бюджету"
+                      :required="isExpenseArticleRequired"
                       placeholder="Оберіть статтю"
                       search-placeholder="Пошук статті бюджету"
                       :tree="expenseTree"
@@ -98,6 +99,7 @@
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <ContentSearch
                       label="Філіал"
+                      :required="isBranchRequired"
                       placeholder="Оберіть філіал"
                       search-placeholder="Пошук філіалу"
                       :tree="branchTree"
@@ -501,9 +503,7 @@ const isExpenseArticleRequired = computed(
   () => countSelectableTreeNodes(expenseTree.value) > 0,
 );
 const isBranchRequired = computed(() => countSelectableTreeNodes(branchTree.value) > 0);
-const isDepartmentRequired = computed(
-  () => Boolean(form.branch) && countSelectableTreeNodes(departmentTree.value) > 0,
-);
+const isDepartmentRequired = computed(() => false);
 const availableApprovalModels = ref<any[]>([]);
 let approvalModelsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const approvalModelOptions = computed(() =>

@@ -142,6 +142,7 @@
             </UFormField>
             <CpvTenderModalSelect
               label="CPV"
+              required
               placeholder="Оберіть CPV"
               :selected-ids="selectedCpvIds"
               :selected-labels="selectedCpvLabels"
@@ -435,6 +436,15 @@ const openCategoryModal = (cat?: any) => {
 };
 
 const saveCategory = async () => {
+  if (selectedCpvIds.value.length === 0) {
+    toast.add({
+      title: "Заповніть обов'язкове поле",
+      description: "Оберіть хоча б один CPV.",
+      color: "error",
+    });
+    return;
+  }
+
   saving.value = true;
   const companyId = await getCurrentCompanyId();
   const payload: any = {
@@ -699,4 +709,3 @@ onMounted(async () => {
   await loadCompanyUsers();
 });
 </script>
-

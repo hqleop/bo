@@ -340,11 +340,6 @@ def _validate_required_org_fields_for_user(*, attrs, instance, request):
         errors["expense_article"] = "Поле є обов'язковим."
     if BranchUser.objects.filter(user=user, branch__company_id=company_id).exists() and not branch:
         errors["branch"] = "Поле є обов'язковим."
-    if DepartmentUser.objects.filter(
-        user=user, department__branch__company_id=company_id
-    ).exists() and not department:
-        errors["department"] = "Поле є обов'язковим."
-
     if errors:
         raise serializers.ValidationError(errors)
 
@@ -1328,6 +1323,14 @@ class CategorySerializer(serializers.ModelSerializer):
             }
             for cpv in qs
         ]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if self.instance is None and not attrs.get("cpvs"):
+            raise serializers.ValidationError(
+                {"cpv_ids": "Оберіть хоча б один CPV."}
+            )
+        return attrs
 
 
 class CategoryUserSerializer(serializers.ModelSerializer):

@@ -1,5 +1,5 @@
 <template>
-  <UFormField :label="label" :help="help">
+  <UFormField :label="label" :help="help" :required="required">
     <UInput
       v-if="!showTree"
       v-model="localSearchTerm"
@@ -47,6 +47,7 @@
 const props = defineProps<{
   label: string;
   help?: string;
+  required?: boolean;
   placeholder?: string;
   searchPlaceholder?: string;
   disabled?: boolean;
