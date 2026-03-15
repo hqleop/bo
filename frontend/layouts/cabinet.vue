@@ -15,7 +15,9 @@
 
       <!-- Main: висота по екрану, скрол лише у робочій області -->
       <main class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
-        <header class="h-14 flex-shrink-0 bg-white shadow-sm border-b border-gray-200">
+        <header
+          class="h-14 flex-shrink-0 bg-white shadow-sm border-b border-gray-200"
+        >
           <div class="px-4 py-2 flex justify-between items-center h-full">
             <h1 class="text-lg font-semibold text-gray-900">{{ pageTitle }}</h1>
             <div class="flex items-center gap-3">
@@ -121,7 +123,11 @@
                   <p
                     v-if="notification.body"
                     class="mt-1 text-sm text-gray-600 overflow-hidden"
-                    style="display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;"
+                    style="
+                      display: -webkit-box;
+                      -webkit-box-orient: vertical;
+                      -webkit-line-clamp: 2;
+                    "
                   >
                     {{ notification.body }}
                   </p>
@@ -133,7 +139,10 @@
                   >
                     {{ getNotificationDocumentName(notification) }}
                   </NuxtLink>
-                  <p v-else-if="getNotificationDocumentName(notification)" class="mt-2 text-sm font-medium text-gray-700">
+                  <p
+                    v-else-if="getNotificationDocumentName(notification)"
+                    class="mt-2 text-sm font-medium text-gray-700"
+                  >
                     {{ getNotificationDocumentName(notification) }}
                   </p>
                 </div>
@@ -178,10 +187,13 @@ if (import.meta.client) {
     const mePayload = await refreshMe();
     const registrationStep = resolveRegistrationStep(mePayload as any);
     if (registrationStep < 4) {
-      await navigateTo(`/register?step=${Math.min(Math.max(registrationStep, 1), 3)}`);
+      await navigateTo(
+        `/register?step=${Math.min(Math.max(registrationStep, 1), 3)}`,
+      );
     } else {
       const hasMemberships =
-        Array.isArray(mePayload?.memberships) && mePayload.memberships.length > 0;
+        Array.isArray(mePayload?.memberships) &&
+        mePayload.memberships.length > 0;
       if (!hasMemberships) {
         await navigateTo("/register?step=2");
       }
@@ -344,7 +356,7 @@ const menuLinks = computed(() => {
   referenceChildren.splice(4, 0, {
     label: "Склади",
     to: "/cabinet/reference/warehouses",
-    icon: "i-heroicons-building-storefront",
+    icon: "i-heroicons-building-library",
   });
   if (referenceChildren.length) {
     links.push({
@@ -646,7 +658,9 @@ const getNotificationDocumentUrl = (notification: CabinetNotification) => {
   return value || null;
 };
 const getNotificationEventLabel = (notification: CabinetNotification) => {
-  const event = String(notification.meta?.event || notification.type || "").trim();
+  const event = String(
+    notification.meta?.event || notification.type || "",
+  ).trim();
   const labels: Record<string, string> = {
     chat_message: "Нове повідомлення в чаті",
     tender_to_decision: "Тендер перейшов на етап вибору рішення",

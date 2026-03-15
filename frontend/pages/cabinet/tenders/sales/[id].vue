@@ -912,7 +912,7 @@
                                 size="xs"
                                 variant="soft"
                                 class="rounded-full h-8 w-8 p-0 flex items-center justify-center"
-                                icon="i-heroicons-building-storefront"
+                                icon="i-heroicons-building-library"
                                 title="Додати склади по позиціях"
                                 :disabled="isViewingPreviousTour"
                                 @click="enablePositionWarehouses()"
@@ -1324,16 +1324,21 @@
             >
               <table
                 v-if="
-                  proposalComparisonPositions.length && submittedDecisionProposals.length
+                  proposalComparisonPositions.length &&
+                  submittedDecisionProposals.length
                 "
                 class="w-full text-sm border-collapse"
               >
                 <thead>
                   <tr class="border-b bg-gray-100">
-                    <th class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap">
+                    <th
+                      class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap"
+                    >
                       Назва позиції
                     </th>
-                    <th class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap">
+                    <th
+                      class="text-left p-2 font-medium bg-gray-100 whitespace-nowrap"
+                    >
                       Кількість
                     </th>
                     <template
@@ -1395,7 +1400,9 @@
                     :key="pos.id"
                     class="border-b hover:bg-gray-50/50"
                   >
-                    <td class="p-2 bg-white whitespace-nowrap">{{ pos.name }}</td>
+                    <td class="p-2 bg-white whitespace-nowrap">
+                      {{ pos.name }}
+                    </td>
                     <td class="p-2 bg-white whitespace-nowrap">
                       {{ formatDecimalDisplay(pos.quantity) }}
                       {{ pos.unit_name || "" }}
@@ -1428,7 +1435,8 @@
                         class="p-2 border-l border-gray-200"
                       >
                         {{
-                          getProposalCriterionValue(proposal, pos.id, c.id) ?? "—"
+                          getProposalCriterionValue(proposal, pos.id, c.id) ??
+                          "—"
                         }}
                       </td>
                     </template>
@@ -1473,7 +1481,9 @@
                       :key="item.id"
                       class="border-b border-gray-200 hover:bg-gray-50/50"
                     >
-                      <td class="p-2">{{ item.supplier_company_name || "—" }}</td>
+                      <td class="p-2">
+                        {{ item.supplier_company_name || "—" }}
+                      </td>
                       <td class="p-2">{{ formatNumericOrDash(item.price) }}</td>
                       <td class="p-2">{{ item.created_by_display || "—" }}</td>
                       <td class="p-2">{{ formatDateTime(item.created_at) }}</td>
@@ -1497,7 +1507,9 @@
               <div class="mb-4 flex justify-end">
                 <UButton
                   variant="outline"
-                  :disabled="isViewingPreviousTour || !canCarryPreviousTourProposals"
+                  :disabled="
+                    isViewingPreviousTour || !canCarryPreviousTourProposals
+                  "
                   :loading="carryPreviousTourLoading"
                   @click="carryPreviousTourProposals"
                 >
@@ -1836,7 +1848,11 @@
                 {{ tender?.organizer_contact?.email || "—" }}
               </p>
             </div>
-            <UButton class="w-full" variant="outline" @click="openParticipantChatModal">
+            <UButton
+              class="w-full"
+              variant="outline"
+              @click="openParticipantChatModal"
+            >
               Чат із організатором
             </UButton>
           </div>
@@ -2642,10 +2658,14 @@
       :delete-attached-file="deleteAttachedFile"
       @update:show-protocol-modal="showProtocolModal = $event"
       @update:show-proposals-modal="showProposalsModal = $event"
-      @update:show-participant-proposal-modal="showParticipantProposalModal = $event"
+      @update:show-participant-proposal-modal="
+        showParticipantProposalModal = $event
+      "
       @update:show-participant-chat-modal="showParticipantChatModal = $event"
       @update:show-organizer-chat-modal="showOrganizerChatModal = $event"
-      @update:show-proposal-change-report-modal="showProposalChangeReportModal = $event"
+      @update:show-proposal-change-report-modal="
+        showProposalChangeReportModal = $event
+      "
       @update:show-disqualification-modal="showDisqualificationModal = $event"
       @update:show-attached-files-modal="showAttachedFilesModal = $event"
       @update:chat-draft="chatDraft = $event"
@@ -4054,16 +4074,24 @@ const expenseTree = ref<any[]>([]);
 const branchTree = ref<any[]>([]);
 const departmentTree = ref<any[]>([]);
 const currencyOptions = ref<{ value: number; label: string }[]>([]);
-const categoryDisabledIds = computed(() => collectDisabledTreeIds(categoryTree.value));
-const expenseDisabledIds = computed(() => collectDisabledTreeIds(expenseTree.value));
-const branchDisabledIds = computed(() => collectDisabledTreeIds(branchTree.value));
+const categoryDisabledIds = computed(() =>
+  collectDisabledTreeIds(categoryTree.value),
+);
+const expenseDisabledIds = computed(() =>
+  collectDisabledTreeIds(expenseTree.value),
+);
+const branchDisabledIds = computed(() =>
+  collectDisabledTreeIds(branchTree.value),
+);
 const departmentDisabledIds = computed(() =>
   collectDisabledTreeIds(departmentTree.value),
 );
 const isExpenseArticleRequired = computed(
   () => countSelectableTreeNodes(expenseTree.value) > 0,
 );
-const isBranchRequired = computed(() => countSelectableTreeNodes(branchTree.value) > 0);
+const isBranchRequired = computed(
+  () => countSelectableTreeNodes(branchTree.value) > 0,
+);
 const isDepartmentRequired = computed(
   () => countSelectableTreeNodes(departmentTree.value) > 0,
 );
@@ -4148,7 +4176,11 @@ const positionsTableColumns = computed(() => {
     !isParticipant.value &&
     !base.some((column: any) => column?.accessorKey === "warehouse_add")
   ) {
-    base.splice(quantityIndex >= 0 ? quantityIndex + 1 : 0, 0, warehouseAddColumn);
+    base.splice(
+      quantityIndex >= 0 ? quantityIndex + 1 : 0,
+      0,
+      warehouseAddColumn,
+    );
   }
 
   const currentWarehouseAddIndex = base.findIndex(
@@ -4165,9 +4197,15 @@ const positionsTableColumns = computed(() => {
     if (currentWarehouseIndex === -1) {
       const insertIndex =
         descriptionIndex >= 0
-          ? base.findIndex((column: any) => column?.accessorKey === "description")
+          ? base.findIndex(
+              (column: any) => column?.accessorKey === "description",
+            )
           : quantityIndex + 2;
-      base.splice(insertIndex >= 0 ? insertIndex : base.length, 0, warehouseColumn);
+      base.splice(
+        insertIndex >= 0 ? insertIndex : base.length,
+        0,
+        warehouseColumn,
+      );
     }
   } else if (currentWarehouseIndex >= 0) {
     base.splice(currentWarehouseIndex, 1);
@@ -4679,11 +4717,16 @@ async function loadWarehousesForPositions(force = false) {
 }
 
 function getPositionIdentity(position: any) {
-  if (position?.position_local_key != null && position.position_local_key !== "") {
+  if (
+    position?.position_local_key != null &&
+    position.position_local_key !== ""
+  ) {
     return String(position.position_local_key);
   }
   const candidate = Number(position?.id ?? position?.nomenclature_id ?? 0);
-  return Number.isInteger(candidate) && candidate > 0 ? String(candidate) : null;
+  return Number.isInteger(candidate) && candidate > 0
+    ? String(candidate)
+    : null;
 }
 
 function getActiveWarehousePosition() {
@@ -5694,7 +5737,10 @@ function toggleBranch(id: number) {
   const selectedDepartment = form.department
     ? findTreeNodeById(departmentTree.value, form.department)
     : null;
-  if (selectedDepartment && Number(selectedDepartment.branch) !== Number(form.branch)) {
+  if (
+    selectedDepartment &&
+    Number(selectedDepartment.branch) !== Number(form.branch)
+  ) {
     form.department = null;
   }
 }
@@ -5703,8 +5749,14 @@ function toggleDepartment(id: number) {
   form.department = form.department === id ? null : id;
   if (!form.department || !form.branch) return;
 
-  const selectedDepartment = findTreeNodeById(departmentTree.value, form.department);
-  if (selectedDepartment && Number(selectedDepartment.branch) !== Number(form.branch)) {
+  const selectedDepartment = findTreeNodeById(
+    departmentTree.value,
+    form.department,
+  );
+  if (
+    selectedDepartment &&
+    Number(selectedDepartment.branch) !== Number(form.branch)
+  ) {
     form.branch = null;
   }
 }
@@ -6036,9 +6088,7 @@ async function loadTender() {
     } else {
       tenderPositions.value = [];
     }
-    usesPositionWarehouses.value = Boolean(
-      tenderData.uses_position_warehouses,
-    );
+    usesPositionWarehouses.value = Boolean(tenderData.uses_position_warehouses);
     priceCriterionVat.value = tenderData.price_criterion_vat ?? undefined;
     priceCriterionVatPercent.value = normalizeVatPercentInput(
       tenderData.price_criterion_vat_percent,
@@ -6206,13 +6256,15 @@ function onTourSelect(value: number | null) {
 }
 
 async function loadOptions() {
-  const [cats, expenses, branches, departments, currencies] = await Promise.all([
-    tendersUC.getCategories(),
-    tendersUC.getExpenses(),
-    tendersUC.getBranches(),
-    tendersUC.getDepartments(),
-    tendersUC.getCurrencies(),
-  ]);
+  const [cats, expenses, branches, departments, currencies] = await Promise.all(
+    [
+      tendersUC.getCategories(),
+      tendersUC.getExpenses(),
+      tendersUC.getBranches(),
+      tendersUC.getDepartments(),
+      tendersUC.getCurrencies(),
+    ],
+  );
   categoryTree.value = (cats.data as any[]) || [];
   expenseTree.value = (expenses.data as any[]) || [];
   branchTree.value = (branches.data as any[]) || [];
@@ -6684,7 +6736,9 @@ async function savePassport() {
       currency: form.currency,
       general_terms: form.general_terms,
       approval_model_id: form.approval_model_id,
-      invited_supplier_company_ids: invitedCompanies.value.map((company) => company.id),
+      invited_supplier_company_ids: invitedCompanies.value.map(
+        (company) => company.id,
+      ),
       invited_emails: invitedEmails.value,
       ...buildPlannedPublicationPayload(),
       stage: "preparation",
@@ -6786,7 +6840,9 @@ async function saveTiming() {
     });
     return;
   }
-  const nextStartAt = canEditStart.value ? inputToIso(timingForm.start_at) : undefined;
+  const nextStartAt = canEditStart.value
+    ? inputToIso(timingForm.start_at)
+    : undefined;
   const nextEndAt = inputToIso(timingForm.end_at);
   const startChanged =
     canEditStart.value && nextStartAt !== (tender.value?.start_at ?? null);
@@ -7113,7 +7169,10 @@ function startChatPolling() {
 }
 
 async function loadChatThreads(resetSelection = true) {
-  const { data } = await tendersUC.getTenderChatThreads(tenderId.value, isSales);
+  const { data } = await tendersUC.getTenderChatThreads(
+    tenderId.value,
+    isSales,
+  );
   chatThreads.value = Array.isArray(data) ? data : [];
   if (!resetSelection) return;
   if (!chatThreads.value.length) {
@@ -7209,7 +7268,10 @@ function formatCriterionSummary(
   if (!values || typeof values !== "object") return "—";
   const entries = Object.entries(values)
     .filter(([, value]) => value != null && value !== "")
-    .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`);
+    .map(
+      ([key, value]) =>
+        `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`,
+    );
   return entries.length ? entries.join("; ") : "—";
 }
 
@@ -7228,13 +7290,15 @@ async function openProposalChangeReportModal() {
 }
 
 function openDisqualificationModal() {
-  disqualificationRows.value = submittedDecisionProposalsAll.value.map((proposal: any) => ({
-    proposal_id: Number(proposal.id),
-    supplier_name:
-      proposal.supplier_company?.name || proposal.supplier_name || "—",
-    disqualify: Boolean(proposal.disqualified_at),
-    comment: String(proposal.disqualification_comment || ""),
-  }));
+  disqualificationRows.value = submittedDecisionProposalsAll.value.map(
+    (proposal: any) => ({
+      proposal_id: Number(proposal.id),
+      supplier_name:
+        proposal.supplier_company?.name || proposal.supplier_name || "—",
+      disqualify: Boolean(proposal.disqualified_at),
+      comment: String(proposal.disqualification_comment || ""),
+    }),
+  );
   showDisqualificationModal.value = true;
 }
 
@@ -7263,10 +7327,13 @@ async function submitDisqualifications() {
 }
 
 async function carryPreviousTourProposals() {
-  if (!canCarryPreviousTourProposals.value || isViewingPreviousTour.value) return;
+  if (!canCarryPreviousTourProposals.value || isViewingPreviousTour.value)
+    return;
   carryPreviousTourLoading.value = true;
   try {
-    const { error } = await tendersUC.carryPreviousTourProposals(tenderId.value);
+    const { error } = await tendersUC.carryPreviousTourProposals(
+      tenderId.value,
+    );
     if (error) {
       alert(getApiErrorMessage(error));
       return;

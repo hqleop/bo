@@ -916,7 +916,7 @@
                                 size="xs"
                                 variant="soft"
                                 class="rounded-full h-8 w-8 p-0 flex items-center justify-center"
-                                icon="i-heroicons-building-storefront"
+                                icon="i-heroicons-building-library"
                                 title="Додати склади по позиціях"
                                 :disabled="isViewingPreviousTour"
                                 @click="enablePositionWarehouses()"
@@ -2645,10 +2645,14 @@
       :delete-attached-file="deleteAttachedFile"
       @update:show-protocol-modal="showProtocolModal = $event"
       @update:show-proposals-modal="showProposalsModal = $event"
-      @update:show-participant-proposal-modal="showParticipantProposalModal = $event"
+      @update:show-participant-proposal-modal="
+        showParticipantProposalModal = $event
+      "
       @update:show-participant-chat-modal="showParticipantChatModal = $event"
       @update:show-organizer-chat-modal="showOrganizerChatModal = $event"
-      @update:show-proposal-change-report-modal="showProposalChangeReportModal = $event"
+      @update:show-proposal-change-report-modal="
+        showProposalChangeReportModal = $event
+      "
       @update:show-disqualification-modal="showDisqualificationModal = $event"
       @update:show-attached-files-modal="showAttachedFilesModal = $event"
       @update:chat-draft="chatDraft = $event"
@@ -4230,7 +4234,11 @@ const positionsTableColumns = computed(() => {
     !isParticipant.value &&
     !base.some((column: any) => column?.accessorKey === "warehouse_add")
   ) {
-    base.splice(quantityIndex >= 0 ? quantityIndex + 1 : 0, 0, warehouseAddColumn);
+    base.splice(
+      quantityIndex >= 0 ? quantityIndex + 1 : 0,
+      0,
+      warehouseAddColumn,
+    );
   }
 
   const currentWarehouseAddIndex = base.findIndex(
@@ -4247,9 +4255,15 @@ const positionsTableColumns = computed(() => {
     if (currentWarehouseIndex === -1) {
       const insertIndex =
         descriptionIndex >= 0
-          ? base.findIndex((column: any) => column?.accessorKey === "description")
+          ? base.findIndex(
+              (column: any) => column?.accessorKey === "description",
+            )
           : quantityIndex + 2;
-      base.splice(insertIndex >= 0 ? insertIndex : base.length, 0, warehouseColumn);
+      base.splice(
+        insertIndex >= 0 ? insertIndex : base.length,
+        0,
+        warehouseColumn,
+      );
     }
   } else if (currentWarehouseIndex >= 0) {
     base.splice(currentWarehouseIndex, 1);
@@ -4778,11 +4792,16 @@ async function loadWarehousesForPositions(force = false) {
 }
 
 function getPositionIdentity(position: any) {
-  if (position?.position_local_key != null && position.position_local_key !== "") {
+  if (
+    position?.position_local_key != null &&
+    position.position_local_key !== ""
+  ) {
     return String(position.position_local_key);
   }
   const candidate = Number(position?.id ?? position?.nomenclature_id ?? 0);
-  return Number.isInteger(candidate) && candidate > 0 ? String(candidate) : null;
+  return Number.isInteger(candidate) && candidate > 0
+    ? String(candidate)
+    : null;
 }
 
 function getActiveWarehousePosition() {
@@ -6215,9 +6234,7 @@ async function loadTender() {
     } else {
       tenderPositions.value = [];
     }
-    usesPositionWarehouses.value = Boolean(
-      tenderData.uses_position_warehouses,
-    );
+    usesPositionWarehouses.value = Boolean(tenderData.uses_position_warehouses);
     priceCriterionVat.value = tenderData.price_criterion_vat ?? undefined;
     priceCriterionVatPercent.value = normalizeVatPercentInput(
       tenderData.price_criterion_vat_percent,
@@ -6838,7 +6855,9 @@ async function savePassport() {
       currency: form.currency,
       general_terms: form.general_terms,
       approval_model_id: form.approval_model_id,
-      invited_supplier_company_ids: invitedCompanies.value.map((company) => company.id),
+      invited_supplier_company_ids: invitedCompanies.value.map(
+        (company) => company.id,
+      ),
       invited_emails: invitedEmails.value,
       ...buildPlannedPublicationPayload(),
       stage: "preparation",
@@ -6940,7 +6959,9 @@ async function saveTiming() {
     });
     return;
   }
-  const nextStartAt = canEditStart.value ? inputToIso(timingForm.start_at) : undefined;
+  const nextStartAt = canEditStart.value
+    ? inputToIso(timingForm.start_at)
+    : undefined;
   const nextEndAt = inputToIso(timingForm.end_at);
   const startChanged =
     canEditStart.value && nextStartAt !== (tender.value?.start_at ?? null);
