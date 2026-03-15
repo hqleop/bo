@@ -6777,13 +6777,13 @@ class WarehouseViewSet(ReferenceActivityMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if user.is_superuser:
-            qs = Warehouse.objects.all().select_related("company")
+            qs = Warehouse.objects.all().select_related("company", "linked_warehouse")
         else:
             user_companies = CompanyUser.objects.filter(
                 user=user, status=CompanyUser.Status.APPROVED
             ).values_list("company_id", flat=True)
             qs = Warehouse.objects.filter(company_id__in=user_companies).select_related(
-                "company"
+                "company", "linked_warehouse"
             )
         warehouse_type = (self.request.query_params.get("warehouse_type") or "").strip()
         if warehouse_type in {
@@ -6792,6 +6792,26 @@ class WarehouseViewSet(ReferenceActivityMixin, viewsets.ModelViewSet):
         }:
             qs = qs.filter(warehouse_type=warehouse_type)
         return _apply_is_active_filter(qs, self.request)
+
+    @action(detail=True, methods=["post"])
+    def deactivate(self, request, pk=None):
+        obj = self.get_object()
+        linked_ids = {obj.pk}
+        if obj.linked_warehouse_id:
+            linked_ids.add(obj.linked_warehouse_id)
+        Warehouse.objects.filter(pk__in=linked_ids).update(is_active=False)
+        obj.refresh_from_db()
+        return Response(self.get_serializer(obj).data)
+
+    @action(detail=True, methods=["post"])
+    def activate(self, request, pk=None):
+        obj = self.get_object()
+        linked_ids = {obj.pk}
+        if obj.linked_warehouse_id:
+            linked_ids.add(obj.linked_warehouse_id)
+        Warehouse.objects.filter(pk__in=linked_ids).update(is_active=True)
+        obj.refresh_from_db()
+        return Response(self.get_serializer(obj).data)
 
     def _get_delete_blockers(self, obj):
         blockers = []

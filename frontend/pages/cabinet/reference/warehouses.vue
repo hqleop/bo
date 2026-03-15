@@ -189,6 +189,30 @@
               <UTextarea :model-value="fullAddress" :rows="3" readonly />
             </UFormField>
 
+            <div class="space-y-3 rounded-lg border border-gray-200 p-4">
+              <UCheckbox
+                v-model="form.is_unified"
+                label="Єдиний склад"
+              />
+
+              <UFormField label="Зв'язок" name="linked_warehouse_id">
+                <USelectMenu
+                  v-model="form.linked_warehouse_id"
+                  :items="linkedWarehouseOptions"
+                  value-key="value"
+                  label-key="label"
+                  :disabled="!form.is_unified"
+                  :placeholder="linkedWarehousePlaceholder"
+                  class="w-full"
+                />
+              </UFormField>
+
+              <p v-if="form.is_unified" class="text-sm text-gray-500">
+                Якщо зв'язок не обрано, при збереженні буде автоматично створено
+                {{ oppositeWarehouseTypeLabel }} з аналогічними даними.
+              </p>
+            </div>
+
             <div class="flex gap-4 pt-2">
               <UButton type="button" variant="outline" class="flex-1" @click="showModal = false">
                 Скасувати
@@ -256,6 +280,8 @@ const form = reactive({
   building: "",
   unit: "",
   postal_code: "",
+  is_unified: false,
+  linked_warehouse_id: null as number | null,
 });
 
 const tableColumns = [
@@ -283,6 +309,29 @@ const tableMeta = computed(() => ({
 
 const shipmentTableData = computed(() => shipmentWarehouses.value);
 const deliveryTableData = computed(() => deliveryWarehouses.value);
+const oppositeWarehouseTypeLabel = computed(() =>
+  form.warehouse_type === "shipment"
+    ? "склад для поставки"
+    : "склад відвантаження",
+);
+const linkedWarehousePlaceholder = computed(() =>
+  form.is_unified
+    ? `Оберіть ${oppositeWarehouseTypeLabel.value} або залиште порожнім`
+    : "Спочатку увімкніть «Єдиний склад»",
+);
+const linkedWarehouseOptions = computed(() => {
+  const oppositeWarehouses =
+    form.warehouse_type === "shipment"
+      ? deliveryWarehouses.value
+      : shipmentWarehouses.value;
+
+  return oppositeWarehouses
+    .filter((item) => Number(item?.id) !== Number(form.id ?? 0))
+    .map((item) => ({
+      value: item.id,
+      label: [item.name, item.full_address].filter(Boolean).join(" • "),
+    }));
+});
 
 const fullAddress = computed(() =>
   [
@@ -308,6 +357,8 @@ function resetForm(warehouseType: WarehouseType) {
   form.building = "";
   form.unit = "";
   form.postal_code = "";
+  form.is_unified = false;
+  form.linked_warehouse_id = null;
 }
 
 function selectWarehouse(item: any) {
@@ -332,6 +383,8 @@ function openModal(item?: any, warehouseType: WarehouseType = "shipment") {
     form.building = item.building || "";
     form.unit = item.unit || "";
     form.postal_code = item.postal_code || "";
+    form.is_unified = Boolean(item.is_unified || item.linked_warehouse_id);
+    form.linked_warehouse_id = item.linked_warehouse_id ?? null;
   } else {
     resetForm(warehouseType);
   }
@@ -386,6 +439,8 @@ async function save() {
     building,
     unit: form.unit.trim(),
     postal_code: normalizePostalCode(form.postal_code),
+    is_unified: form.is_unified,
+    linked_warehouse_id: form.is_unified ? form.linked_warehouse_id : null,
   };
 
   saving.value = true;
@@ -493,4 +548,13 @@ async function deleteInactiveWarehouse(item: any) {
 onMounted(() => {
   void loadWarehouses();
 });
+
+watch(
+  () => form.is_unified,
+  (isUnified) => {
+    if (!isUnified) {
+      form.linked_warehouse_id = null;
+    }
+  },
+);
 </script>

@@ -3,6 +3,7 @@ import re
 from decimal import Decimal, InvalidOperation
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from .models import (
     Company,
     CompanySupplier,
@@ -1628,6 +1629,28 @@ class WarehouseSerializer(serializers.ModelSerializer):
         source="get_warehouse_type_display",
         read_only=True,
     )
+    linked_warehouse_id = serializers.PrimaryKeyRelatedField(
+        source="linked_warehouse",
+        queryset=Warehouse.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+    linked_warehouse_name = serializers.CharField(
+        source="linked_warehouse.name",
+        read_only=True,
+    )
+    linked_warehouse_type = serializers.CharField(
+        source="linked_warehouse.warehouse_type",
+        read_only=True,
+    )
+    linked_warehouse_type_label = serializers.CharField(
+        source="linked_warehouse.get_warehouse_type_display",
+        read_only=True,
+    )
+    linked_warehouse_full_address = serializers.CharField(
+        source="linked_warehouse.full_address",
+        read_only=True,
+    )
 
     class Meta:
         model = Warehouse
@@ -1644,6 +1667,12 @@ class WarehouseSerializer(serializers.ModelSerializer):
             "unit",
             "postal_code",
             "full_address",
+            "is_unified",
+            "linked_warehouse_id",
+            "linked_warehouse_name",
+            "linked_warehouse_type",
+            "linked_warehouse_type_label",
+            "linked_warehouse_full_address",
             "is_active",
             "created_at",
             "updated_at",
@@ -1656,6 +1685,11 @@ class WarehouseSerializer(serializers.ModelSerializer):
             self.instance.warehouse_type if self.instance else None
         )
         name = (attrs.get("name") or (self.instance.name if self.instance else "") or "").strip()
+        linked_warehouse = attrs.get("linked_warehouse", serializers.empty)
+        is_unified = attrs.get(
+            "is_unified",
+            self.instance.is_unified if self.instance else False,
+        )
         if not company or not warehouse_type or not name:
             return attrs
         qs = Warehouse.objects.filter(
@@ -1669,7 +1703,158 @@ class WarehouseSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"name": "Склад з такою назвою вже існує в цій групі."}
             )
+        selected_link = (
+            self.instance.linked_warehouse
+            if linked_warehouse is serializers.empty and self.instance
+            else None if linked_warehouse is serializers.empty else linked_warehouse
+        )
+        if selected_link:
+            if self.instance and selected_link.pk == self.instance.pk:
+                raise serializers.ValidationError(
+                    {"linked_warehouse_id": "Неможливо пов'язати склад із самим собою."}
+                )
+            if selected_link.company_id != company.id:
+                raise serializers.ValidationError(
+                    {"linked_warehouse_id": "Можна обрати лише склад поточної компанії."}
+                )
+            opposite_type = self._get_opposite_type(warehouse_type)
+            if selected_link.warehouse_type != opposite_type:
+                raise serializers.ValidationError(
+                    {"linked_warehouse_id": "Оберіть склад протилежного типу."}
+                )
+            if (
+                selected_link.linked_warehouse_id
+                and selected_link.linked_warehouse_id != (self.instance.pk if self.instance else None)
+            ):
+                raise serializers.ValidationError(
+                    {"linked_warehouse_id": "Обраний склад уже пов'язаний з іншим складом."}
+                )
+            attrs["is_unified"] = True
+        elif is_unified:
+            attrs["is_unified"] = True
         return attrs
+
+    def _get_opposite_type(self, warehouse_type):
+        return (
+            Warehouse.WarehouseType.DELIVERY
+            if warehouse_type == Warehouse.WarehouseType.SHIPMENT
+            else Warehouse.WarehouseType.SHIPMENT
+        )
+
+    def _disconnect_pair(self, warehouse):
+        if not warehouse.pk:
+            warehouse.linked_warehouse = None
+            warehouse.is_unified = False
+            return
+        linked_ids = set()
+        if warehouse.linked_warehouse_id:
+            linked_ids.add(warehouse.linked_warehouse_id)
+        linked_ids.update(
+            Warehouse.objects.filter(linked_warehouse=warehouse)
+            .exclude(pk=warehouse.pk)
+            .values_list("pk", flat=True)
+        )
+        if linked_ids:
+            for linked in Warehouse.objects.filter(pk__in=linked_ids):
+                linked.linked_warehouse = None
+                linked.is_unified = False
+                linked.save()
+        if warehouse.linked_warehouse_id is not None or warehouse.is_unified:
+            warehouse.linked_warehouse = None
+            warehouse.is_unified = False
+            warehouse.save()
+
+    def _build_counterpart_payload(self, warehouse):
+        opposite_type = self._get_opposite_type(warehouse.warehouse_type)
+        existing = Warehouse.objects.filter(
+            company=warehouse.company,
+            warehouse_type=opposite_type,
+            name__iexact=warehouse.name,
+        )
+        if existing.exists():
+            raise serializers.ValidationError(
+                {
+                    "linked_warehouse_id": (
+                        "Склад протилежного типу з такою назвою вже існує. "
+                        "Оберіть його в полі \"Зв'язок\"."
+                    )
+                }
+            )
+        return {
+            "company": warehouse.company,
+            "warehouse_type": opposite_type,
+            "name": warehouse.name,
+            "region": warehouse.region,
+            "locality": warehouse.locality,
+            "street": warehouse.street,
+            "building": warehouse.building,
+            "unit": warehouse.unit,
+            "postal_code": warehouse.postal_code,
+            "is_active": warehouse.is_active,
+            "is_unified": True,
+        }
+
+    def _ensure_link(self, warehouse, linked_warehouse):
+        self._disconnect_pair(warehouse)
+        self._disconnect_pair(linked_warehouse)
+        warehouse.linked_warehouse = linked_warehouse
+        warehouse.is_unified = True
+        warehouse.save()
+        linked_warehouse.linked_warehouse = warehouse
+        linked_warehouse.is_unified = True
+        linked_warehouse.save()
+
+    @transaction.atomic
+    def create(self, validated_data):
+        linked_warehouse = validated_data.pop("linked_warehouse", None)
+        is_unified = bool(validated_data.pop("is_unified", False) or linked_warehouse)
+        warehouse = Warehouse.objects.create(
+            **validated_data,
+            is_unified=is_unified,
+        )
+        if not is_unified:
+            return warehouse
+        if linked_warehouse is None:
+            linked_warehouse = Warehouse.objects.create(
+                **self._build_counterpart_payload(warehouse)
+            )
+        self._ensure_link(warehouse, linked_warehouse)
+        return warehouse
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        link_provided = "linked_warehouse" in validated_data
+        linked_warehouse = validated_data.pop("linked_warehouse", serializers.empty)
+        is_unified = bool(
+            validated_data.pop("is_unified", instance.is_unified)
+            or (linked_warehouse if linked_warehouse is not serializers.empty else instance.linked_warehouse)
+        )
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.is_unified = is_unified
+        instance.save()
+
+        target_link = (
+            instance.linked_warehouse
+            if linked_warehouse is serializers.empty
+            else linked_warehouse
+        )
+
+        if not is_unified:
+            self._disconnect_pair(instance)
+            return instance
+
+        if target_link is None:
+            self._disconnect_pair(instance)
+            target_link = Warehouse.objects.create(
+                **self._build_counterpart_payload(instance)
+            )
+        elif link_provided and instance.linked_warehouse_id != target_link.id:
+            self._disconnect_pair(instance)
+
+        self._ensure_link(instance, target_link)
+        return instance
 
 
 class ApprovalModelRoleUserSerializer(serializers.ModelSerializer):

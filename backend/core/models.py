@@ -731,6 +731,14 @@ class Warehouse(models.Model):
     unit = models.CharField(max_length=255, blank=True, default="")
     postal_code = models.CharField(max_length=32, blank=True, default="")
     full_address = models.TextField(blank=True, default="")
+    is_unified = models.BooleanField(default=False)
+    linked_warehouse = models.OneToOneField(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="linked_warehouse_reverse",
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -758,6 +766,22 @@ class Warehouse(models.Model):
     def save(self, *args, **kwargs):
         self.full_address = self._compose_full_address()
         return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        linked_ids = set()
+        if self.linked_warehouse_id:
+            linked_ids.add(self.linked_warehouse_id)
+        linked_ids.update(
+            Warehouse.objects.filter(linked_warehouse=self)
+            .exclude(pk=self.pk)
+            .values_list("pk", flat=True)
+        )
+        if linked_ids:
+            Warehouse.objects.filter(pk__in=linked_ids).update(
+                linked_warehouse=None,
+                is_unified=False,
+            )
+        return super().delete(*args, **kwargs)
 
 
 class TenderCriterion(models.Model):
