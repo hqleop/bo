@@ -3,16 +3,7 @@
     <template #content>
       <UCard>
         <template #header>
-          <div class="flex items-center justify-between gap-3">
-            <h3 class="text-lg font-semibold">{{ title }}</h3>
-            <UButton
-              icon="i-heroicons-x-mark"
-              size="sm"
-              variant="ghost"
-              color="neutral"
-              @click="emit('update:open', false)"
-            />
-          </div>
+          <h3 class="text-lg font-semibold">{{ title }}</h3>
         </template>
 
         <div v-if="loading" class="py-8 text-center text-sm text-gray-500">
