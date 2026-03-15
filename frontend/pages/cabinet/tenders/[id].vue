@@ -912,25 +912,20 @@
                           <template #warehouse_add-header>
                             <div class="flex justify-center">
                               <UButton
-                                v-if="!isParticipant"
+                                v-if="!isParticipant && !usesPositionWarehouses"
                                 size="xs"
                                 variant="soft"
-                                :color="usesPositionWarehouses ? 'primary' : 'neutral'"
                                 class="rounded-full h-8 w-8 p-0 flex items-center justify-center"
                                 icon="i-heroicons-building-storefront"
                                 title="Додати склади по позиціях"
                                 :disabled="isViewingPreviousTour"
-                                @click="
-                                  usesPositionWarehouses
-                                    ? disablePositionWarehouses()
-                                    : enablePositionWarehouses()
-                                "
+                                @click="enablePositionWarehouses()"
                               />
                             </div>
                           </template>
                           <template #warehouse-header>
                             <div class="flex items-center gap-1">
-                              <span class="truncate">Склад</span>
+                              <span class="truncate">Місце постачання</span>
                               <UButton
                                 v-if="!isParticipant"
                                 size="xs"
@@ -982,19 +977,13 @@
                           <template #warehouse-cell="{ row }">
                             <UButton
                               variant="outline"
-                              :color="
-                                usesPositionWarehouses &&
-                                !Number(row.original.warehouse_id)
-                                  ? 'error'
-                                  : 'neutral'
-                              "
                               class="w-full justify-start text-left"
                               :disabled="isViewingPreviousTour || isParticipant"
                               @click="openWarehousePickerModal(row.original)"
                             >
                               {{
                                 getPositionWarehouseLabel(row.original) ||
-                                "Оберіть склад"
+                                "Оберіть місце постачання"
                               }}
                             </UButton>
                           </template>
@@ -3049,6 +3038,7 @@
 <script setup lang="ts">
 import { defineAsyncComponent } from "vue";
 import { TextAlign } from "@tiptap/extension-text-align";
+import WarehousePickerModal from "~/components/tenders/WarehousePickerModal.vue";
 import { TENDER_STAGE_ITEMS } from "~/domains/tenders/tenders.constants";
 import type {
   TenderConditionTemplate,
@@ -4220,12 +4210,23 @@ const positionsTableColumns = computed(() => {
   };
   const warehouseColumn = {
     accessorKey: "warehouse",
-    header: "Склад",
+    header: "Місце постачання",
     cellClass: "min-w-[240px]",
   };
 
-  if (!base.some((column: any) => column?.accessorKey === "warehouse_add")) {
+  if (
+    !usesPositionWarehouses.value &&
+    !isParticipant.value &&
+    !base.some((column: any) => column?.accessorKey === "warehouse_add")
+  ) {
     base.splice(quantityIndex >= 0 ? quantityIndex + 1 : 0, 0, warehouseAddColumn);
+  }
+
+  const currentWarehouseAddIndex = base.findIndex(
+    (column: any) => column?.accessorKey === "warehouse_add",
+  );
+  if (usesPositionWarehouses.value && currentWarehouseAddIndex >= 0) {
+    base.splice(currentWarehouseAddIndex, 1);
   }
 
   const currentWarehouseIndex = base.findIndex(

@@ -14,15 +14,22 @@
             class="w-full"
           />
 
-          <div class="h-[420px] overflow-auto border border-gray-200 rounded-lg p-3">
-            <div v-if="loading" class="text-sm text-gray-500 py-4 text-center">
+          <div class="h-[420px] overflow-auto rounded-lg border border-gray-200 p-3">
+            <div v-if="loading" class="py-4 text-center text-sm text-gray-500">
               Завантаження складів...
             </div>
-            <div v-else-if="!filteredGroups.length" class="text-sm text-gray-500 py-4 text-center">
+            <div
+              v-else-if="!filteredGroups.length"
+              class="py-4 text-center text-sm text-gray-500"
+            >
               Немає доступних складів.
             </div>
             <div v-else class="space-y-4">
-              <section v-for="group in filteredGroups" :key="group.region" class="space-y-2">
+              <section
+                v-for="group in filteredGroups"
+                :key="group.region"
+                class="space-y-2"
+              >
                 <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">
                   {{ group.region }}
                 </div>
@@ -44,14 +51,14 @@
                       <div class="text-xs text-gray-500">
                         {{ warehouse.warehouse_type_label || "Склад" }}
                       </div>
-                      <div class="text-sm text-gray-600 mt-1">
+                      <div class="mt-1 text-sm text-gray-600">
                         {{ warehouse.full_address || "Адреса не заповнена" }}
                       </div>
                     </div>
                     <UIcon
                       v-if="warehouse.id === selectedWarehouseId"
                       name="i-heroicons-check-circle"
-                      class="size-5 text-primary shrink-0"
+                      class="size-5 shrink-0 text-primary"
                     />
                   </div>
                 </button>
