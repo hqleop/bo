@@ -174,7 +174,7 @@
           <UInput v-model="dateToFilter" type="date" class="w-full" />
         </UFormField>
 
-        <UFormField label="Тип тендера">
+        <UFormField v-if="showTenderTypeFilter" label="Тип тендера">
           <USelectMenu
             v-model="tenderTypeFilter"
             :items="tenderTypeOptions"
@@ -259,15 +259,18 @@
 import type {
   AnalyticsDashboardPayload,
   AnalyticsMode,
+  AnalyticsTenderType,
 } from "~/domains/analytics/analytics.types";
 import { useAnalyticsUseCases } from "~/domains/analytics/analytics.useCases";
 
 type TabLink = { label: string; to: string };
+type FixedTenderType = Exclude<AnalyticsTenderType, "all">;
 
 const props = defineProps<{
   mode: AnalyticsMode;
   pageTitle: string;
   tabs: TabLink[];
+  fixedTenderType?: FixedTenderType;
 }>();
 
 const route = useRoute();
@@ -343,6 +346,10 @@ const isSummaryMode = computed(() => props.mode.startsWith("summary-"));
 const isParticipationMode = computed(
   () => props.mode.includes("participant") || props.mode.includes("participation"),
 );
+const effectiveTenderType = computed<AnalyticsTenderType>(() =>
+  props.fixedTenderType || normalizeSelectStringValue(tenderTypeFilter.value, "all"),
+);
+const showTenderTypeFilter = computed(() => !props.fixedTenderType);
 
 const departmentTree = computed(() => {
   if (!branchIdsFilter.value.length) return [];
@@ -604,10 +611,7 @@ async function loadAnalytics() {
       | "end_at",
     dateFrom: dateFromFilter.value || undefined,
     dateTo: dateToFilter.value || undefined,
-    tenderType: normalizeSelectStringValue(tenderTypeFilter.value, "all") as
-      | "all"
-      | "purchase"
-      | "sales",
+    tenderType: effectiveTenderType.value,
     status: normalizeSelectStringValue(statusFilter.value, "active") as
       | "all"
       | "active"
@@ -636,7 +640,7 @@ function clearFilters() {
   dateFieldFilter.value = "start_at";
   dateFromFilter.value = "";
   dateToFilter.value = "";
-  tenderTypeFilter.value = "all";
+  tenderTypeFilter.value = props.fixedTenderType || "all";
   statusFilter.value = "active";
   branchIdsFilter.value = [];
   departmentIdsFilter.value = [];
@@ -684,7 +688,7 @@ const filterSignature = computed(() => [
   normalizeSelectStringValue(dateFieldFilter.value, "start_at"),
   dateFromFilter.value,
   dateToFilter.value,
-  normalizeSelectStringValue(tenderTypeFilter.value, "all"),
+  effectiveTenderType.value,
   normalizeSelectStringValue(statusFilter.value, "active"),
   branchIdsFilter.value.join(","),
   departmentIdsFilter.value.join(","),
@@ -699,6 +703,7 @@ watch(filterSignature, () => {
 });
 
 onMounted(async () => {
+  tenderTypeFilter.value = props.fixedTenderType || "all";
   await loadFilterOptions();
   initialized.value = true;
   await loadAnalytics();

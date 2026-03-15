@@ -155,6 +155,7 @@
 </template>
 
 <script setup lang="ts">
+import { getAnalyticsMenuItems } from "~/domains/analytics/analytics.navigation";
 import { resolveRegistrationStep } from "~/shared/registrationFlow";
 
 const { isAuthenticated, checkAuth, getAuthHeaders } = useAuth();
@@ -209,22 +210,10 @@ const menuLinks = computed(() => {
   const links: any[] = [];
 
   // Аналітика
-  const analyticsChildren: any[] = [
-    {
-      label: "Персональна аналітика",
-      to: "/cabinet/analytics/personal/participant",
-      icon: "i-heroicons-user-circle",
-    },
-    {
-      label: "Зведена аналітика",
-      to: "/cabinet/analytics/summary/participation",
-      icon: "i-heroicons-chart-bar",
-    },
-  ];
   links.push({
     label: "Аналітика",
     icon: "i-heroicons-chart-bar",
-    children: analyticsChildren,
+    children: getAnalyticsMenuItems(),
   });
 
   // Участь в тендерах
@@ -415,8 +404,8 @@ const menuLinks = computed(() => {
 
 const route = useRoute();
 
-const getNavItemId = (item: any, index: number) =>
-  String(item.to || item.label || `item-${index}`);
+const getNavItemId = (item: any, index: number, parentId = "root") =>
+  String(item.to || `${parentId}:${item.label || `item-${index}`}`);
 
 const isPathActive = (to: string | undefined) => {
   if (!to) return false;
@@ -438,26 +427,28 @@ const isPathActive = (to: string | undefined) => {
 };
 
 // Пункти меню для UNavigationMenu з позначкою активного та defaultOpen для розділу з активним дочірнім
-const navigationItems = computed(() => {
-  return menuLinks.value.map((item: any, index: number) => {
-    const id = getNavItemId(item, index);
-    const hasChildren = Array.isArray(item.children) && item.children.length;
-    const children = hasChildren
-      ? item.children.map((child: any) => ({
-          ...child,
-          active: isPathActive(child.to),
-        }))
-      : undefined;
-    const hasActiveChild = hasChildren && children.some((c: any) => c.active);
+function buildNavigationItems(items: any[], parentId = "root"): any[] {
+  return items.map((item: any, index: number) => {
+    const id = getNavItemId(item, index, parentId);
+    const children =
+      Array.isArray(item.children) && item.children.length
+        ? buildNavigationItems(item.children, id)
+        : undefined;
+    const selfActive = isPathActive(item.to);
+    const hasActiveChild = Boolean(
+      children?.some((child: any) => child.active || child.defaultOpen),
+    );
     return {
       id,
       ...item,
-      ...(children && { children }),
-      active: hasChildren ? false : isPathActive(item.to),
+      ...(children ? { children } : {}),
+      active: selfActive,
       defaultOpen: hasActiveChild,
     };
   });
-});
+}
+
+const navigationItems = computed(() => buildNavigationItems(menuLinks.value));
 
 const toggleSidebar = () => {
   isSidebarCollapsed.value = !isSidebarCollapsed.value;

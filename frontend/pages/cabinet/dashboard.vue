@@ -5,6 +5,8 @@
 </template>
 
 <script setup lang="ts">
+import { getAnalyticsDefaultRoute } from "~/domains/analytics/analytics.navigation";
+
 definePageMeta({
   layout: "cabinet",
   middleware: "auth",
@@ -16,8 +18,8 @@ definePageMeta({
 const route = useRoute();
 const target = computed(() =>
   route.query.view === "summary"
-    ? "/cabinet/analytics/summary/participation"
-    : "/cabinet/analytics/personal/participant",
+    ? getAnalyticsDefaultRoute("summary-participation")
+    : getAnalyticsDefaultRoute("personal-participant"),
 );
 
 await navigateTo(target.value, { replace: true });

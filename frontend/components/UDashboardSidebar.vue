@@ -22,6 +22,23 @@ const emit = defineEmits<{
   (e: "toggle"): void;
 }>();
 
+function hasChildren(item: DashboardSidebarItem) {
+  return (
+    Array.isArray(item.children) &&
+    item.children.length > 0
+  );
+}
+
+function getItemKey(item: DashboardSidebarItem, index: number) {
+  return String(item.id || item.to || item.label || `sidebar-item-${index}`);
+}
+
+function isItemActive(item: DashboardSidebarItem): boolean {
+  if (Boolean(item.active)) return true;
+  const children = Array.isArray(item.children) ? item.children : [];
+  return children.some((child) => isItemActive(child as DashboardSidebarItem));
+}
+
 function onToggle() {
   emit("toggle");
 }
@@ -82,7 +99,43 @@ function onToggle() {
       <nav
         :class="['flex-1 min-h-0 overflow-y-auto', collapsed ? 'p-2' : 'p-4']"
       >
+        <div v-if="collapsed" class="flex flex-col items-center gap-1">
+          <template v-for="(item, index) in props.items" :key="getItemKey(item, index)">
+            <UPopover v-if="hasChildren(item)">
+              <UButton
+                :icon="item.icon as string | undefined"
+                color="neutral"
+                size="sm"
+                :variant="isItemActive(item) ? 'soft' : 'ghost'"
+                class="w-10 justify-center"
+                :title="String(item.label || '')"
+              />
+
+              <template #content>
+                <div class="w-80 max-h-[70vh] overflow-y-auto p-2">
+                  <div class="px-2 py-1 text-sm font-semibold text-gray-900">
+                    {{ item.label }}
+                  </div>
+                  <CollapsedSidebarTree :items="item.children as any[]" />
+                </div>
+              </template>
+            </UPopover>
+
+            <UButton
+              v-else
+              :to="item.to as string | undefined"
+              :icon="item.icon as string | undefined"
+              color="neutral"
+              size="sm"
+              :variant="isItemActive(item) ? 'soft' : 'ghost'"
+              class="w-10 justify-center"
+              :title="String(item.label || '')"
+            />
+          </template>
+        </div>
+
         <UNavigationMenu
+          v-else
           orientation="vertical"
           :items="props.items"
           :collapsed="collapsed"
