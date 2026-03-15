@@ -341,6 +341,11 @@ const menuLinks = computed(() => {
       icon: "i-heroicons-document-duplicate",
     },
   );
+  referenceChildren.splice(4, 0, {
+    label: "Склади",
+    to: "/cabinet/reference/warehouses",
+    icon: "i-heroicons-building-storefront",
+  });
   if (referenceChildren.length) {
     links.push({
       label: "Довідники",

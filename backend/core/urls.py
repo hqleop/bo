@@ -28,6 +28,7 @@ from .views import (
     UnitOfMeasureViewSet,
     NomenclatureViewSet,
     CurrencyViewSet,
+    WarehouseViewSet,
     TenderCriterionViewSet,
     TenderAttributeViewSet,
     TenderConditionTemplateViewSet,
@@ -66,6 +67,7 @@ router.register(r"expense-users", ExpenseArticleUserViewSet, basename="expense-u
 router.register(r"units", UnitOfMeasureViewSet, basename="unit")
 router.register(r"nomenclatures", NomenclatureViewSet, basename="nomenclature")
 router.register(r"currencies", CurrencyViewSet, basename="currency")
+router.register(r"warehouses", WarehouseViewSet, basename="warehouse")
 router.register(r"tender-criteria", TenderCriterionViewSet, basename="tender-criterion")
 router.register(r"tender-attributes", TenderAttributeViewSet, basename="tender-attribute")
 router.register(r"tender-condition-templates", TenderConditionTemplateViewSet, basename="tender-condition-template")

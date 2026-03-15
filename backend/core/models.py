@@ -710,6 +710,56 @@ class Currency(models.Model):
         return f"{self.code} - {self.name}"
 
 
+class Warehouse(models.Model):
+    class WarehouseType(models.TextChoices):
+        SHIPMENT = "shipment", "Склад відвантаження"
+        DELIVERY = "delivery", "Склад для поставки"
+
+    company = models.ForeignKey(
+        Company, on_delete=models.CASCADE, related_name="warehouses"
+    )
+    warehouse_type = models.CharField(
+        max_length=20,
+        choices=WarehouseType.choices,
+        default=WarehouseType.SHIPMENT,
+    )
+    name = models.CharField(max_length=255)
+    region = models.CharField(max_length=255, blank=True, default="")
+    locality = models.CharField(max_length=255, blank=True, default="")
+    street = models.CharField(max_length=255, blank=True, default="")
+    building = models.CharField(max_length=255, blank=True, default="")
+    unit = models.CharField(max_length=255, blank=True, default="")
+    postal_code = models.CharField(max_length=32, blank=True, default="")
+    full_address = models.TextField(blank=True, default="")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Склад"
+        verbose_name_plural = "Склади"
+        ordering = ["warehouse_type", "region", "locality", "name", "id"]
+        unique_together = (("company", "warehouse_type", "name"),)
+
+    def __str__(self) -> str:
+        return self.name
+
+    def _compose_full_address(self) -> str:
+        parts = [
+            str(self.region or "").strip(),
+            str(self.locality or "").strip(),
+            str(self.street or "").strip(),
+            str(self.building or "").strip(),
+            str(self.unit or "").strip(),
+            str(self.postal_code or "").strip(),
+        ]
+        return ", ".join(part for part in parts if part)
+
+    def save(self, *args, **kwargs):
+        self.full_address = self._compose_full_address()
+        return super().save(*args, **kwargs)
+
+
 class TenderCriterion(models.Model):
     """
     Критерій тендеру — елемент, на який відповідає учасник під час проведення.
@@ -1173,6 +1223,10 @@ class ProcurementTender(models.Model):
         blank=True,
         help_text="Атрибути тендера для позицій",
     )
+    uses_position_warehouses = models.BooleanField(
+        default=False,
+        help_text="Ознака використання складів по позиціях тендера.",
+    )
 
     def __str__(self) -> str:
         return f"#{self.number or '?'} {self.name}"
@@ -1270,6 +1324,13 @@ class ProcurementTenderPosition(models.Model):
         max_digits=18, decimal_places=4, default=1,
     )
     description = models.TextField(blank=True, default="")
+    warehouse = models.ForeignKey(
+        "Warehouse",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="procurement_tender_positions",
+    )
     attribute_values = models.JSONField(default=dict, blank=True)
     start_price = models.DecimalField(
         max_digits=18,
@@ -1596,6 +1657,10 @@ class SalesTender(models.Model):
         blank=True,
         help_text="Атрибути тендера для позицій",
     )
+    uses_position_warehouses = models.BooleanField(
+        default=False,
+        help_text="Ознака використання складів по позиціях тендера.",
+    )
 
     class Meta:
         verbose_name = "Тендер на продаж"
@@ -1711,6 +1776,13 @@ class SalesTenderPosition(models.Model):
         max_digits=18, decimal_places=4, default=1,
     )
     description = models.TextField(blank=True, default="")
+    warehouse = models.ForeignKey(
+        "Warehouse",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="sales_tender_positions",
+    )
     attribute_values = models.JSONField(default=dict, blank=True)
     start_price = models.DecimalField(
         max_digits=18,

@@ -890,7 +890,7 @@
                               ? displayTenderPositions
                               : tenderPositions
                           "
-                          :columns="positionsColumns"
+                          :columns="positionsTableColumns"
                           class="w-full positions-table"
                         >
                           <template #attributes_add-header>
@@ -907,6 +907,39 @@
                                 @click="openAttributePickerModal"
                               >
                               </UButton>
+                            </div>
+                          </template>
+                          <template #warehouse_add-header>
+                            <div class="flex justify-center">
+                              <UButton
+                                v-if="!isParticipant"
+                                size="xs"
+                                variant="soft"
+                                :color="usesPositionWarehouses ? 'primary' : 'neutral'"
+                                class="rounded-full h-8 w-8 p-0 flex items-center justify-center"
+                                icon="i-heroicons-building-storefront"
+                                title="Додати склади по позиціях"
+                                :disabled="isViewingPreviousTour"
+                                @click="
+                                  usesPositionWarehouses
+                                    ? disablePositionWarehouses()
+                                    : enablePositionWarehouses()
+                                "
+                              />
+                            </div>
+                          </template>
+                          <template #warehouse-header>
+                            <div class="flex items-center gap-1">
+                              <span class="truncate">Склад</span>
+                              <UButton
+                                v-if="!isParticipant"
+                                size="xs"
+                                color="error"
+                                variant="ghost"
+                                icon="i-heroicons-x-mark"
+                                :disabled="isViewingPreviousTour"
+                                @click.stop="disablePositionWarehouses()"
+                              />
                             </div>
                           </template>
                           <template
@@ -945,6 +978,25 @@
                               size="sm"
                               :disabled="isViewingPreviousTour || isParticipant"
                             />
+                          </template>
+                          <template #warehouse-cell="{ row }">
+                            <UButton
+                              variant="outline"
+                              :color="
+                                usesPositionWarehouses &&
+                                !Number(row.original.warehouse_id)
+                                  ? 'error'
+                                  : 'neutral'
+                              "
+                              class="w-full justify-start text-left"
+                              :disabled="isViewingPreviousTour || isParticipant"
+                              @click="openWarehousePickerModal(row.original)"
+                            >
+                              {{
+                                getPositionWarehouseLabel(row.original) ||
+                                "Оберіть склад"
+                              }}
+                            </UButton>
                           </template>
                           <template #start_price-cell="{ row }">
                             <UInput
@@ -1039,6 +1091,7 @@
                               "
                             />
                           </template>
+                          <template #warehouse_add-cell />
                           <template #attributes_add-cell />
                           <template #actions-cell="{ row }">
                             <UButton
@@ -2735,6 +2788,16 @@
       </template>
     </UModal>
 
+    <WarehousePickerModal
+      :open="showWarehousePickerModal"
+      :items="availableWarehouses"
+      :loading="loadingWarehouses"
+      :selected-warehouse-id="selectedWarehouseIdForActivePosition"
+      title="Обрати склад"
+      @update:open="showWarehousePickerModal = $event"
+      @select="onWarehouseSelected"
+    />
+
     <UModal v-model:open="showAttributePickerModal">
       <template #content>
         <UCard>
@@ -3009,6 +3072,7 @@ const protocolPdfDownloadUrl = computed(
   () => `/api/procurement-tenders/${tenderId.value}/protocol-pdf/?download=1`,
 );
 const tendersUC = useTendersUseCases();
+const { fetch } = useApi();
 const { me } = useMe();
 const myCompanyId = computed(
   () =>
@@ -3123,9 +3187,14 @@ const departmentSearch = ref("");
 const nomenclatureSearch = ref("");
 const selectedNomenclatureId = ref<number | null>(null);
 const selectedAttributeId = ref<number | null>(null);
+const activeWarehousePositionId = ref<number | null>(null);
 const loadingNomenclatures = ref(false);
 const loadingReferenceAttributes = ref(false);
+const loadingWarehouses = ref(false);
 const tenderPositions = ref<any[]>([]);
+const availableWarehouses = ref<any[]>([]);
+const usesPositionWarehouses = ref(false);
+const showWarehousePickerModal = ref(false);
 const isOnlineAuctionConductType = computed(
   () => (form.conduct_type ?? tender.value?.conduct_type) === "online_auction",
 );
@@ -3146,6 +3215,12 @@ const displayTenderPositions = computed(() => {
       unit_name: p.unit_name ?? "",
       quantity: p.quantity ?? 1,
       description: p.description ?? "",
+      warehouse_id: p.warehouse_id ?? p.warehouse ?? null,
+      warehouse_name: p.warehouse_name ?? "",
+      warehouse_full_address: p.warehouse_full_address ?? "",
+      warehouse_region: p.warehouse_region ?? "",
+      warehouse_type: p.warehouse_type ?? "",
+      warehouse_type_label: p.warehouse_type_label ?? "",
       start_price: p.start_price ?? null,
       min_bid_step: p.min_bid_step ?? null,
       max_bid_step: p.max_bid_step ?? null,
@@ -4129,6 +4204,48 @@ const positionsColumns = computed(() => {
   return base;
 });
 
+const positionsTableColumns = computed(() => {
+  const base = [...positionsColumns.value];
+  const quantityIndex = base.findIndex(
+    (column: any) => column?.accessorKey === "quantity",
+  );
+  const descriptionIndex = base.findIndex(
+    (column: any) => column?.accessorKey === "description",
+  );
+
+  const warehouseAddColumn = {
+    accessorKey: "warehouse_add",
+    header: "",
+    cellClass: "w-12",
+  };
+  const warehouseColumn = {
+    accessorKey: "warehouse",
+    header: "Склад",
+    cellClass: "min-w-[240px]",
+  };
+
+  if (!base.some((column: any) => column?.accessorKey === "warehouse_add")) {
+    base.splice(quantityIndex >= 0 ? quantityIndex + 1 : 0, 0, warehouseAddColumn);
+  }
+
+  const currentWarehouseIndex = base.findIndex(
+    (column: any) => column?.accessorKey === "warehouse",
+  );
+  if (usesPositionWarehouses.value) {
+    if (currentWarehouseIndex === -1) {
+      const insertIndex =
+        descriptionIndex >= 0
+          ? base.findIndex((column: any) => column?.accessorKey === "description")
+          : quantityIndex + 2;
+      base.splice(insertIndex >= 0 ? insertIndex : base.length, 0, warehouseColumn);
+    }
+  } else if (currentWarehouseIndex >= 0) {
+    base.splice(currentWarehouseIndex, 1);
+  }
+
+  return base;
+});
+
 function getProposalPositionValue(proposal: any, positionId: number) {
   const list = proposal?.position_values || [];
   return list.find(
@@ -4604,6 +4721,105 @@ function filterPositionAttributeValues(values: unknown) {
   return cleaned;
 }
 
+function getPositionWarehouseLabel(position: any) {
+  if (!position) return "";
+  const name = String(position.warehouse_name || "").trim();
+  const address = String(position.warehouse_full_address || "").trim();
+  return name || address ? [name, address].filter(Boolean).join(" - ") : "";
+}
+
+function clearPositionWarehouse(position: any) {
+  if (!position || typeof position !== "object") return;
+  position.warehouse_id = null;
+  position.warehouse_name = "";
+  position.warehouse_full_address = "";
+  position.warehouse_region = "";
+  position.warehouse_type = "";
+  position.warehouse_type_label = "";
+}
+
+function assignPositionWarehouse(position: any, warehouse: any) {
+  if (!position || !warehouse) return;
+  position.warehouse_id = warehouse.id ?? null;
+  position.warehouse_name = warehouse.name ?? "";
+  position.warehouse_full_address = warehouse.full_address ?? "";
+  position.warehouse_region = warehouse.region ?? "";
+  position.warehouse_type = warehouse.warehouse_type ?? "";
+  position.warehouse_type_label = warehouse.warehouse_type_label ?? "";
+}
+
+async function loadWarehousesForPositions(force = false) {
+  if (loadingWarehouses.value) return;
+  if (!force && availableWarehouses.value.length > 0) return;
+  loadingWarehouses.value = true;
+  try {
+    const { data } = await fetch("/warehouses/", {
+      cacheTtlMs: 60_000,
+    });
+    availableWarehouses.value = Array.isArray(data) ? data : [];
+  } finally {
+    loadingWarehouses.value = false;
+  }
+}
+
+function getPositionIdentity(position: any) {
+  const candidate = Number(position?.id ?? position?.nomenclature_id ?? 0);
+  return Number.isInteger(candidate) && candidate > 0 ? candidate : null;
+}
+
+function getActiveWarehousePosition() {
+  const identity = activeWarehousePositionId.value;
+  if (identity == null) return null;
+  return (
+    tenderPositions.value.find(
+      (position) => getPositionIdentity(position) === identity,
+    ) || null
+  );
+}
+
+const selectedWarehouseIdForActivePosition = computed(() => {
+  const position = getActiveWarehousePosition();
+  const warehouseId = Number(position?.warehouse_id ?? 0);
+  return Number.isInteger(warehouseId) && warehouseId > 0 ? warehouseId : null;
+});
+
+async function openWarehousePickerModal(position: any) {
+  if (
+    !position ||
+    isParticipant.value ||
+    isViewingPreviousTour.value ||
+    !usesPositionWarehouses.value
+  ) {
+    return;
+  }
+  const identity = getPositionIdentity(position);
+  if (identity == null) return;
+  activeWarehousePositionId.value = identity;
+  showWarehousePickerModal.value = true;
+  await loadWarehousesForPositions();
+}
+
+function onWarehouseSelected(warehouse: any) {
+  const position = getActiveWarehousePosition();
+  if (!position || !warehouse) return;
+  assignPositionWarehouse(position, warehouse);
+  showWarehousePickerModal.value = false;
+}
+
+function enablePositionWarehouses() {
+  if (isParticipant.value || isViewingPreviousTour.value) return;
+  usesPositionWarehouses.value = true;
+  void loadWarehousesForPositions();
+}
+
+function disablePositionWarehouses() {
+  if (isParticipant.value || isViewingPreviousTour.value) return;
+  usesPositionWarehouses.value = false;
+  for (const position of tenderPositions.value) {
+    clearPositionWarehouse(position);
+  }
+}
+
 const priceCriteriaAutosaveInFlight = ref(false);
 const priceCriteriaAutosaveQueuedPayload = ref<Record<string, unknown> | null>(
   null,
@@ -4674,6 +4890,18 @@ function onPriceCriterionVatPercentBlur() {
 async function savePreparation() {
   if (!tender.value?.id) return false;
   const vatPercent = parseVatPercentValue(priceCriterionVatPercent.value);
+  if (
+    usesPositionWarehouses.value &&
+    tenderPositions.value.some((position) => !Number(position.warehouse_id))
+  ) {
+    useToast().add({
+      title: "Заповніть склади по позиціях",
+      description:
+        "Якщо поле складів увімкнене, потрібно обрати склад для кожної позиції.",
+      color: "error",
+    });
+    return false;
+  }
   if (isVatPercentRequired.value && vatPercent == null) {
     useToast().add({
       title: "Заповніть % ПДВ",
@@ -4712,6 +4940,7 @@ async function savePreparation() {
       nomenclature_id: p.nomenclature_id,
       quantity: p.quantity,
       description: p.description ?? "",
+      warehouse_id: Number(p.warehouse_id) || null,
       start_price:
         p.start_price !== "" && p.start_price != null
           ? Number(p.start_price)
@@ -4735,6 +4964,7 @@ async function savePreparation() {
     price_criterion_vat_percent:
       isVatPercentRequired.value && vatPercent != null ? vatPercent : null,
     price_criterion_delivery: priceCriterionDelivery.value ?? "",
+    uses_position_warehouses: usesPositionWarehouses.value,
     auction_model: form.auction_model,
     attribute_ids: normalizedAttributeIds(
       (tenderAttributes.value || []).map((a: any) => a?.id),
@@ -4857,6 +5087,10 @@ watch(showNomenclaturePickerModal, async (open) => {
   }
 });
 
+watch(showWarehousePickerModal, (open) => {
+  if (!open) activeWarehousePositionId.value = null;
+});
+
 watch(showCreateNomenclatureModal, async (open) => {
   if (open) {
     createNomenclatureForm.name = "";
@@ -4916,6 +5150,12 @@ async function submitCreateNomenclature() {
         unit_name: created.unit_name || "",
         quantity: 1,
         description: "",
+        warehouse_id: null,
+        warehouse_name: "",
+        warehouse_full_address: "",
+        warehouse_region: "",
+        warehouse_type: "",
+        warehouse_type_label: "",
         start_price: null,
         min_bid_step: null,
         max_bid_step: null,
@@ -5939,6 +6179,12 @@ async function loadTender() {
         unit_name: p.unit_name ?? "",
         quantity: p.quantity ?? 1,
         description: p.description ?? "",
+        warehouse_id: p.warehouse_id ?? p.warehouse ?? null,
+        warehouse_name: p.warehouse_name ?? "",
+        warehouse_full_address: p.warehouse_full_address ?? "",
+        warehouse_region: p.warehouse_region ?? "",
+        warehouse_type: p.warehouse_type ?? "",
+        warehouse_type_label: p.warehouse_type_label ?? "",
         start_price: p.start_price ?? null,
         min_bid_step: p.min_bid_step ?? null,
         max_bid_step: p.max_bid_step ?? null,
@@ -5950,6 +6196,9 @@ async function loadTender() {
     } else {
       tenderPositions.value = [];
     }
+    usesPositionWarehouses.value = Boolean(
+      tenderData.uses_position_warehouses,
+    );
     priceCriterionVat.value = tenderData.price_criterion_vat ?? undefined;
     priceCriterionVatPercent.value = normalizeVatPercentInput(
       tenderData.price_criterion_vat_percent,
@@ -6170,6 +6419,12 @@ function addPositionFromNomenclature(
     unit_name: n.unit_name || "",
     quantity: 1,
     description: "",
+    warehouse_id: null,
+    warehouse_name: "",
+    warehouse_full_address: "",
+    warehouse_region: "",
+    warehouse_type: "",
+    warehouse_type_label: "",
     start_price: null,
     min_bid_step: null,
     max_bid_step: null,
@@ -6205,6 +6460,11 @@ async function patchTender(payload: Record<string, unknown>) {
   );
   if (error) return false;
   if (data) tender.value = { ...tender.value, ...data };
+  if (typeof (data as any)?.uses_position_warehouses === "boolean") {
+    usesPositionWarehouses.value = Boolean(
+      (data as any).uses_position_warehouses,
+    );
+  }
   if (Array.isArray((data as any)?.attributes)) {
     tenderAttributes.value = (data as any).attributes;
   }

@@ -100,6 +100,7 @@ from .models import (
     ExpenseArticle,
     ExpenseArticleUser,
     Currency,
+    Warehouse,
     TenderCriterion,
     TenderAttribute,
     TenderConditionTemplate,
@@ -169,6 +170,7 @@ from .serializers import (
     UnitOfMeasureSerializer,
     NomenclatureSerializer,
     CurrencySerializer,
+    WarehouseSerializer,
     TenderCriterionSerializer,
     TenderAttributeSerializer,
     TenderConditionTemplateSerializer,
@@ -3514,6 +3516,9 @@ def _copy_tender_to_first_round(*, source_tender, actor, is_sales):
             price_criterion_vat_percent=source_tender.price_criterion_vat_percent,
             price_criterion_delivery=source_tender.price_criterion_delivery or "",
             approval_model=source_tender.approval_model,
+            uses_position_warehouses=bool(
+                getattr(source_tender, "uses_position_warehouses", False)
+            ),
             created_by=actor,
         )
         copied_tender.cpv_categories.set(source_tender.cpv_categories.all())
@@ -3571,7 +3576,7 @@ def _copy_tender_to_first_round(*, source_tender, actor, is_sales):
             criteria_snapshot_model.objects.bulk_create(criteria_to_create)
 
         source_positions = list(
-            source_tender.positions.select_related("nomenclature").all()
+            source_tender.positions.select_related("nomenclature", "warehouse").all()
         )
         positions_to_create = []
         for position in source_positions:
@@ -3588,6 +3593,7 @@ def _copy_tender_to_first_round(*, source_tender, actor, is_sales):
                     unit_name=position.unit_name or "",
                     quantity=position.quantity,
                     description=position.description or "",
+                    warehouse=position.warehouse,
                     attribute_values=pycopy.deepcopy(attribute_values),
                     start_price=position.start_price,
                     min_bid_step=position.min_bid_step,
@@ -3608,6 +3614,9 @@ def _copy_tender_to_first_round(*, source_tender, actor, is_sales):
 
 def _validate_preparation_readiness_before_publish(*, tender):
     has_positions = tender.positions.exists()
+    uses_position_warehouses = bool(
+        getattr(tender, "uses_position_warehouses", False)
+    )
     vat_mode = str(getattr(tender, "price_criterion_vat", "") or "").strip()
     delivery_mode = str(getattr(tender, "price_criterion_delivery", "") or "").strip()
     vat_percent_raw = getattr(tender, "price_criterion_vat_percent", None)
@@ -3623,6 +3632,15 @@ def _validate_preparation_readiness_before_publish(*, tender):
     if not has_positions:
         raise DRFValidationError(
             {"detail": "Додайте хоча б одну позицію тендера перед погодженням."}
+        )
+    if uses_position_warehouses and tender.positions.filter(warehouse__isnull=True).exists():
+        raise DRFValidationError(
+            {
+                "detail": (
+                    "Оберіть склад для кожної позиції тендера, "
+                    "оскільки використання складів увімкнене."
+                )
+            }
         )
     if not has_price_params:
         raise DRFValidationError(
@@ -6752,6 +6770,39 @@ class TenderAttributeViewSet(ReferenceActivityMixin, viewsets.ModelViewSet):
         return blockers
 
 
+class WarehouseViewSet(ReferenceActivityMixin, viewsets.ModelViewSet):
+    serializer_class = WarehouseSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser:
+            qs = Warehouse.objects.all().select_related("company")
+        else:
+            user_companies = CompanyUser.objects.filter(
+                user=user, status=CompanyUser.Status.APPROVED
+            ).values_list("company_id", flat=True)
+            qs = Warehouse.objects.filter(company_id__in=user_companies).select_related(
+                "company"
+            )
+        warehouse_type = (self.request.query_params.get("warehouse_type") or "").strip()
+        if warehouse_type in {
+            Warehouse.WarehouseType.SHIPMENT,
+            Warehouse.WarehouseType.DELIVERY,
+        }:
+            qs = qs.filter(warehouse_type=warehouse_type)
+        return _apply_is_active_filter(qs, self.request)
+
+    def _get_delete_blockers(self, obj):
+        blockers = []
+        if (
+            obj.procurement_tender_positions.exists()
+            or obj.sales_tender_positions.exists()
+        ):
+            blockers.append("склад використовується у позиціях тендерів")
+        return blockers
+
+
 class TenderConditionTemplateViewSet(viewsets.ModelViewSet):
     serializer_class = TenderConditionTemplateSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -6956,6 +7007,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 "branch", "department", "currency", "created_by", "parent",
             ).prefetch_related(
                 "positions__nomenclature__unit",
+                "positions__warehouse",
                 "tender_criteria",
                 "criteria_items__reference_criterion",
             )
@@ -7105,6 +7157,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 "tender_attributes",
                 "criteria_items__reference_criterion",
                 "positions__nomenclature",
+                "positions__warehouse",
             )
         )
         source_by_id = {int(item.id): item for item in source_rows}
@@ -8204,6 +8257,9 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
             price_criterion_vat_percent=parent.price_criterion_vat_percent,
             price_criterion_delivery=parent.price_criterion_delivery or "",
             approval_model=parent.approval_model,
+            uses_position_warehouses=bool(
+                getattr(parent, "uses_position_warehouses", False)
+            ),
             created_by=request.user,
         )
         new_tender.cpv_categories.set(parent.cpv_categories.all())
@@ -8243,6 +8299,7 @@ class ProcurementTenderViewSet(viewsets.ModelViewSet):
                 nomenclature=pos.nomenclature,
                 quantity=pos.quantity,
                 description=pos.description or "",
+                warehouse=pos.warehouse,
             )
         return Response({"stage": "preparation", "id": new_tender.id}, status=status.HTTP_201_CREATED)
 
@@ -8655,6 +8712,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                 "branch", "department", "currency", "created_by", "parent",
             ).prefetch_related(
                 "positions__nomenclature__unit",
+                "positions__warehouse",
                 "tender_criteria",
                 "criteria_items__reference_criterion",
             )
@@ -8804,6 +8862,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                 "tender_attributes",
                 "criteria_items__reference_criterion",
                 "positions__nomenclature",
+                "positions__warehouse",
             )
         )
         source_by_id = {int(item.id): item for item in source_rows}
@@ -9881,6 +9940,9 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
             price_criterion_vat_percent=parent.price_criterion_vat_percent,
             price_criterion_delivery=parent.price_criterion_delivery or "",
             approval_model=parent.approval_model,
+            uses_position_warehouses=bool(
+                getattr(parent, "uses_position_warehouses", False)
+            ),
             created_by=request.user,
         )
         new_tender.cpv_categories.set(parent.cpv_categories.all())
@@ -9920,6 +9982,7 @@ class SalesTenderViewSet(viewsets.ModelViewSet):
                 nomenclature=pos.nomenclature,
                 quantity=pos.quantity,
                 description=pos.description or "",
+                warehouse=pos.warehouse,
             )
         return Response({"stage": "preparation", "id": new_tender.id}, status=status.HTTP_201_CREATED)
 

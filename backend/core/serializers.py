@@ -25,6 +25,7 @@ from .models import (
     ExpenseArticle,
     ExpenseArticleUser,
     Currency,
+    Warehouse,
     TenderCriterion,
     TenderAttribute,
     TenderConditionTemplate,
@@ -139,6 +140,64 @@ def _sync_tender_invited_suppliers(*, tender, supplier_company_ids, is_sales):
         ],
         ignore_conflicts=True,
     )
+
+
+def _extract_position_warehouse_id(item):
+    warehouse = item.get("warehouse") or item.get("warehouse_id")
+    if warehouse is None:
+        return None
+    if isinstance(warehouse, int):
+        return warehouse if warehouse > 0 else None
+    candidate = getattr(warehouse, "id", warehouse)
+    try:
+        normalized = int(candidate)
+    except (TypeError, ValueError):
+        return None
+    return normalized if normalized > 0 else None
+
+
+def _validate_position_warehouses(*, company, positions_data, uses_position_warehouses):
+    if positions_data is None:
+        return
+
+    warehouse_ids = {
+        warehouse_id
+        for warehouse_id in (
+            _extract_position_warehouse_id(item)
+            for item in (positions_data or [])
+            if isinstance(item, dict)
+        )
+        if warehouse_id is not None
+    }
+
+    valid_ids = set()
+    if warehouse_ids:
+        valid_ids = set(
+            Warehouse.objects.filter(
+                id__in=warehouse_ids,
+                company=company,
+                is_active=True,
+            ).values_list("id", flat=True)
+        )
+        if warehouse_ids - valid_ids:
+            raise serializers.ValidationError(
+                {"positions": "Оберіть лише активні склади поточної компанії."}
+            )
+
+    if uses_position_warehouses:
+        for item in positions_data or []:
+            if not isinstance(item, dict):
+                continue
+            if _extract_position_warehouse_id(item) in valid_ids:
+                continue
+            raise serializers.ValidationError(
+                {
+                    "positions": (
+                        "Для кожної позиції потрібно обрати склад, "
+                        "якщо використання складів увімкнене."
+                    )
+                }
+            )
 
 
 def _to_decimal_or_none(value):
@@ -1564,6 +1623,55 @@ class TenderAttributeSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class WarehouseSerializer(serializers.ModelSerializer):
+    warehouse_type_label = serializers.CharField(
+        source="get_warehouse_type_display",
+        read_only=True,
+    )
+
+    class Meta:
+        model = Warehouse
+        fields = (
+            "id",
+            "company",
+            "warehouse_type",
+            "warehouse_type_label",
+            "name",
+            "region",
+            "locality",
+            "street",
+            "building",
+            "unit",
+            "postal_code",
+            "full_address",
+            "is_active",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "full_address", "created_at", "updated_at")
+
+    def validate(self, attrs):
+        company = attrs.get("company") or (self.instance.company if self.instance else None)
+        warehouse_type = attrs.get("warehouse_type") or (
+            self.instance.warehouse_type if self.instance else None
+        )
+        name = (attrs.get("name") or (self.instance.name if self.instance else "") or "").strip()
+        if not company or not warehouse_type or not name:
+            return attrs
+        qs = Warehouse.objects.filter(
+            company=company,
+            warehouse_type=warehouse_type,
+            name__iexact=name,
+        )
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                {"name": "Склад з такою назвою вже існує в цій групі."}
+            )
+        return attrs
+
+
 class ApprovalModelRoleUserSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
 
@@ -1787,8 +1895,25 @@ class ProcurementTenderPositionSerializer(serializers.ModelSerializer):
     nomenclature_id = serializers.PrimaryKeyRelatedField(
         queryset=Nomenclature.objects.all(), source="nomenclature"
     )
+    warehouse_id = serializers.PrimaryKeyRelatedField(
+        queryset=Warehouse.objects.all(),
+        source="warehouse",
+        required=False,
+        allow_null=True,
+    )
     name = serializers.CharField(source="nomenclature.name", read_only=True)
     unit_name = serializers.CharField(source="nomenclature.unit.display_short_ua", read_only=True)
+    warehouse_name = serializers.CharField(source="warehouse.name", read_only=True)
+    warehouse_full_address = serializers.CharField(
+        source="warehouse.full_address",
+        read_only=True,
+    )
+    warehouse_region = serializers.CharField(source="warehouse.region", read_only=True)
+    warehouse_type = serializers.CharField(source="warehouse.warehouse_type", read_only=True)
+    warehouse_type_label = serializers.CharField(
+        source="warehouse.get_warehouse_type_display",
+        read_only=True,
+    )
     winner_proposal_id = serializers.SerializerMethodField()
     winner_supplier_name = serializers.SerializerMethodField()
     winner_price = serializers.SerializerMethodField()
@@ -1799,10 +1924,26 @@ class ProcurementTenderPositionSerializer(serializers.ModelSerializer):
         fields = (
             "id", "tender", "nomenclature", "nomenclature_id", "name", "unit_name",
             "quantity", "description", "start_price", "min_bid_step", "max_bid_step",
+            "warehouse", "warehouse_id", "warehouse_name", "warehouse_full_address",
+            "warehouse_region", "warehouse_type", "warehouse_type_label",
             "attribute_values",
             "winner_proposal_id", "winner_supplier_name", "winner_price", "winner_criterion_values",
         )
-        read_only_fields = ("id", "tender", "name", "unit_name", "winner_proposal_id", "winner_supplier_name", "winner_price", "winner_criterion_values")
+        read_only_fields = (
+            "id",
+            "tender",
+            "name",
+            "unit_name",
+            "warehouse_name",
+            "warehouse_full_address",
+            "warehouse_region",
+            "warehouse_type",
+            "warehouse_type_label",
+            "winner_proposal_id",
+            "winner_supplier_name",
+            "winner_price",
+            "winner_criterion_values",
+        )
         extra_kwargs = {"nomenclature": {"required": False}}
 
     def get_winner_proposal_id(self, obj):
@@ -1930,9 +2071,18 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
         approval_model = attrs.get("approval_model") if "approval_model" in attrs else (
             self.instance.approval_model if self.instance else None
         )
+        positions_data = attrs.get("positions") if "positions" in attrs else None
+        uses_position_warehouses = attrs.get("uses_position_warehouses")
+        if uses_position_warehouses is None and self.instance:
+            uses_position_warehouses = bool(self.instance.uses_position_warehouses)
         stage_value = attrs.get("stage") or (self.instance.stage if self.instance else None)
         estimated_budget = attrs.get("estimated_budget") if "estimated_budget" in attrs else (
             self.instance.estimated_budget if self.instance else None
+        )
+        _validate_position_warehouses(
+            company=company,
+            positions_data=positions_data,
+            uses_position_warehouses=bool(uses_position_warehouses),
         )
         if approval_model and company and approval_model.company_id != company.id:
             from rest_framework import serializers as drf
@@ -2123,6 +2273,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             "price_criterion_vat",
             "price_criterion_vat_percent",
             "price_criterion_delivery",
+            "uses_position_warehouses",
             "tender_criteria",
             "criterion_ids",
             "criteria",
@@ -2418,12 +2569,14 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
             start_price = item.get("start_price")
             min_bid_step = item.get("min_bid_step")
             max_bid_step = item.get("max_bid_step")
+            warehouse_id = _extract_position_warehouse_id(item)
             attribute_values = item.get("attribute_values") or {}
             if not isinstance(attribute_values, dict):
                 attribute_values = {}
             if existing:
                 existing.quantity = quantity
                 existing.description = description
+                existing.warehouse_id = warehouse_id
                 existing.start_price = (
                     start_price if start_price not in ("", None) else None
                 )
@@ -2441,6 +2594,7 @@ class ProcurementTenderSerializer(serializers.ModelSerializer):
                     nomenclature_id=nom_id,
                     quantity=quantity,
                     description=description,
+                    warehouse_id=warehouse_id,
                     start_price=start_price if start_price not in ("", None) else None,
                     min_bid_step=min_bid_step if min_bid_step not in ("", None) else None,
                     max_bid_step=max_bid_step if max_bid_step not in ("", None) else None,
@@ -2779,8 +2933,25 @@ class SalesTenderPositionSerializer(serializers.ModelSerializer):
     nomenclature_id = serializers.PrimaryKeyRelatedField(
         queryset=Nomenclature.objects.all(), source="nomenclature"
     )
+    warehouse_id = serializers.PrimaryKeyRelatedField(
+        queryset=Warehouse.objects.all(),
+        source="warehouse",
+        required=False,
+        allow_null=True,
+    )
     name = serializers.CharField(source="nomenclature.name", read_only=True)
     unit_name = serializers.CharField(source="nomenclature.unit.display_short_ua", read_only=True)
+    warehouse_name = serializers.CharField(source="warehouse.name", read_only=True)
+    warehouse_full_address = serializers.CharField(
+        source="warehouse.full_address",
+        read_only=True,
+    )
+    warehouse_region = serializers.CharField(source="warehouse.region", read_only=True)
+    warehouse_type = serializers.CharField(source="warehouse.warehouse_type", read_only=True)
+    warehouse_type_label = serializers.CharField(
+        source="warehouse.get_warehouse_type_display",
+        read_only=True,
+    )
     winner_proposal_id = serializers.SerializerMethodField()
     winner_supplier_name = serializers.SerializerMethodField()
     winner_price = serializers.SerializerMethodField()
@@ -2791,10 +2962,26 @@ class SalesTenderPositionSerializer(serializers.ModelSerializer):
         fields = (
             "id", "tender", "nomenclature", "nomenclature_id", "name", "unit_name",
             "quantity", "description", "start_price", "min_bid_step", "max_bid_step",
+            "warehouse", "warehouse_id", "warehouse_name", "warehouse_full_address",
+            "warehouse_region", "warehouse_type", "warehouse_type_label",
             "attribute_values",
             "winner_proposal_id", "winner_supplier_name", "winner_price", "winner_criterion_values",
         )
-        read_only_fields = ("id", "tender", "name", "unit_name", "winner_proposal_id", "winner_supplier_name", "winner_price", "winner_criterion_values")
+        read_only_fields = (
+            "id",
+            "tender",
+            "name",
+            "unit_name",
+            "warehouse_name",
+            "warehouse_full_address",
+            "warehouse_region",
+            "warehouse_type",
+            "warehouse_type_label",
+            "winner_proposal_id",
+            "winner_supplier_name",
+            "winner_price",
+            "winner_criterion_values",
+        )
         extra_kwargs = {"nomenclature": {"required": False}}
 
     def get_winner_proposal_id(self, obj):
@@ -3010,9 +3197,18 @@ class SalesTenderSerializer(serializers.ModelSerializer):
         approval_model = attrs.get("approval_model") if "approval_model" in attrs else (
             self.instance.approval_model if self.instance else None
         )
+        positions_data = attrs.get("positions") if "positions" in attrs else None
+        uses_position_warehouses = attrs.get("uses_position_warehouses")
+        if uses_position_warehouses is None and self.instance:
+            uses_position_warehouses = bool(self.instance.uses_position_warehouses)
         stage_value = attrs.get("stage") or (self.instance.stage if self.instance else None)
         estimated_budget = attrs.get("estimated_budget") if "estimated_budget" in attrs else (
             self.instance.estimated_budget if self.instance else None
+        )
+        _validate_position_warehouses(
+            company=company,
+            positions_data=positions_data,
+            uses_position_warehouses=bool(uses_position_warehouses),
         )
         if approval_model and company and approval_model.company_id != company.id:
             from rest_framework import serializers as drf
@@ -3114,6 +3310,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             "price_criterion_vat",
             "price_criterion_vat_percent",
             "price_criterion_delivery",
+            "uses_position_warehouses",
             "tender_criteria",
             "criterion_ids",
             "criteria",
@@ -3339,12 +3536,14 @@ class SalesTenderSerializer(serializers.ModelSerializer):
             start_price = item.get("start_price")
             min_bid_step = item.get("min_bid_step")
             max_bid_step = item.get("max_bid_step")
+            warehouse_id = _extract_position_warehouse_id(item)
             attribute_values = item.get("attribute_values") or {}
             if not isinstance(attribute_values, dict):
                 attribute_values = {}
             if existing:
                 existing.quantity = quantity
                 existing.description = description
+                existing.warehouse_id = warehouse_id
                 existing.start_price = (
                     start_price if start_price not in ("", None) else None
                 )
@@ -3362,6 +3561,7 @@ class SalesTenderSerializer(serializers.ModelSerializer):
                     nomenclature_id=nom_id,
                     quantity=quantity,
                     description=description,
+                    warehouse_id=warehouse_id,
                     start_price=start_price if start_price not in ("", None) else None,
                     min_bid_step=min_bid_step if min_bid_step not in ("", None) else None,
                     max_bid_step=max_bid_step if max_bid_step not in ("", None) else None,
