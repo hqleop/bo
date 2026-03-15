@@ -35,7 +35,6 @@ type AnalyticsPageConfig = {
   metaTitle: string;
   to: string;
   fixedTenderType: FixedAnalyticsTenderType;
-  tabs: Array<{ label: string; to: string }>;
 };
 
 const ANALYTICS_PAGES: AnalyticsPageDefinition[] = [
@@ -98,14 +97,6 @@ function getPage(page: AnalyticsPageKey): AnalyticsPageDefinition {
   return analyticsPage;
 }
 
-export function getAnalyticsTabs(mode: AnalyticsMode) {
-  const section = getSection(mode);
-  return ANALYTICS_PAGES.map((page) => ({
-    label: page.label,
-    to: `${section.basePath}/${page.routeSegment}`,
-  }));
-}
-
 export function getAnalyticsPageConfig(
   mode: AnalyticsMode,
   page: AnalyticsPageKey,
@@ -119,7 +110,6 @@ export function getAnalyticsPageConfig(
     metaTitle: `${section.label} - ${analyticsPage.label}`,
     to: `${section.basePath}/${analyticsPage.routeSegment}`,
     fixedTenderType: analyticsPage.fixedTenderType,
-    tabs: getAnalyticsTabs(mode),
   };
 }
 

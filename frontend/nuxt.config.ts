@@ -43,6 +43,10 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       apiBase: process.env.NUXT_PUBLIC_API_BASE || "http://localhost:8000/api",
+      analyticsEnabled: boolEnv(
+        "NUXT_PUBLIC_ANALYTICS_ENABLED",
+        false,
+      ),
       tenderRealtimeChunkSize: intEnv(
         "NUXT_PUBLIC_TENDER_REALTIME_CHUNK_SIZE",
         120,

@@ -1,24 +1,23 @@
 <template>
   <div class="h-full min-h-0 flex flex-col overflow-hidden">
-    <div class="flex-shrink-0 mb-4 space-y-3">
+    <div class="flex-shrink-0 mb-4">
       <h2 class="text-2xl font-bold">{{ pageTitle }}</h2>
-
-      <div class="inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
-        <UButton
-          v-for="tab in tabs"
-          :key="tab.to"
-          type="button"
-          size="sm"
-          :variant="isTabActive(tab.to) ? 'solid' : 'ghost'"
-          class="px-3"
-          @click="navigateTo(tab.to)"
-        >
-          {{ tab.label }}
-        </UButton>
-      </div>
     </div>
 
-    <div class="flex-1 min-h-0 overflow-hidden flex gap-4 max-lg:flex-col">
+    <div
+      v-if="!analyticsEnabled"
+      class="flex-1 min-h-0 overflow-auto rounded-xl border border-amber-200 bg-amber-50 p-5 shadow-sm"
+    >
+      <h3 class="text-lg font-semibold text-amber-900">
+        Аналітичний дашборд буде доступний після підключення API
+      </h3>
+      <p class="mt-2 max-w-3xl text-sm leading-6 text-amber-800">
+        Сторінка, маршрут і структура меню вже підготовлені. Щойно бекенд
+        реалізує ендпоінт аналітики, тут автоматично з’являться дані дашборда.
+      </p>
+    </div>
+
+    <div v-else class="flex-1 min-h-0 overflow-hidden flex gap-4 max-lg:flex-col">
       <div
         class="flex-1 min-h-0 overflow-auto rounded-xl border border-gray-200 bg-white shadow-sm p-4 space-y-4"
       >
@@ -256,6 +255,9 @@
 </template>
 
 <script setup lang="ts">
+import BarChart from "~/components/analytics/charts/BarChart.vue";
+import DonutChart from "~/components/analytics/charts/DonutChart.vue";
+import LineChart from "~/components/analytics/charts/LineChart.vue";
 import type {
   AnalyticsDashboardPayload,
   AnalyticsMode,
@@ -263,17 +265,15 @@ import type {
 } from "~/domains/analytics/analytics.types";
 import { useAnalyticsUseCases } from "~/domains/analytics/analytics.useCases";
 
-type TabLink = { label: string; to: string };
 type FixedTenderType = Exclude<AnalyticsTenderType, "all">;
 
 const props = defineProps<{
   mode: AnalyticsMode;
   pageTitle: string;
-  tabs: TabLink[];
   fixedTenderType?: FixedTenderType;
 }>();
 
-const route = useRoute();
+const runtimeConfig = useRuntimeConfig();
 const analyticsUC = useAnalyticsUseCases();
 const tendersUC = useTendersUseCases();
 const usersUC = useUsersUseCases();
@@ -342,6 +342,9 @@ const chartPalette = [
   "#f97316",
 ];
 
+const analyticsEnabled = computed(() =>
+  Boolean(runtimeConfig.public.analyticsEnabled),
+);
 const isSummaryMode = computed(() => props.mode.startsWith("summary-"));
 const isParticipationMode = computed(
   () => props.mode.includes("participant") || props.mode.includes("participation"),
@@ -452,10 +455,6 @@ function createEmptyPayload(mode: AnalyticsMode): AnalyticsDashboardPayload {
   };
 }
 
-function isTabActive(to: string) {
-  return route.path === to;
-}
-
 function normalizeSelectStringValue(raw: unknown, fallback: string) {
   if (typeof raw === "string" && raw.trim().length > 0) return raw;
   if (raw && typeof raw === "object") {
@@ -479,6 +478,19 @@ function formatNumber(value: unknown) {
     minimumFractionDigits: fractional ? 2 : 0,
     maximumFractionDigits: fractional ? 2 : 0,
   });
+}
+
+function formatAnalyticsError(error: string | null) {
+  const normalized = String(error || "").trim();
+  if (!normalized) return "Не вдалося завантажити аналітику.";
+  if (
+    normalized.startsWith("<!DOCTYPE") ||
+    normalized.includes("<html") ||
+    normalized.includes("Page not found")
+  ) {
+    return "Аналітичний API зараз недоступний.";
+  }
+  return normalized.length > 240 ? `${normalized.slice(0, 240)}...` : normalized;
 }
 
 function flattenTree(items: any[]): any[] {
@@ -553,6 +565,8 @@ function toggleUserFilter(id: number) {
 }
 
 async function loadFilterOptions() {
+  if (!analyticsEnabled.value) return;
+
   const mePayload = await usersUC.refreshMe();
   const approvedMemberships = (Array.isArray(mePayload?.memberships) ? mePayload?.memberships : []).filter(
     (membership: any) => membership?.status === "approved",
@@ -594,6 +608,12 @@ async function loadFilterOptions() {
 }
 
 async function loadAnalytics() {
+  if (!analyticsEnabled.value) {
+    dashboard.value = createEmptyPayload(props.mode);
+    loadError.value = "";
+    return;
+  }
+
   if (!companyId.value) {
     dashboard.value = createEmptyPayload(props.mode);
     loadError.value = "";
@@ -627,7 +647,7 @@ async function loadAnalytics() {
 
   if (error) {
     dashboard.value = createEmptyPayload(props.mode);
-    loadError.value = error;
+    loadError.value = formatAnalyticsError(error);
     loading.value = false;
     return;
   }

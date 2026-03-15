@@ -2,7 +2,6 @@
   <AnalyticsDashboardPage
     :mode="page.mode"
     :page-title="page.pageTitle"
-    :tabs="page.tabs"
     :fixed-tender-type="page.fixedTenderType"
   />
 </template>
